@@ -28,6 +28,19 @@
 - **Nunca canalizar a saída de um comando de verificação para `tail`/`grep` sem checar o
   código de saída.** O pipe entrega o código do último comando, e um `npm install` que falhou
   passa como sucesso. Rode o comando cru, ou termine com `; echo "EXIT=$?"`.
+- **Matar o `wrangler dev` deixa processos `workerd.exe` órfãos segurando a porta.** Sintoma:
+  o wrangler novo diz "Ready on 8787" mas toda requisição dá timeout, porque há mais de um
+  listener na mesma porta e as conexões caem no processo morto. Antes de culpar o código,
+  rode `netstat -ano | grep ":8787.*LISTENING"` — se aparecer mais de uma linha, é isto.
+  Limpe com `taskkill //F //IM workerd.exe` e suba de novo. Aconteceu com **cinco** órfãos
+  acumulados de reinícios anteriores.
+- **Antes de investigar rota que dá 404, confirme que o servidor está vivo** com `/saude`.
+  Uma rota 404 e um servidor morto são sintomas parecidos e levam a diagnósticos muito
+  diferentes — perdi tempo culpando o manifesto de assets do wrangler quando o problema era
+  porta ocupada por órfão.
+- **Screenshot do navegador pode chegar durante a transição CSS.** Um retrato tirado no meio
+  dos 380ms mostra a janelinha meio aberta e parece defeito de layout. Antes de concluir que o
+  CSS está errado, tire um segundo screenshot e meça o DOM com `getBoundingClientRect`.
 - Nomes de arquivos, funções, tipos e variáveis em **português**, seguindo a convenção do repo (`pode.ts`, `matriz.ts`, `traducao.ts`).
 - **Nenhum dado real de aluno.** Toda a semente é ficção declarada.
 - O navegador não pode depender de rede externa: **sem CDN, sem fonte remota, sem biblioteca**. O modo demo tem que funcionar com o cabo desconectado.

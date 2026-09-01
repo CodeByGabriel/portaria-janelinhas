@@ -88,7 +88,7 @@
       },
     })
 
-    fetch('/alunos')
+    fetch('/alunos?papel=portaria')
       .then((r) => r.json())
       .then((lista) => { alunos = lista })
       .catch(() => { aviso.textContent = 'não consegui carregar a lista de alunos' })
@@ -112,8 +112,9 @@
       const ul = document.getElementById('resultados')
       ul.innerHTML = ''
       const chamados = new Set(ativas.map((c) => c.alunoId))
+      const { achados, total } = buscar(alunos, campo.value)
 
-      for (const aluno of buscar(alunos, campo.value)) {
+      for (const aluno of achados) {
         const li = document.createElement('li')
         li.append(moldurinha(aluno.nome))
 
@@ -135,6 +136,14 @@
           }))
         }
         ul.append(li)
+      }
+
+      if (total > achados.length) {
+        const corte = document.createElement('li')
+        corte.className = 'nada'
+        corte.textContent =
+          `mostrando ${achados.length} de ${total} — digite o sobrenome para afinar`
+        ul.append(corte)
       }
     }
 
