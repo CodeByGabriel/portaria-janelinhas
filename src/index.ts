@@ -1,10 +1,6 @@
-export class Portaria {
-  constructor(_estado: DurableObjectState, _env: unknown) {}
+export { Portaria } from './portaria.ts'
 
-  async fetch(_pedido: Request): Promise<Response> {
-    return new Response('portaria viva')
-  }
-}
+const DO_PORTARIA = new Set(['/ws', '/registro', '/alunos'])
 
 export default {
   async fetch(
@@ -12,8 +8,14 @@ export default {
     env: { PORTARIA: DurableObjectNamespace },
   ): Promise<Response> {
     const url = new URL(pedido.url)
+
     if (url.pathname === '/saude') return new Response('ok')
-    const id = env.PORTARIA.idFromName('escola')
-    return env.PORTARIA.get(id).fetch(pedido)
+
+    if (DO_PORTARIA.has(url.pathname)) {
+      const id = env.PORTARIA.idFromName('escola')
+      return env.PORTARIA.get(id).fetch(pedido)
+    }
+
+    return new Response('nao encontrado', { status: 404 })
   },
 }
