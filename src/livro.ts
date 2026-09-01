@@ -10,9 +10,15 @@ export class Livro {
   private readonly cadastro = new Map<string, Aluno>()
   private readonly chamadas = new Map<string, Chamada>()
   private readonly trilha: EventoAuditoria[] = []
+  /** Sobe a cada troca de cadastro. O cliente usa para saber que a lista dele venceu. */
+  private versaoCadastro = 1
 
   constructor(alunos: Aluno[] = semear()) {
     for (const aluno of alunos) this.cadastro.set(aluno.id, aluno)
+  }
+
+  versao(): number {
+    return this.versaoCadastro
   }
 
   alunos(): Aluno[] {
@@ -24,11 +30,30 @@ export class Livro {
    * maquina de estados sozinha permite que um cliente qualquer chame e
    * libere em seguida, levando uma crianca ate a rua sem ninguem no portao.
    */
-  aplicar(comando: Comando, agora: number, papel: Papel): EventoAuditoria {
+  aplicar(comando: Comando, agora: number, papel: Papel, turma?: Turma): EventoAuditoria {
     exigirDono(comando.tipo, papel)
 
     const aluno = this.cadastro.get(comando.alunoId)
     if (!aluno) throw new Error(`aluno desconhecido: ${comando.alunoId}`)
+
+    /*
+      A sala so age sobre a PROPRIA turma.
+
+      O filtro de turma existia so na leitura (retratoPara). Sem ele tambem na
+      escrita, uma sala do Pré 1 liberava um aluno do 9º ano: ela nem via a
+      crianca no retrato, mas os ids sao sequenciais e adivinhaveis, entao
+      bastava varre-los para transformar toda crianca "chamado" em "liberado".
+
+      "liberado" e a confirmacao da professora — o unico evento que este
+      sistema existe para proteger. Ele nao pode ser forjavel por quem tem a
+      URL. Sala sem turma declarada nao age sobre ninguem.
+    */
+    if (papel === 'sala') {
+      if (!turma) throw new Error('a sala precisa declarar a turma para agir')
+      if (aluno.turma !== turma) {
+        throw new Error(`aluno de outra turma: ${aluno.turma}`)
+      }
+    }
 
     const anterior = this.chamadas.get(comando.alunoId)
     const de: Estado = anterior?.estado ?? 'aguardando'
@@ -60,8 +85,12 @@ export class Livro {
     const evento: EventoAuditoria = {
       alunoId: aluno.id,
       nome: aluno.nome,
+      turma: aluno.turma,
       acao: comando.tipo,
       papel,
+      // De qual sala veio. Sem isto, um "liberar" indevido nao tem origem
+      // rastreavel depois do incidente.
+      origem: papel === 'sala' ? (turma ?? '—') : 'portaria',
       de,
       para,
       em: agora,
@@ -82,7 +111,7 @@ export class Livro {
     const todas = [...this.chamadas.values()].sort((a, b) => a.desde - b.desde)
     const chamadas =
       papel === 'sala' ? (turma ? todas.filter((c) => c.turma === turma) : []) : todas
-    return { tipo: 'retrato', chamadas, em: agora }
+    return { tipo: 'retrato', chamadas, em: agora, cadastro: this.versaoCadastro }
   }
 
   registro(): EventoAuditoria[] {
@@ -106,6 +135,7 @@ export class Livro {
     }
     this.cadastro.clear()
     for (const aluno of alunos) this.cadastro.set(aluno.id, aluno)
+    this.versaoCadastro++
   }
 }
 

@@ -6,110 +6,96 @@
   <title>Portaria — Janelinhas do Saber</title>
   <link rel="stylesheet" href="../comum/tokens.css">
   <style>
-    body {
-      margin: 0 auto; padding: 1rem 1rem 3rem; max-width: 520px;
-      background: var(--papel); color: var(--tinta);
-      font-family: system-ui, -apple-system, sans-serif;
+    ul { list-style: none; padding: 0; margin: 0; }
+    .conteudo { padding-bottom: 4rem; }
+    .aviso {
+      color: var(--alerta); background: var(--alerta-fundo);
+      border: 1px solid #f0cdcb; border-radius: var(--canto);
+      font-size: 0.85rem; padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
     }
-    h1 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.08em;
-         color: var(--tinta-suave); margin: 1.6rem 0 0.4rem; }
-    h1:first-of-type { margin-top: 0.8rem; }
-    input {
-      width: 100%; font: inherit; font-size: 1.05rem; padding: 0.85rem;
-      border-radius: 10px; border: 2px solid var(--moldura);
-      background: #fff; color: var(--tinta); box-sizing: border-box;
+    .corte { font-size: 0.82rem; color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
+    details {
+      margin-top: 2rem; border: 1px solid var(--borda);
+      border-radius: var(--canto); background: var(--superficie); padding: 0.9rem 1rem;
     }
-    ul { list-style: none; padding: 0; margin: 0.4rem 0 0; }
-    li {
-      display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.2rem;
-      border-bottom: 1px solid var(--vidro-fosco);
-    }
-    li .moldurinha {
-      width: 42px; height: 42px; flex: none; border: 3px solid var(--moldura);
-      border-radius: 4px; overflow: hidden; background: var(--vidro-fundo);
-    }
-    li .moldurinha svg { width: 100%; height: 100%; display: block; }
-    .nome { flex: 1; line-height: 1.3; }
-    .detalhe { font-size: 0.8rem; color: var(--tinta-suave); }
-    button {
-      font: inherit; padding: 0.45rem 0.85rem; border-radius: 7px;
-      border: 2px solid var(--moldura); background: var(--papel);
-      color: var(--tinta); cursor: pointer; flex: none;
-    }
-    button:hover { background: var(--papel-fundo); }
-    button.principal { background: var(--moldura); color: #fff; border-color: var(--moldura-escura); }
-    button.principal:hover { background: var(--moldura-escura); }
-    .marca { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
-             font-size: 0.75rem; background: var(--papel-fundo); color: var(--tinta-suave); }
-    .marca[data-estado="liberado"] { background: var(--entregue-claro); color: #1e5c3c; }
-    .rede { font-size: 0.8rem; color: var(--tinta-suave); margin: 0 0 0.6rem; }
-    .rede[data-rede="desligado"] { color: var(--aviso); font-weight: 600; }
-    .nada { color: var(--tinta-suave); font-size: 0.9rem; padding: 0.4rem 0.2rem; }
-    .aviso { color: var(--aviso); font-size: 0.85rem; min-height: 1.3em; margin: 0.4rem 0 0; }
-
-    details { margin-top: 2rem; border-top: 1px solid var(--vidro-fosco); padding-top: 1rem; }
     summary {
-      cursor: pointer; font-size: 0.95rem; text-transform: uppercase;
-      letter-spacing: 0.08em; color: var(--tinta-suave);
+      cursor: pointer; font-size: 0.78rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.07em; color: var(--tinta-fraca);
     }
     .lgpd {
-      background: var(--papel-fundo); border-left: 4px solid var(--moldura);
-      padding: 0.7rem 0.9rem; font-size: 0.85rem; margin: 0.9rem 0 0.6rem;
+      background: var(--chamado-fundo); border: 1px solid var(--chamado-borda);
+      border-radius: var(--canto); color: var(--chamado-tinta);
+      padding: 0.65rem 0.8rem; font-size: 0.85rem; margin: 0.9rem 0 0.7rem;
     }
-    textarea {
-      width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace;
-      font-size: 0.85rem; padding: 0.7rem; border-radius: 8px;
-      border: 2px solid var(--moldura); background: #fff; color: var(--tinta);
-      margin: 0.5rem 0;
+    .dica { font-size: 0.82rem; color: var(--tinta-fraca); margin: 0 0 0.6rem; }
+    code {
+      background: var(--superficie-2); padding: 0.05rem 0.3rem;
+      border-radius: 4px; font-size: 0.9em;
     }
-    code { background: var(--papel-fundo); padding: 0.05rem 0.3rem; border-radius: 4px; }
+    textarea { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 0.82rem; }
     .placar { display: flex; gap: 0.6rem; margin: 0.9rem 0 0; }
     .placar div {
-      flex: 1; text-align: center; background: var(--papel-fundo);
-      border-radius: 8px; padding: 0.6rem 0.3rem;
+      flex: 1; text-align: center; background: var(--superficie-2);
+      border-radius: var(--canto); padding: 0.6rem 0.3rem;
     }
-    .placar .valor { font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
+    .placar .valor { font-size: 1.45rem; font-weight: 600; line-height: 1.15; }
     .placar .rotulo {
-      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--tinta-suave);
+      font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--tinta-fraca);
     }
-    .placar .ruim .valor { color: var(--aviso); }
-    .listaErros { font-size: 0.82rem; color: var(--aviso); margin: 0.7rem 0 0; padding-left: 1.1rem; }
+    .placar .ruim .valor { color: var(--alerta); }
+    .listaErros { font-size: 0.82rem; color: var(--alerta); margin: 0.7rem 0 0; padding-left: 1.1rem; }
+    .listaErros li { list-style: disc; }
+    .rodape {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 0.45rem 1.15rem; background: var(--superficie);
+      border-top: 1px solid var(--borda);
+    }
   </style>
 </head>
 <body>
-  <p class="rede" id="rede">ligando…</p>
 
-  <h1>Chamar</h1>
-  <input id="consulta" placeholder="Nome da criança" autocomplete="off" autocapitalize="off">
-  <p class="aviso" id="aviso"></p>
-  <ul id="resultados"></ul>
+  <header class="cabecalho">
+    <span class="marca-glifo" aria-hidden="true"></span>
+    <div>
+      <p class="titulo">Janelinhas do Saber</p>
+      <p class="subtitulo">Portaria</p>
+    </div>
+  </header>
 
-  <h1>Em saída</h1>
-  <ul id="ativas"></ul>
-  <p class="nada" id="nenhuma">Ninguém em saída agora.</p>
+  <main class="conteudo">
+    <p class="secao">Chamar aluno</p>
+    <input id="consulta" placeholder="Nome do aluno" autocomplete="off" autocapitalize="off">
+    <div id="aviso"></div>
+    <ul id="resultados"></ul>
 
-  <details id="painelImportar">
-    <summary>Importar planilha</summary>
-    <p class="lgpd">
-      Esta planilha traz nome e turma. Consentimento de imagem e dados do responsável
-      não vêm dela — a escola trata isso à parte.
-    </p>
-    <p class="detalhe">
-      Colunas exigidas: <code>Nome</code> e <code>Turma</code>. Outras colunas são ignoradas.
-      Aceita vírgula ou ponto e vírgula.
-    </p>
-    <textarea id="planilha" rows="6"
-      placeholder="Nome,Turma&#10;Ana Souza,Maternal&#10;Bia Lima,Jardim I"></textarea>
-    <button class="principal" id="importar">Importar</button>
-    <div id="resultadoImportacao"></div>
-  </details>
+    <p class="secao">Em saída</p>
+    <ul id="ativas"></ul>
+    <p class="vazio" id="nenhuma">Ninguém em saída agora.</p>
+
+    <details id="painelImportar">
+      <summary>Importar planilha</summary>
+      <p class="lgpd">
+        Esta planilha traz nome e turma. Consentimento de imagem e dados do responsável
+        não vêm dela — a escola trata isso à parte.
+      </p>
+      <p class="dica">
+        Colunas exigidas: <code>Nome</code> e <code>Turma</code>. Outras colunas são
+        ignoradas. Aceita vírgula ou ponto e vírgula.
+      </p>
+      <textarea id="planilha" rows="6"
+        placeholder="Nome,Turma&#10;Ana Souza,Pré 1&#10;Bia Lima,7º ano"></textarea>
+      <button class="principal" id="importar">Importar</button>
+      <div id="resultadoImportacao"></div>
+    </details>
+  </main>
+
+  <footer class="rodape"><span class="rede" id="rede">ligando…</span></footer>
 
   <script type="module">
     import { buscar } from '../comum/busca.js'
-    import { retratoDe } from '../comum/avatar.js'
+    import { criarLinha, etiquetaDe } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
-    import { linhaDupla, marca } from '../comum/dom.js'
 
     const rede = document.getElementById('rede')
     const aviso = document.getElementById('aviso')
@@ -117,34 +103,57 @@
 
     let alunos = []
     let ativas = []
+    let versaoCadastro = null
 
     const conexao = ligar({
       papel: 'portaria',
       aoEstadoDaRede: (estado) => {
         rede.dataset.rede = estado
-        rede.textContent = estado === 'ligado' ? 'ligado' : 'religando…'
+        rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'
       },
       aoRetrato: (retrato) => {
         ativas = retrato.chamadas
         desenharAtivas()
+        if (campo.value) campo.oninput()
+
+        /*
+          Se outra pessoa importou uma planilha, a lista que este aparelho tem
+          na memoria venceu. Sem isto, a porteira busca um nome, toca em
+          Chamar, e o servidor chama OUTRA crianca — porque o id que a tela
+          guardou aponta para outro aluno no cadastro novo. Silencioso e grave.
+        */
+        if (versaoCadastro !== null && retrato.cadastro !== versaoCadastro) {
+          recarregarCadastro('A lista de alunos foi atualizada. Recarreguei.')
+        }
+        versaoCadastro = retrato.cadastro
       },
-      aoRecusa: (recusa) => {
-        aviso.textContent = `recusado: ${recusa.motivo}`
-        setTimeout(() => { aviso.textContent = '' }, 4000)
-      },
+      aoRecusa: (recusa) => mostrarAviso(`Recusado: ${recusa.motivo}`),
     })
+
+    async function recarregarCadastro(mensagem) {
+      try {
+        alunos = await fetch('/alunos?papel=portaria').then((r) => r.json())
+        campo.value = ''
+        document.getElementById('resultados').innerHTML = ''
+        if (mensagem) mostrarAviso(mensagem)
+      } catch {
+        mostrarAviso('A lista mudou e eu não consegui recarregar. Atualize a página.')
+      }
+    }
+
+    function mostrarAviso(texto) {
+      aviso.innerHTML = ''
+      const p = document.createElement('p')
+      p.className = 'aviso'
+      p.textContent = texto
+      aviso.append(p)
+      setTimeout(() => { aviso.innerHTML = '' }, 5000)
+    }
 
     fetch('/alunos?papel=portaria')
       .then((r) => r.json())
       .then((lista) => { alunos = lista })
-      .catch(() => { aviso.textContent = 'não consegui carregar a lista de alunos' })
-
-    function moldurinha(nome) {
-      const caixa = document.createElement('div')
-      caixa.className = 'moldurinha'
-      caixa.append(retratoDe(nome))
-      return caixa
-    }
+      .catch(() => mostrarAviso('Não consegui carregar a lista de alunos.'))
 
     function botao(texto, principal, aoTocar) {
       const b = document.createElement('button')
@@ -157,17 +166,13 @@
     campo.oninput = () => {
       const ul = document.getElementById('resultados')
       ul.innerHTML = ''
-      const chamados = new Set(ativas.map((c) => c.alunoId))
+      const emSaida = new Set(ativas.map((c) => c.alunoId))
       const { achados, total } = buscar(alunos, campo.value)
 
       for (const aluno of achados) {
-        const li = document.createElement('li')
-        li.append(moldurinha(aluno.nome))
-
-        li.append(linhaDupla(aluno.nome, aluno.turma))
-
-        if (chamados.has(aluno.id)) {
-          li.append(marca('já em saída'))
+        const li = criarLinha({ nome: aluno.nome, turma: aluno.turma })
+        if (emSaida.has(aluno.id)) {
+          li.append(etiquetaDe('já em saída'))
         } else {
           li.append(botao('Chamar', true, () => {
             conexao.enviar({ tipo: 'chamar', alunoId: aluno.id })
@@ -180,9 +185,9 @@
 
       if (total > achados.length) {
         const corte = document.createElement('li')
-        corte.className = 'nada'
+        corte.className = 'corte'
         corte.textContent =
-          `mostrando ${achados.length} de ${total} — digite o sobrenome para afinar`
+          `Mostrando ${achados.length} de ${total}. Digite o sobrenome para afinar.`
         ul.append(corte)
       }
     }
@@ -190,17 +195,11 @@
     function desenharAtivas() {
       const ul = document.getElementById('ativas')
       ul.innerHTML = ''
-      const ordenadas = [...ativas].sort((a, b) => a.em - b.em)
+      const ordenadas = [...ativas].sort((a, b) => a.desde - b.desde)
       document.getElementById('nenhuma').hidden = ordenadas.length > 0
 
       for (const c of ordenadas) {
-        const li = document.createElement('li')
-        li.append(moldurinha(c.nome))
-
-        const bloco = linhaDupla(c.nome, c.turma)
-        bloco.append(document.createTextNode(' '), marca(c.estado, c.estado))
-        li.append(bloco)
-
+        const li = criarLinha({ nome: c.nome, turma: c.turma, estado: c.estado })
         if (c.estado === 'chamado') {
           li.append(botao('Cancelar', false, () =>
             conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId })))
@@ -232,7 +231,7 @@
       caixa.innerHTML = ''
 
       if (texto.trim() === '') {
-        caixa.innerHTML = '<p class="aviso">Cole a planilha antes de importar.</p>'
+        mostrarAviso('Cole a planilha antes de importar.')
         return
       }
 
@@ -241,7 +240,7 @@
         const resposta = await fetch('/importar?papel=portaria', { method: 'POST', body: texto })
         r = await resposta.json()
       } catch {
-        caixa.innerHTML = '<p class="aviso">Não consegui falar com o servidor.</p>'
+        mostrarAviso('Não consegui falar com o servidor.')
         return
       }
 
@@ -260,7 +259,7 @@
         ul.className = 'listaErros'
         for (const e of erros.slice(0, 10)) {
           const li = document.createElement('li')
-          li.textContent = e.linha > 0 ? `linha ${e.linha}: ${e.motivo}` : e.motivo
+          li.textContent = e.linha > 0 ? `Linha ${e.linha}: ${e.motivo}` : e.motivo
           ul.append(li)
         }
         if (erros.length > 10) {
@@ -272,7 +271,7 @@
       }
 
       if (r.trocado) {
-        alunos = await fetch('/alunos?papel=portaria').then((x) => x.json())
+        await recarregarCadastro(null)
         document.getElementById('planilha').value = ''
       }
     }

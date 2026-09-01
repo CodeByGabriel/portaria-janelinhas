@@ -4,10 +4,10 @@ import { normalizar, buscar } from './busca.ts'
 import type { Aluno } from './semente.ts'
 
 const ALUNOS: Aluno[] = [
-  { id: '1', nome: 'Thaís Gonçalves', turma: 'Jardim II' },
-  { id: '2', nome: 'João Conceição', turma: 'Maternal' },
+  { id: '1', nome: 'Thaís Gonçalves', turma: '2º ano' },
+  { id: '2', nome: 'João Conceição', turma: 'Pré 1' },
   { id: '3', nome: 'Ana Beatriz Souza', turma: '1º ano' },
-  { id: '4', nome: 'Thiago Alves', turma: 'Jardim I' },
+  { id: '4', nome: 'Thiago Alves', turma: 'Pré 2' },
 ]
 
 test('normalizar tira acento e caixa', () => {
@@ -59,9 +59,9 @@ test('acha quem tem acento digitando COM acento tambem', () => {
 // --- regressao: red team S3, apostrofo e hifen ---
 
 const COMPOSTOS: Aluno[] = [
-  { id: 'c1', nome: "Maria Sant'Ana", turma: 'Maternal' },
-  { id: 'c2', nome: 'Luís Gonzaga D’Ávila', turma: 'Jardim I' },
-  { id: 'c3', nome: 'Ana-Clara Vasconcelos', turma: 'Jardim II' },
+  { id: 'c1', nome: "Maria Sant'Ana", turma: 'Pré 1' },
+  { id: 'c2', nome: 'Luís Gonzaga D’Ávila', turma: 'Pré 2' },
+  { id: 'c3', nome: 'Ana-Clara Vasconcelos', turma: '2º ano' },
   { id: 'c4', nome: "Pedro D'Alessandro", turma: '1º ano' },
 ]
 
@@ -97,7 +97,7 @@ test('REGRESSAO S4: o corte e informado, nunca silencioso', () => {
   const homonimas: Aluno[] = Array.from({ length: 20 }, (_, i) => ({
     id: `h${i}`,
     nome: `Maria Eduarda Sobrenome${i}`,
-    turma: 'Maternal' as const,
+    turma: 'Pré 1' as const,
   }))
   const r = buscar(homonimas, 'maria eduarda')
   assert.equal(r.achados.length, 8, 'a tela do celular recebe 8')

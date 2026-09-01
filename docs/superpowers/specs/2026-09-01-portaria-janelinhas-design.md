@@ -124,23 +124,36 @@ por `file://`** — ele só funciona servido. O arquivo único abre com duplo cl
 servidor e sem Node. São dois planos de contingência para duas falhas diferentes: o wifi da
 escola cair, e o notebook não conseguir subir o `npm run dev` na hora.
 
-## 7. Linguagem visual: a janelinha
+## 7. Linguagem visual: institucional
 
-O nome da escola é a mecânica. Cada criança é uma janelinha de moldura de madeira com quatro
-vidros.
+**Revisado em 01/09/2026.** A primeira versão era uma janelinha de moldura de madeira com
+batentes que giravam — o nome da escola virado em mecânica. Foi descartada.
 
-**Fechada**, os vidros são opacos: não se vê quem está atrás. **Chamada**, os dois batentes
-giram para fora em 380ms e revelam o retrato. **Entregue**, a janelinha fecha de novo.
+A escola vai do **Pré 1 ao 9º ano**. Uma interface de madeira e vidrinho conversa com o Pré e
+constrange o Fundamental II, e a professora usa isto quarenta vezes por dia: o que encanta na
+primeira semana atrapalha na terceira. A referência certa é o sistema da reportagem — verde
+institucional, cartões brancos, tipografia limpa, densidade de informação.
 
-380ms é decisão, não estimativa. Abaixo disso o movimento não é percebido; acima de 500ms
-vira estorvo na quadragésima vez do dia.
+- **Cabeçalho verde** com o nome da escola e o contexto (turma, ou "Portaria").
+- **Faixa âmbar** anuncia a chamada: *"3 responsáveis chegaram. Toque em liberar saída."*
+- **Cartão branco** por aluno: retrato, nome, turma, etiqueta de estado, ação.
+- **Linha compacta** na portaria, que percorre a lista com o polegar.
+- Âmbar para `chamado`, verde para `liberado`. Uma cor por significado.
 
-A grade nunca mostra rostos. Só a janelinha chamada abre. Isso é a decisão de privacidade
-transformada em interface, não uma limitação de layout.
+O nome da escola sobrevive como **marca, não como textura**: um glifo de janela de quatro
+vidros no cabeçalho. Identidade sem fantasia.
 
-Cores em `web/comum/tokens.css`: moldura em âmbar quente, vidro em azul-céu, verde reservado
-para `entregue`. As cores que dependem da marca real da escola ficam marcadas com `--_todo`
-até a visita, seguindo a convenção que o repo já usa.
+Cores em `web/comum/tokens.css`, com `--_todo` nas que dependem da marca real da escola —
+`conteudo/institucional/` ainda é todo `TODO(visita)`.
+
+### O que mudou junto, e por quê
+
+A versão anterior mostrava **um rosto por vez**. Com 11 turmas e vários responsáveis chegando
+ao mesmo tempo, a fila de um em um trava a professora. Agora é uma **grade de cartões**.
+
+A decisão de privacidade continua intacta, porque ela nunca foi sobre a quantidade: **só
+aluno chamado aparece**. Nunca existe uma grade com o rosto da turma inteira, e o cartão some
+quando o ciclo fecha.
 
 ## 8. Som
 
@@ -156,13 +169,15 @@ apresentação sai muda — que é exatamente o momento que precisa funcionar.
 
 ## 9. Dados: ficção declarada
 
-`semente.ts` gera 32 alunos fictícios, oito em cada uma de quatro turmas: Maternal, Jardim I,
-Jardim II e 1º ano. Nomes brasileiros com acentuação real — Thaís, Gonçalves, Conceição —
-para que a busca seja testada de verdade e não com nomes de laboratório.
+`semente.ts` gera 44 alunos fictícios, quatro em cada uma das **11 turmas**: Pré 1, Pré 2 e do
+1º ao 9º ano, agrupadas em Educação Infantil, Fundamental I e Fundamental II.
 
-Os nomes das turmas são chute fundamentado, não informação da escola: `conteudo/institucional/`
-inteiro ainda é `TODO(visita)`. Ficam num único lugar do arquivo, fáceis de trocar quando a
-visita disser quais são de verdade.
+Nomes brasileiros com acentuação, apóstrofo e hífen reais — Thaís, Gonçalves, Sant'Ana,
+D'Ávila, Ana-Clara — para que a busca seja exercitada com o que a escola tem, e não com nomes
+de laboratório. Os três casos existem porque a busca já falhou em todos eles.
+
+A faixa Pré 1–9º ano veio da escola. Os nomes exatos das turmas ainda não:
+`conteudo/institucional/` é todo `TODO(visita)`. Ficam num único lugar do arquivo.
 
 **Retratos são ilustrações determinísticas**, derivadas do hash do nome: formato de cabeça,
 cabelo, olhos e cor de roupa escolhidos de paletas curadas. Simples e geométricos o bastante

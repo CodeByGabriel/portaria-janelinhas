@@ -6,65 +6,95 @@
   <title>Sala — Janelinhas do Saber</title>
   <link rel="stylesheet" href="../comum/tokens.css">
   <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--papel);
-      font-family: system-ui, -apple-system, sans-serif;
-      color: var(--tinta);
-      display: grid;
-      place-items: center;
+    .entrada { max-width: 420px; margin: 3.5rem auto; padding: 0 1.15rem; }
+    .entrada h2 { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.3rem; }
+    .entrada p { color: var(--tinta-media); margin: 0 0 1.4rem; font-size: 0.92rem; }
+    .entrada label {
+      display: block; font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--tinta-fraca); margin-bottom: 0.4rem;
     }
-    .palco { width: min(88vw, 420px); text-align: center; }
-    .vazio { color: var(--tinta-suave); font-size: 1.05rem; }
-    .fila { color: var(--tinta-suave); font-size: 0.9rem; min-height: 1.4em; margin: 0.8rem 0 0; }
-    button {
-      font: inherit; padding: 0.7rem 1.2rem; border-radius: 8px;
-      border: 2px solid var(--moldura); background: var(--papel);
-      color: var(--tinta); cursor: pointer;
+    .entrada select { margin-bottom: 1rem; }
+    .palco { padding: 1.15rem; max-width: 900px; margin: 0 auto; }
+    .cartao button { width: 100%; }
+    .rodape {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 0.5rem 1.15rem; background: var(--superficie);
+      border-top: 1px solid var(--borda); display: flex; gap: 1rem; align-items: center;
     }
-    button:hover { background: var(--papel-fundo); }
-    .liberar {
-      background: var(--moldura); color: #fff; border-color: var(--moldura-escura);
-      width: 100%; margin-top: 1.1rem; font-size: 1.05rem; padding: 0.9rem;
-    }
-    .liberar:hover { background: var(--moldura-escura); }
-    .entrar { font-size: 1.15rem; padding: 1rem 2rem; }
-    .canto-alto { position: fixed; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; }
-    .canto-baixo {
-      position: fixed; bottom: 1rem; left: 1rem;
-      font-size: 0.82rem; color: var(--tinta-suave);
-    }
-    .canto-baixo[data-rede="desligado"] { color: var(--aviso); font-weight: 600; }
-    .turma-atual { position: fixed; top: 1rem; left: 1rem; color: var(--tinta-suave); font-size: 0.9rem; }
+    .contagem { font-size: 0.82rem; color: var(--tinta-media); margin-left: auto; }
   </style>
 </head>
 <body>
-  <p class="turma-atual" id="turmaAtual"></p>
 
-  <div class="palco" id="palco">
-    <button class="entrar" id="entrar">Entrar na sala</button>
+  <div id="entrada" class="entrada">
+    <h2>Tela da sala</h2>
+    <p>Escolha a turma. Você será avisado quando o responsável de um aluno chegar no portão.</p>
+    <label for="turma">Turma</label>
+    <select id="turma"></select>
+    <button class="principal larga" id="entrar">Entrar na sala</button>
   </div>
 
-  <div class="canto-alto"><button id="mudo" hidden>Som ligado</button></div>
-  <p class="canto-baixo" id="rede" hidden>ligando…</p>
+  <div id="app" hidden>
+    <header class="cabecalho">
+      <span class="marca-glifo" aria-hidden="true"></span>
+      <div>
+        <p class="titulo">Janelinhas do Saber</p>
+        <p class="subtitulo" id="turmaAtual"></p>
+      </div>
+      <div class="direita">
+        <button class="fantasma" id="mudo">Som ligado</button>
+      </div>
+    </header>
+
+    <p class="faixa" id="faixa" hidden></p>
+
+    <main class="palco">
+      <p class="vazio" id="vazio">Nenhuma chamada agora.</p>
+      <div class="grade" id="grade"></div>
+    </main>
+
+    <footer class="rodape">
+      <span class="rede" id="rede">ligando…</span>
+      <span class="contagem" id="contagem"></span>
+    </footer>
+  </div>
 
   <script type="module">
-    import { criarJanelinha } from '../comum/janelinha.js'
+    import { criarCartao } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
     import { destravar, tocarAbertura, tocarEntrega, alternarMudo } from '../comum/som.js'
 
-    const turma = new URLSearchParams(location.search).get('turma') ?? 'Jardim II'
-    const palco = document.getElementById('palco')
-    const rede = document.getElementById('rede')
+    const TURMAS = [
+      ['Educação Infantil', ['Pré 1', 'Pré 2']],
+      ['Fundamental I', ['1º ano', '2º ano', '3º ano', '4º ano', '5º ano']],
+      ['Fundamental II', ['6º ano', '7º ano', '8º ano', '9º ano']],
+    ]
+
+    const seletor = document.getElementById('turma')
+    for (const [segmento, turmas] of TURMAS) {
+      const grupo = document.createElement('optgroup')
+      grupo.label = segmento
+      for (const t of turmas) {
+        const opcao = document.createElement('option')
+        opcao.value = t
+        opcao.textContent = t
+        grupo.append(opcao)
+      }
+      seletor.append(grupo)
+    }
+    const daUrl = new URLSearchParams(location.search).get('turma')
+    if (daUrl) seletor.value = daUrl
+
     const botaoMudo = document.getElementById('mudo')
+    const rede = document.getElementById('rede')
+    const grade = document.getElementById('grade')
+    const faixa = document.getElementById('faixa')
+    const vazio = document.getElementById('vazio')
+    const contagem = document.getElementById('contagem')
 
-    document.getElementById('turmaAtual').textContent = turma
-
-    let atual = null
-    let ultimoId = null
-    let ultimoEstado = null
+    let turma = null
     let conexao = null
+    const cartoes = new Map()
 
     botaoMudo.onclick = () => {
       botaoMudo.textContent = alternarMudo() ? 'Som desligado' : 'Som ligado'
@@ -72,69 +102,72 @@
 
     document.getElementById('entrar').onclick = () => {
       destravar()
-      botaoMudo.hidden = false
-      rede.hidden = false
-      vazio()
+      turma = seletor.value
+      document.getElementById('entrada').hidden = true
+      document.getElementById('app').hidden = false
+      document.getElementById('turmaAtual').textContent = turma
+      document.title = `${turma} — Janelinhas do Saber`
+
       conexao = ligar({
         papel: 'sala',
         turma,
         aoEstadoDaRede: (estado) => {
           rede.dataset.rede = estado
-          rede.textContent = estado === 'ligado' ? 'ligado' : 'religando…'
+          rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'
         },
         aoRetrato: desenhar,
       })
     }
 
-    function vazio() {
-      palco.innerHTML = '<p class="vazio">Nenhuma chamada agora.</p>'
-      atual = null
-      ultimoId = null
-      ultimoEstado = null
-    }
-
     function desenhar(retrato) {
       const ativas = retrato.chamadas
         .filter((c) => c.estado === 'chamado' || c.estado === 'liberado')
-        .sort((a, b) => a.em - b.em)
+        .sort((a, b) => a.desde - b.desde)
 
-      const vez = ativas[0]
-      if (!vez) {
-        vazio()
-        return
+      const presentes = new Set(ativas.map((c) => c.alunoId))
+      for (const [id, cartao] of cartoes) {
+        if (!presentes.has(id)) {
+          cartao.remove()
+          cartoes.delete(id)
+        }
       }
 
-      if (vez.alunoId !== ultimoId) {
-        ultimoId = vez.alunoId
-        ultimoEstado = null
-        palco.innerHTML = ''
+      for (const chamada of ativas) {
+        let cartao = cartoes.get(chamada.alunoId)
 
-        atual = criarJanelinha({ nome: vez.nome, turma: vez.turma })
-        palco.append(atual)
+        if (!cartao) {
+          cartao = criarCartao({ nome: chamada.nome, turma: chamada.turma })
+          const botao = document.createElement('button')
+          botao.className = 'principal'
+          botao.textContent = 'Liberar saída'
+          botao.onclick = () =>
+            conexao.enviar({ tipo: 'liberar', alunoId: chamada.alunoId })
+          cartao.acrescentar(botao)
+          cartao.__botao = botao
+          cartao.__estado = null
+          cartoes.set(chamada.alunoId, cartao)
+          grade.append(cartao)
+          tocarAbertura()
+        }
 
-        const liberar = document.createElement('button')
-        liberar.className = 'liberar'
-        liberar.textContent = 'Liberar saída'
-        liberar.onclick = () => conexao.enviar({ tipo: 'liberar', alunoId: vez.alunoId })
-        palco.append(liberar)
-
-        const fila = document.createElement('p')
-        fila.className = 'fila'
-        palco.append(fila)
+        if (chamada.estado !== cartao.__estado) {
+          cartao.definirEstado(chamada.estado)
+          if (chamada.estado === 'liberado') tocarEntrega()
+          cartao.__estado = chamada.estado
+        }
+        cartao.__botao.disabled = chamada.estado === 'liberado'
+        cartao.__botao.textContent =
+          chamada.estado === 'liberado' ? 'Aguardando no portão' : 'Liberar saída'
       }
 
-      if (vez.estado !== ultimoEstado) {
-        requestAnimationFrame(() => atual.definirEstado(vez.estado))
-        if (vez.estado === 'chamado') tocarAbertura()
-        if (vez.estado === 'liberado') tocarEntrega()
-        ultimoEstado = vez.estado
-      }
-
-      const liberar = palco.querySelector('.liberar')
-      if (liberar) liberar.disabled = vez.estado === 'liberado'
-
-      palco.querySelector('.fila').textContent =
-        ativas.length > 1 ? `mais ${ativas.length - 1} na fila` : ''
+      const aguardando = ativas.filter((c) => c.estado === 'chamado').length
+      vazio.hidden = ativas.length > 0
+      faixa.hidden = aguardando === 0
+      faixa.textContent =
+        aguardando === 1
+          ? 'Responsável chegou. Toque em liberar saída.'
+          : `${aguardando} responsáveis chegaram. Toque em liberar saída.`
+      contagem.textContent = ativas.length > 0 ? `${ativas.length} em saída` : ''
     }
   </script>
 </body>

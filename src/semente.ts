@@ -1,5 +1,39 @@
-export const TURMAS = ['Maternal', 'Jardim I', 'Jardim II', '1º ano'] as const
+/*
+  A escola vai do Pré 1 ao 9º ano: Educacao Infantil, Fundamental I e
+  Fundamental II. Sao 11 turmas, e isso muda a interface — uma tela de sala
+  com turma fixa no codigo nao serve. A professora escolhe a dela ao entrar.
+*/
+
+export const TURMAS = [
+  'Pré 1',
+  'Pré 2',
+  '1º ano',
+  '2º ano',
+  '3º ano',
+  '4º ano',
+  '5º ano',
+  '6º ano',
+  '7º ano',
+  '8º ano',
+  '9º ano',
+] as const
+
 export type Turma = (typeof TURMAS)[number]
+
+export const SEGMENTOS = [
+  'Educação Infantil',
+  'Fundamental I',
+  'Fundamental II',
+] as const
+
+export type Segmento = (typeof SEGMENTOS)[number]
+
+/** A que segmento pertence cada turma. Usado para agrupar a lista de turmas. */
+export function segmentoDa(turma: Turma): Segmento {
+  if (turma.startsWith('Pré')) return 'Educação Infantil'
+  const ano = Number.parseInt(turma, 10)
+  return ano <= 5 ? 'Fundamental I' : 'Fundamental II'
+}
 
 export interface Aluno {
   id: string
@@ -7,45 +41,75 @@ export interface Aluno {
   turma: Turma
 }
 
+/*
+  Quatro criancas por turma. Nomes brasileiros com acentuacao, apostrofo e
+  hifen de verdade, para que a busca seja exercitada com o que a escola tem —
+  e nao com nomes de laboratorio.
+*/
 const NOMES: readonly string[] = [
+  // Pré 1
+  'Alice Fernandes',
+  'Théo Marçal',
+  'Maitê Salgado',
+  'Bernardo Antunes',
+  // Pré 2
+  'Íris Pacheco',
+  'Gael Espíndola',
+  'Cecília Barroso',
+  'Ravi Bacelar',
+  // 1º ano
   'Thaís Gonçalves',
   'João Conceição',
-  'Ana Beatriz Souza',
-  'Thiago Alves',
-  'Maria Cecília Rocha',
-  'Davi Nascimento',
   'Lara Mendonça',
-  'Bruno Assunção',
-  'Íris Pacheco',
-  'Heitor Camargo',
-  'Alice Fernandes',
+  'Benício Andrade',
+  // 2º ano
+  'Ana Beatriz Souza',
   'Miguel Bittencourt',
+  'Manuela Vasconcelos',
+  "Pedro D'Alessandro",
+  // 3º ano
   'Sofia Rezende',
   'Arthur Magalhães',
   'Helena Siqueira',
-  'Bernardo Antunes',
-  'Manuela Vasconcelos',
-  'Théo Marçal',
-  'Valentina Queiroz',
-  'Gael Espíndola',
-  'Cecília Barroso',
+  'Davi Nascimento',
+  // 4º ano
+  'Maria Cecília Rocha',
   'Anthony Peçanha',
   'Isabela Furtado',
   'Lorenzo Sampaio',
+  // 5º ano
   'Elisa Guimarães',
-  'Benício Andrade',
+  'Vicente Aragão',
   'Antonella Xavier',
   'Noah Teixeira',
-  'Maitê Salgado',
-  'Vicente Aragão',
+  // 6º ano
+  'Valentina Queiroz',
+  'Heitor Camargo',
+  "Maria Sant'Ana",
+  'Bruno Assunção',
+  // 7º ano
   'Liz Monteiro',
-  'Ravi Bacelar',
+  'Thiago Alves',
+  'Ana-Clara Vasconcelos',
+  'Enzo Bittencourt',
+  // 8º ano
+  'Beatriz Nogueira',
+  'Murilo Cavalcanti',
+  'Yasmin Albuquerque',
+  'Otávio Rebouças',
+  // 9º ano
+  'Giovanna Paixão',
+  'Rafael Menezes',
+  'Luíza Sant’Anna',
+  'Gustavo Bandeira',
 ]
+
+const POR_TURMA = 4
 
 export function semear(): Aluno[] {
   return NOMES.map((nome, i) => ({
     id: `a${String(i + 1).padStart(2, '0')}`,
     nome,
-    turma: TURMAS[Math.floor(i / 8)],
+    turma: TURMAS[Math.floor(i / POR_TURMA)],
   }))
 }

@@ -6,234 +6,407 @@
 <title>Demo offline — Janelinhas do Saber</title>
 <style>
 /*
-  Janelinhas do Saber — a linguagem visual.
+  Janelinhas do Saber — sistema visual.
 
-  O nome da escola e a mecanica: cada crianca e uma janelinha de moldura de
-  madeira. Fechada, os vidros sao foscos e ninguem ve quem esta atras. Chamada,
-  os batentes giram para fora e revelam o retrato.
+  Institucional, nao lúdico. A escola vai do Pré 1 ao 9º ano: uma interface
+  de madeira e vidrinho fala com o Pré e constrange o Fundamental II, e a
+  professora usa isto quarenta vezes por dia. Verde institucional, cartoes
+  brancos, tipografia limpa, densidade de informacao.
 
-  As cores marcadas com --_todo dependem da marca real da escola, que nao
-  conhecemos: conteudo/institucional/ ainda e todo TODO(visita).
+  O nome da escola aparece como marca, nao como textura: um glifo discreto
+  de janela no cabecalho. Identidade sem fantasia.
+
+  As cores marcadas com --_todo dependem da marca real da escola, que ainda
+  nao conhecemos: conteudo/institucional/ e todo TODO(visita).
 */
 
 :root {
-  --moldura: #a85f18;
-  --moldura-clara: #c98338;
-  --moldura-escura: #6f3d0c;
-  --peitoril: #8a4d13;
+  /* marca */
+  --marca: #0e6b45;
+  --marca-escura: #0a5436;
+  --marca-clara: #e4f1ea;
+  --marca-borda: #b9dcc9;
 
-  --vidro: #dce9f3;
-  --vidro-fundo: #eef5fa;
-  --vidro-fosco: #c0cfda;
+  /* superficies */
+  --fundo: #f4f6f5;
+  --superficie: #ffffff;
+  --superficie-2: #eef1ef;
+  --borda: #dfe4e1;
+  --borda-forte: #c3ccc7;
 
-  --entregue: #2f7d55;
-  --entregue-claro: #d8ece1;
-  --aviso: #a3521f;
+  /* texto */
+  --tinta: #16211c;
+  --tinta-media: #4a5852;
+  --tinta-fraca: #78857f;
+  --tinta-clara: #ffffff;
 
-  --tinta: #2c1e11;
-  --tinta-suave: #6f5943;
-  --papel: #fdf8f0;
-  --papel-fundo: #f6ecdd;
+  /* estados da saida */
+  --chamado-fundo: #fdf1de;
+  --chamado-borda: #f0d4a3;
+  --chamado-tinta: #8a5209;
+  --liberado-fundo: var(--marca-clara);
+  --liberado-borda: var(--marca-borda);
+  --liberado-tinta: var(--marca-escura);
+  --alerta: #a4302a;
+  --alerta-fundo: #fbeceb;
 
-  --abertura: 380ms;
-  --curva: cubic-bezier(0.34, 1.16, 0.64, 1);
-  --canto: 10px;
+  /* medidas */
+  --canto: 8px;
+  --canto-g: 12px;
+  --transicao: 180ms cubic-bezier(0.2, 0, 0.2, 1);
+  --sombra: 0 1px 2px rgba(22, 33, 28, 0.06), 0 1px 3px rgba(22, 33, 28, 0.04);
+  --sombra-alta: 0 2px 4px rgba(22, 33, 28, 0.08), 0 4px 12px rgba(22, 33, 28, 0.06);
 
-  --_todo-marca-primaria: var(--moldura);
-  --_todo-marca-secundaria: var(--vidro);
+  --_todo-marca-primaria: var(--marca);
 }
 
-/* ---------- a janelinha ---------- */
+/* ---------- base ---------- */
 
-.janelinha {
-  width: 100%;
-  text-align: center;
-}
+* { box-sizing: border-box; }
 
-.caixilho {
-  position: relative;
-  aspect-ratio: 1;
-  border: 12px solid var(--moldura);
-  border-bottom-width: 16px;
-  border-radius: 6px;
-  background: var(--vidro-fundo);
-  overflow: hidden;
-  perspective: 900px;
-  box-shadow: inset 0 0 0 2px var(--moldura-escura);
-}
-
-.retrato {
-  position: absolute;
-  inset: 2%;
-  display: grid;
-  place-items: center;
-}
-
-.retrato svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* os dois batentes que giram para fora */
-.batente {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 50%;
-  background: var(--vidro-fosco);
-  border: 5px solid var(--moldura-clara);
-  box-sizing: border-box;
-  display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 5px;
-  padding: 5px;
-  transition: transform var(--abertura) var(--curva);
-  backface-visibility: hidden;
-}
-
-.batente span {
-  background: var(--vidro);
-  border-radius: 3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.esquerdo {
-  left: 0;
-  transform-origin: left center;
-}
-
-.direito {
-  right: 0;
-  transform-origin: right center;
-}
-
-/*
-  Aberta: os batentes giram para DENTRO do vao, afastando-se do observador.
-
-  O sinal importa. Girando para fora (sinal oposto), a perspectiva aproxima a
-  borda livre do observador e infla o batente ate ele ocupar um terco do vao,
-  espremendo a crianca no meio. Verificado no navegador.
-
-  88 graus, e nao 90: a 90 o batente some por completo e a janela deixa de
-  parecer uma janela. A lasca que sobra e o que da a leitura de profundidade.
-*/
-.janelinha[data-estado='chamado'] .esquerdo,
-.janelinha[data-estado='liberado'] .esquerdo,
-.janelinha[data-estado='entregue'] .esquerdo {
-  transform: rotateY(88deg);
-}
-
-.janelinha[data-estado='chamado'] .direito,
-.janelinha[data-estado='liberado'] .direito,
-.janelinha[data-estado='entregue'] .direito {
-  transform: rotateY(-88deg);
-}
-
-/* liberada: a moldura confirma que a professora ja autorizou */
-.janelinha[data-estado='liberado'] .caixilho {
-  border-color: var(--entregue);
-  box-shadow: inset 0 0 0 2px #1e5c3c;
-}
-
-.janelinha[data-estado='entregue'] .caixilho {
-  border-color: var(--entregue);
-  opacity: 0.55;
-}
-
-.nome {
-  font-weight: 600;
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--fundo);
   color: var(--tinta);
-  margin: 0.7rem 0 0;
-  line-height: 1.2;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-.turma {
-  color: var(--tinta-suave);
-  margin: 0.15rem 0 0;
-  font-size: 0.9rem;
+/* ---------- cabecalho institucional ---------- */
+
+.cabecalho {
+  background: var(--marca);
+  color: var(--tinta-clara);
+  padding: 0.85rem 1.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.selo {
+.cabecalho .marca-glifo {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  position: relative;
+  opacity: 0.95;
+}
+
+.cabecalho .marca-glifo::before,
+.cabecalho .marca-glifo::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+}
+
+.cabecalho .marca-glifo::before {
+  left: 50%;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.cabecalho .marca-glifo::after {
+  top: 50%;
+  left: 2px;
+  right: 2px;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.cabecalho .titulo {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.cabecalho .subtitulo {
+  font-size: 0.8rem;
+  opacity: 0.82;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.cabecalho .direita {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---------- faixa de chamada (a manchete da sala) ---------- */
+
+.faixa {
+  background: var(--chamado-fundo);
+  border-bottom: 1px solid var(--chamado-borda);
+  color: var(--chamado-tinta);
+  padding: 0.7rem 1.15rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* ---------- cartao do aluno ---------- */
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--canto-g);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.7rem;
+  box-shadow: var(--sombra);
+  transition: box-shadow var(--transicao), border-color var(--transicao);
+}
+
+.cartao[data-estado='chamado'] { border-color: var(--chamado-borda); }
+.cartao[data-estado='liberado'] { border-color: var(--liberado-borda); }
+
+.cartao .foto {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--canto);
+  overflow: hidden;
+  background: var(--superficie-2);
+  border: 1px solid var(--borda);
+  flex: none;
+}
+
+.cartao .foto svg { width: 100%; height: 100%; display: block; }
+
+.cartao .nome {
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.cartao .turma {
+  font-size: 0.85rem;
+  color: var(--tinta-fraca);
+  margin: 0;
+}
+
+/* ---------- linha compacta (listas da portaria) ---------- */
+
+.linha {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--canto);
+  margin-bottom: 0.5rem;
+}
+
+.linha .foto {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--superficie-2);
+  border: 1px solid var(--borda);
+  flex: none;
+}
+
+.linha .foto svg { width: 100%; height: 100%; display: block; }
+
+.linha .nome {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.linha .detalhe {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--tinta-fraca);
+}
+
+/* ---------- etiqueta de estado ---------- */
+
+.etiqueta {
   display: inline-block;
-  margin-top: 0.4rem;
-  padding: 0.15rem 0.6rem;
+  padding: 0.13rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.78rem;
-  background: var(--entregue-claro);
-  color: #1e5c3c;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: var(--superficie-2);
+  color: var(--tinta-media);
+  border: 1px solid var(--borda);
+  white-space: nowrap;
 }
+
+.etiqueta[data-estado='chamado'] {
+  background: var(--chamado-fundo);
+  color: var(--chamado-tinta);
+  border-color: var(--chamado-borda);
+}
+
+.etiqueta[data-estado='liberado'] {
+  background: var(--liberado-fundo);
+  color: var(--liberado-tinta);
+  border-color: var(--liberado-borda);
+}
+
+/* ---------- controles ---------- */
+
+button {
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--canto);
+  border: 1px solid var(--borda-forte);
+  background: var(--superficie);
+  color: var(--tinta);
+  cursor: pointer;
+  transition: background var(--transicao), border-color var(--transicao);
+}
+
+button:hover:not(:disabled) { background: var(--superficie-2); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: 0.45; cursor: default; }
+
+button.principal {
+  background: var(--marca);
+  border-color: var(--marca-escura);
+  color: var(--tinta-clara);
+}
+
+button.principal:hover:not(:disabled) { background: var(--marca-escura); }
+
+button.larga { width: 100%; padding: 0.7rem; font-size: 1rem; }
+
+button.fantasma {
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+}
+
+button.fantasma:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+
+input[type='text'],
+input:not([type]),
+select,
+textarea {
+  font: inherit;
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--canto);
+  border: 1px solid var(--borda-forte);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--marca);
+  outline-offset: -1px;
+  border-color: var(--marca);
+}
+
+/* ---------- estrutura ---------- */
+
+.conteudo { padding: 1.15rem; max-width: 560px; margin: 0 auto; }
+
+.secao {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--tinta-fraca);
+  margin: 1.6rem 0 0.6rem;
+}
+
+.secao:first-of-type { margin-top: 0; }
+
+.vazio {
+  color: var(--tinta-fraca);
+  font-size: 0.92rem;
+  padding: 0.8rem 0;
+}
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.9rem;
+}
+
+.rede {
+  font-size: 0.78rem;
+  color: var(--tinta-fraca);
+}
+
+.rede[data-rede='desligado'] { color: var(--alerta); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
-  .batente {
-    transition: none;
-  }
+  * { transition: none !important; }
 }
 
 
-    body {
-      margin: 0; min-height: 100vh; background: var(--papel); color: var(--tinta);
-      font-family: system-ui, -apple-system, sans-serif;
-      display: grid; grid-template-columns: 1fr 1fr;
+    .colunas { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 58px); }
+    .coluna { padding: 1.15rem; }
+    .coluna + .coluna { border-left: 1px solid var(--borda); background: #fafbfa; }
+    .rotulo {
+      font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--tinta-fraca); margin: 0 0 0.15rem;
     }
-    section { padding: 1.5rem 1.4rem 2.5rem; }
-    section + section { border-left: 3px dashed var(--vidro-fosco); background: var(--papel-fundo); }
-    h1 {
-      font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em;
-      color: var(--tinta-suave); margin: 0 0 0.2rem;
-    }
-    .sub { font-size: 0.8rem; color: var(--tinta-suave); margin: 0 0 1.2rem; }
+    .explica { font-size: 0.85rem; color: var(--tinta-media); margin: 0 0 1rem; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li {
-      display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0.1rem;
-      border-bottom: 1px solid var(--vidro-fosco);
+    .grade { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .cartao button { width: 100%; }
+    .selo {
+      position: fixed; bottom: 0.9rem; right: 1rem; font-size: 0.75rem;
+      color: var(--tinta-fraca); background: var(--superficie);
+      border: 1px solid var(--borda); border-radius: 999px; padding: 0.2rem 0.7rem;
     }
-    .moldurinha {
-      width: 40px; height: 40px; flex: none; border: 3px solid var(--moldura);
-      border-radius: 4px; overflow: hidden; background: var(--vidro-fundo);
-    }
-    .moldurinha svg { width: 100%; height: 100%; display: block; }
-    .nome { flex: 1; font-size: 0.92rem; line-height: 1.3; }
-    .detalhe { font-size: 0.76rem; color: var(--tinta-suave); }
-    button {
-      font: inherit; font-size: 0.88rem; padding: 0.35rem 0.75rem; border-radius: 7px;
-      border: 2px solid var(--moldura); background: var(--papel);
-      color: var(--tinta); cursor: pointer; flex: none;
-    }
-    button:hover { background: var(--papel-fundo); }
-    button.principal { background: var(--moldura); color: #fff; border-color: var(--moldura-escura); }
-    .palco { display: grid; place-items: center; min-height: 62vh; text-align: center; }
-    .palco > div { width: min(84%, 300px); }
-    .vazio { color: var(--tinta-suave); }
-    .liberar {
-      background: var(--moldura); color: #fff; border-color: var(--moldura-escura);
-      width: 100%; margin-top: 1rem; padding: 0.75rem; font-size: 1rem;
-    }
-    .semrede {
-      position: fixed; bottom: 0.8rem; right: 1rem; font-size: 0.76rem;
-      color: var(--tinta-suave); background: var(--papel); padding: 0.2rem 0.6rem;
-      border-radius: 999px; border: 1px solid var(--vidro-fosco);
-    }
-    .fila { color: var(--tinta-suave); font-size: 0.85rem; margin: 0.7rem 0 0; }
   
 </style>
 </head>
 <body>
-<section>
-    <h1>Portaria</h1>
-    <p class="sub">o responsável chegou no portão</p>
-    <ul id="cadastro"></ul>
-    <h1 style="margin-top:1.8rem">Em saída</h1>
-    <ul id="ativas"></ul>
-    <p class="vazio" id="nenhuma" style="font-size:0.85rem">Ninguém em saída agora.</p>
-  </section>
+<header class="cabecalho">
+    <span class="marca-glifo" aria-hidden="true"></span>
+    <div>
+      <p class="titulo">Janelinhas do Saber</p>
+      <p class="subtitulo">Demonstração — portaria e sala lado a lado</p>
+    </div>
+  </header>
 
-  <section>
-    <h1>Sala — Jardim II</h1>
-    <p class="sub">a professora libera</p>
-    <div class="palco" id="palco"><p class="vazio">Nenhuma chamada agora.</p></div>
-  </section>
+  <div class="colunas">
+    <section class="coluna">
+      <p class="rotulo">Portaria</p>
+      <p class="explica">O responsável chegou no portão.</p>
+      <ul id="cadastro"></ul>
 
-  <p class="semrede">modo demo · sem rede</p>
+      <p class="secao">Em saída</p>
+      <ul id="ativas"></ul>
+      <p class="vazio" id="nenhuma">Ninguém em saída agora.</p>
+    </section>
+
+    <section class="coluna">
+      <p class="rotulo">Sala — 4º ano</p>
+      <p class="explica">A professora confirma a saída.</p>
+      <p class="vazio" id="vazio">Nenhuma chamada agora.</p>
+      <div class="grade" id="grade"></div>
+    </section>
+  </div>
+
+  <p class="selo">modo demonstração · sem rede</p>
 <script>
 
 /* ===== web/comum/estados.js ===== */
@@ -296,58 +469,22 @@ function exigirDono(acao, papel) {
 }
 
 
-/* ===== web/comum/dom.js ===== */
-/*
-  Construcao de DOM sem innerHTML.
-
-  Nome de crianca chega de planilha colada pela secretaria. Interpolar isso
-  num template de innerHTML transforma um nome como <img src=x onerror=...>
-  em codigo executando na tela da portaria. textContent nao interpreta
-  marcacao — o nome aparece literal, que e o comportamento certo.
-
-  O analisador de importacao tambem recusa < e >, mas defesa que depende de
-  uma camada so e defesa que ja falhou uma vez.
-*/
-
-/** Uma linha de duas alturas: nome em cima, detalhe menor embaixo. */
-function linhaDupla(principal, detalhe) {
-  const caixa = document.createElement('div')
-  caixa.className = 'nome'
-
-  caixa.append(document.createTextNode(principal))
-  caixa.append(document.createElement('br'))
-
-  const span = document.createElement('span')
-  span.className = 'detalhe'
-  span.textContent = detalhe
-  caixa.append(span)
-
-  return caixa
-}
-
-/** Uma etiqueta com estado, para pendurar ao lado do nome. */
-function marca(texto, estado) {
-  const span = document.createElement('span')
-  span.className = 'marca'
-  if (estado) span.dataset.estado = estado
-  span.textContent = texto
-  return span
-}
-
-
 /* ===== web/comum/avatar.js ===== */
 /*
   Retrato ilustrado deterministico, derivado do nome.
 
-  Nao geramos rosto fotorrealista de crianca. Estas ilustracoes sao
-  geometricas de proposito: leem como desenho, nunca como foto. Em producao,
-  a escola sobe a foto que ja tem na matricula, sob o consentimento que a
-  fase de conformidade definir.
+  Nao geramos rosto fotorrealista de aluno. Estas ilustracoes sao planas e
+  geometricas de proposito: leem como marcador de posicao de um sistema, nao
+  como foto nem como desenho infantil. A escola vai do Pré 1 ao 9º ano, e um
+  bonequinho de bochecha rosada constrange um aluno de 14 anos.
+
+  Em producao, a escola sobe a foto que ja tem na matricula, sob o
+  consentimento que a fase de conformidade definir.
 */
 
-const PELES = ['#f6d9c0', '#eabd99', '#cd9263', '#a26a42', '#71482a']
-const CABELOS = ['#2b1b12', '#4a2c1a', '#7b4b23', '#c98b3a', '#171717', '#8d5524']
-const ROUPAS = ['#2f6f9f', '#2f7d55', '#a1441f', '#6a4b8f', '#b4671a', '#38799a']
+const PELES = ['#f0d5be', '#e2b591', '#c58d63', '#9c6b45', '#6d4830']
+const CABELOS = ['#2a211c', '#4b3524', '#7a5636', '#a8763f', '#1a1a1a', '#8d6a4f']
+const FUNDOS = ['#e7eeea', '#e9ecef', '#eceae4', '#e6edf1', '#eeeaef']
 
 function digerir(texto) {
   let h = 2166136261
@@ -358,111 +495,150 @@ function digerir(texto) {
   return Math.abs(h)
 }
 
-const PENTEADOS = [
-  // franja reta
-  (c) => `<path d="M25 44a25 25 0 0 1 50 0v3q-25-12-50 0z" fill="${c}"/>`,
-  // cabelo comprido dos dois lados
+/** Tres silhuetas de cabelo. Sem franja fofa, sem cachinho: forma, nao personagem. */
+const CABECAS = [
+  (c) => `<path d="M27 45a23 23 0 0 1 46 0v4H27z" fill="${c}"/>`,
   (c) =>
-    `<path d="M25 46a25 25 0 0 1 50 0v26q-6 4-8-2l-2-22q-15 7-30 0l-2 22q-2 6-8 2z" fill="${c}"/>`,
-  // cachinhos
-  (c) =>
-    `<g fill="${c}"><circle cx="34" cy="27" r="9"/><circle cx="50" cy="22" r="10"/>` +
-    `<circle cx="66" cy="27" r="9"/><circle cx="27" cy="38" r="8"/><circle cx="73" cy="38" r="8"/></g>`,
+    `<path d="M27 47a23 23 0 0 1 46 0v22q-5 3-6-2l-1-19q-16 6-32 0l-1 19q-1 5-6 2z" fill="${c}"/>`,
+  (c) => `<path d="M28 44a22 22 0 0 1 44 0v3q-22-9-44 0z" fill="${c}"/>`,
 ]
 
 function retratoDe(nome) {
   const h = digerir(nome)
   const pele = PELES[h % PELES.length]
   const cabelo = CABELOS[Math.floor(h / 7) % CABELOS.length]
-  const roupa = ROUPAS[Math.floor(h / 13) % ROUPAS.length]
-  const penteado = PENTEADOS[Math.floor(h / 31) % PENTEADOS.length]
-  const sardas = Math.floor(h / 53) % 3 === 0
+  const fundo = FUNDOS[Math.floor(h / 13) % FUNDOS.length]
+  const cabeca = CABECAS[Math.floor(h / 31) % CABECAS.length]
 
   const ns = 'http://www.w3.org/2000/svg'
   const svg = document.createElementNS(ns, 'svg')
   svg.setAttribute('viewBox', '0 0 100 100')
   svg.setAttribute('role', 'img')
   svg.setAttribute('aria-label', `Retrato ilustrado de ${nome}`)
+
+  /*
+    innerHTML aqui e seguro e precisa continuar sendo: TUDO que entra no
+    template vem das constantes acima (PELES, CABELOS, FUNDOS, CABECAS).
+    O nome do aluno — unico dado que vem de fora — entra por setAttribute,
+    que nao interpreta marcacao.
+
+    Se algum dia um valor de fora precisar entrar neste SVG, ele NAO vem por
+    aqui: monte o no com createElementNS.
+  */
   svg.innerHTML = `
-    <circle cx="50" cy="50" r="50" fill="${roupa}" opacity="0.14"/>
-    <path d="M20 100a30 30 0 0 1 60 0z" fill="${roupa}"/>
-    <path d="M42 68h16v10H42z" fill="${pele}"/>
-    <circle cx="50" cy="47" r="25" fill="${pele}"/>
-    ${penteado(cabelo)}
-    <circle cx="41" cy="49" r="2.8" fill="#2c1e11"/>
-    <circle cx="59" cy="49" r="2.8" fill="#2c1e11"/>
-    <circle cx="34" cy="55" r="4" fill="#e8908a" opacity="0.45"/>
-    <circle cx="66" cy="55" r="4" fill="#e8908a" opacity="0.45"/>
-    ${
-      sardas
-        ? `<g fill="#a9724c" opacity="0.6"><circle cx="43" cy="57" r="0.9"/>` +
-          `<circle cx="46" cy="59" r="0.9"/><circle cx="54" cy="59" r="0.9"/>` +
-          `<circle cx="57" cy="57" r="0.9"/></g>`
-        : ''
-    }
-    <path d="M43 60q7 6 14 0" stroke="#2c1e11" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <rect width="100" height="100" fill="${fundo}"/>
+    <path d="M18 100a32 26 0 0 1 64 0z" fill="#5a6b63"/>
+    <path d="M43 70h14v9H43z" fill="${pele}"/>
+    <ellipse cx="50" cy="48" rx="22" ry="24" fill="${pele}"/>
+    ${cabeca(cabelo)}
+    <circle cx="42" cy="50" r="2.4" fill="#222b27"/>
+    <circle cx="58" cy="50" r="2.4" fill="#222b27"/>
+    <path d="M44 60q6 4 12 0" stroke="#222b27" stroke-width="2" fill="none" stroke-linecap="round"/>
   `
   return svg
 }
 
 
-/* ===== web/comum/janelinha.js ===== */
+/* ===== web/comum/cartao.js ===== */
+
+/*
+  Os dois formatos em que um aluno aparece.
+
+  Nada aqui usa innerHTML com o nome: nome vem de planilha colada pela
+  secretaria, e interpolar isso em template transforma um nome com marcacao
+  em codigo executando na tela. textContent nao interpreta marcacao.
+*/
 
 const ROTULO = {
   aguardando: '',
   chamado: 'responsável chegou',
-  liberado: 'saída liberada',
+  liberado: 'liberado',
   entregue: 'entregue',
 }
 
+function foto(nome, classe) {
+  const caixa = document.createElement('div')
+  caixa.className = classe
+  caixa.append(retratoDe(nome))
+  return caixa
+}
+
 /**
- * Cria uma janelinha. Comeca fechada: os batentes cobrem o retrato e
- * ninguem ve quem esta atras ate a crianca ser chamada.
+ * Cartao grande. E o que a professora ve do fundo da sala: rosto grande,
+ * nome legivel, estado inequivoco.
  */
-function criarJanelinha({ nome, turma }) {
-  const raiz = document.createElement('div')
-  raiz.className = 'janelinha'
+function criarCartao({ nome, turma }) {
+  const raiz = document.createElement('article')
+  raiz.className = 'cartao'
   raiz.dataset.estado = 'aguardando'
 
-  const caixilho = document.createElement('div')
-  caixilho.className = 'caixilho'
+  const nomeEl = document.createElement('p')
+  nomeEl.className = 'nome'
+  nomeEl.textContent = nome
 
-  const retrato = document.createElement('div')
-  retrato.className = 'retrato'
-  retrato.append(retratoDe(nome))
+  const turmaEl = document.createElement('p')
+  turmaEl.className = 'turma'
+  turmaEl.textContent = turma
 
-  const esquerdo = document.createElement('div')
-  esquerdo.className = 'batente esquerdo'
-  esquerdo.innerHTML = '<span></span><span></span>'
+  const etiqueta = document.createElement('span')
+  etiqueta.className = 'etiqueta'
+  etiqueta.hidden = true
 
-  const direito = document.createElement('div')
-  direito.className = 'batente direito'
-  direito.innerHTML = '<span></span><span></span>'
+  const textos = document.createElement('div')
+  textos.append(nomeEl, turmaEl)
 
-  caixilho.append(retrato, esquerdo, direito)
-
-  const rotuloNome = document.createElement('p')
-  rotuloNome.className = 'nome'
-  rotuloNome.textContent = nome
-
-  const rotuloTurma = document.createElement('p')
-  rotuloTurma.className = 'turma'
-  rotuloTurma.textContent = turma
-
-  const selo = document.createElement('span')
-  selo.className = 'selo'
-  selo.hidden = true
-
-  raiz.append(caixilho, rotuloNome, rotuloTurma, selo)
+  raiz.append(foto(nome, 'foto'), textos, etiqueta)
 
   raiz.definirEstado = (estado) => {
     raiz.dataset.estado = estado
     const texto = ROTULO[estado] ?? ''
-    selo.textContent = texto
-    selo.hidden = texto === ''
+    etiqueta.textContent = texto
+    etiqueta.dataset.estado = estado
+    etiqueta.hidden = texto === ''
+  }
+
+  raiz.acrescentar = (no) => {
+    raiz.append(no)
+    return raiz
   }
 
   return raiz
+}
+
+/** Linha compacta. E o que a portaria percorre com o polegar, no celular. */
+function criarLinha({ nome, turma, estado }) {
+  const raiz = document.createElement('li')
+  raiz.className = 'linha'
+
+  const bloco = document.createElement('div')
+  bloco.className = 'nome'
+  bloco.append(document.createTextNode(nome))
+
+  const detalhe = document.createElement('span')
+  detalhe.className = 'detalhe'
+  detalhe.textContent = turma
+  bloco.append(detalhe)
+
+  raiz.append(foto(nome, 'foto'), bloco)
+
+  if (estado && ROTULO[estado]) {
+    const etiqueta = document.createElement('span')
+    etiqueta.className = 'etiqueta'
+    etiqueta.dataset.estado = estado
+    etiqueta.textContent = ROTULO[estado]
+    raiz.append(etiqueta)
+  }
+
+  return raiz
+}
+
+/** Etiqueta solta, para quando so o estado precisa aparecer. */
+function etiquetaDe(texto, estado) {
+  const span = document.createElement('span')
+  span.className = 'etiqueta'
+  if (estado) span.dataset.estado = estado
+  span.textContent = texto
+  return span
 }
 
 
@@ -529,20 +705,19 @@ function tocarEntrega() {
 
 
 
-
-
+    const TURMA = '4º ano'
     const ALUNOS = [
-      { id: 'd1', nome: 'Thaís Gonçalves', turma: 'Jardim II' },
-      { id: 'd2', nome: 'João Conceição', turma: 'Jardim II' },
-      { id: 'd3', nome: 'Lara Mendonça', turma: 'Jardim II' },
-      { id: 'd4', nome: 'Ravi Bacelar', turma: 'Jardim II' },
-      { id: 'd5', nome: 'Íris Pacheco', turma: 'Jardim II' },
-      { id: 'd6', nome: 'Théo Marçal', turma: 'Jardim II' },
+      { id: 'd1', nome: 'Maria Cecília Rocha', turma: TURMA },
+      { id: 'd2', nome: 'Anthony Peçanha', turma: TURMA },
+      { id: 'd3', nome: 'Isabela Furtado', turma: TURMA },
+      { id: 'd4', nome: 'Lorenzo Sampaio', turma: TURMA },
+      { id: 'd5', nome: "Maria Sant'Ana", turma: TURMA },
+      { id: 'd6', nome: 'Ravi Bacelar', turma: TURMA },
     ]
 
     const chamadas = new Map()
+    const cartoes = new Map()
     let relogio = 0
-    let atual = null, ultimoId = null, ultimoEstado = null
 
     function aplicar(alunoId, acao, papel) {
       const aluno = ALUNOS.find((a) => a.id === alunoId)
@@ -552,25 +727,25 @@ function tocarEntrega() {
       const para = proximo(de, acao)
       relogio++
       if (para === 'aguardando' || para === 'entregue') chamadas.delete(alunoId)
-      else chamadas.set(alunoId, {
-        ...aluno, alunoId, estado: para,
-        desde: anterior?.desde ?? relogio, em: relogio,
-      })
+      else
+        chamadas.set(alunoId, {
+          ...aluno,
+          alunoId,
+          estado: para,
+          desde: anterior?.desde ?? relogio,
+          em: relogio,
+        })
       desenhar()
-    }
-
-    function moldurinha(nome) {
-      const c = document.createElement('div')
-      c.className = 'moldurinha'
-      c.append(retratoDe(nome))
-      return c
     }
 
     function botao(texto, principal, aoTocar) {
       const b = document.createElement('button')
       b.textContent = texto
       if (principal) b.className = 'principal'
-      b.onclick = () => { destravar(); aoTocar() }
+      b.onclick = () => {
+        destravar()
+        aoTocar()
+      }
       return b
     }
 
@@ -581,9 +756,7 @@ function tocarEntrega() {
       ul.innerHTML = ''
       document.getElementById('nenhuma').hidden = ativas.length > 0
       for (const c of ativas) {
-        const li = document.createElement('li')
-        li.append(moldurinha(c.nome))
-        li.append(linhaDupla(c.nome, c.estado))
+        const li = criarLinha({ nome: c.nome, turma: c.turma, estado: c.estado })
         if (c.estado === 'chamado') {
           li.append(botao('Cancelar', false, () => aplicar(c.alunoId, 'cancelar', 'portaria')))
         }
@@ -595,57 +768,49 @@ function tocarEntrega() {
 
       desenharCadastro()
 
-      const palco = document.getElementById('palco')
-      const vez = ativas[0]
-      if (!vez) {
-        palco.innerHTML = '<p class="vazio">Nenhuma chamada agora.</p>'
-        atual = null; ultimoId = null; ultimoEstado = null
-        return
+      const grade = document.getElementById('grade')
+      const presentes = new Set(ativas.map((c) => c.alunoId))
+      for (const [id, cartao] of cartoes) {
+        if (!presentes.has(id)) {
+          cartao.remove()
+          cartoes.delete(id)
+        }
       }
 
-      if (vez.alunoId !== ultimoId) {
-        ultimoId = vez.alunoId
-        ultimoEstado = null
-        palco.innerHTML = ''
-        const caixa = document.createElement('div')
-        atual = criarJanelinha({ nome: vez.nome, turma: vez.turma })
-        atual.definirEstado('aguardando')
-        const liberar = botao('Liberar saída', false, () => aplicar(vez.alunoId, 'liberar', 'sala'))
-        liberar.className = 'liberar'
-        const fila = document.createElement('p')
-        fila.className = 'fila'
-        caixa.append(atual, liberar, fila)
-        palco.append(caixa)
+      for (const c of ativas) {
+        let cartao = cartoes.get(c.alunoId)
+        if (!cartao) {
+          cartao = criarCartao({ nome: c.nome, turma: c.turma })
+          const liberar = botao('Liberar saída', true, () =>
+            aplicar(c.alunoId, 'liberar', 'sala'),
+          )
+          cartao.acrescentar(liberar)
+          cartao.__botao = liberar
+          cartao.__estado = null
+          cartoes.set(c.alunoId, cartao)
+          grade.append(cartao)
+          tocarAbertura()
+        }
+        if (c.estado !== cartao.__estado) {
+          cartao.definirEstado(c.estado)
+          if (c.estado === 'liberado') tocarEntrega()
+          cartao.__estado = c.estado
+        }
+        cartao.__botao.disabled = c.estado === 'liberado'
+        cartao.__botao.textContent =
+          c.estado === 'liberado' ? 'Aguardando no portão' : 'Liberar saída'
       }
 
-      if (vez.estado !== ultimoEstado) {
-        requestAnimationFrame(() => atual.definirEstado(vez.estado))
-        if (vez.estado === 'chamado') tocarAbertura()
-        if (vez.estado === 'liberado') tocarEntrega()
-        ultimoEstado = vez.estado
-      }
-
-      const liberar = palco.querySelector('.liberar')
-      if (liberar) liberar.disabled = vez.estado === 'liberado'
-      palco.querySelector('.fila').textContent =
-        ativas.length > 1 ? `mais ${ativas.length - 1} na fila` : ''
+      document.getElementById('vazio').hidden = ativas.length > 0
     }
 
     function desenharCadastro() {
       const cadastro = document.getElementById('cadastro')
       cadastro.innerHTML = ''
       for (const aluno of ALUNOS) {
-        const li = document.createElement('li')
-        li.append(moldurinha(aluno.nome))
-        li.append(linhaDupla(aluno.nome, aluno.turma))
-        if (chamadas.has(aluno.id)) {
-          const marca = document.createElement('span')
-          marca.className = 'detalhe'
-          marca.textContent = 'em saída'
-          li.append(marca)
-        } else {
-          li.append(botao('Chamar', true, () => aplicar(aluno.id, 'chamar', 'portaria')))
-        }
+        const li = criarLinha({ nome: aluno.nome, turma: aluno.turma })
+        if (chamadas.has(aluno.id)) li.append(etiquetaDe('em saída'))
+        else li.append(botao('Chamar', true, () => aplicar(aluno.id, 'chamar', 'portaria')))
         cadastro.append(li)
       }
     }

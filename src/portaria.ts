@@ -1,7 +1,7 @@
 import { Livro } from './livro.ts'
 import { ehPapel, ehAcao, AcaoNaoPermitida, TransicaoInvalida, type Papel } from './estados.ts'
 import { TURMAS, type Turma } from './semente.ts'
-import { analisar } from './importar.ts'
+import { analisar, decodificar } from './importar.ts'
 import type { Comando } from './protocolo.ts'
 
 interface Sessao {
@@ -65,10 +65,30 @@ export class Portaria {
     }
 
     if (url.pathname === '/importar') {
-      if (pedido.method !== 'POST') return new Response('use POST', { status: 405 })
-      if (papel !== 'portaria') return new Response('so a portaria importa', { status: 403 })
+      /*
+        Todo retorno antecipado precisa descartar o corpo antes de responder.
+        Abandonar o fluxo faz o runtime reclamar com "Can't read from request
+        stream after response has been sent" — apareceu no log do wrangler.
+      */
+      if (pedido.method !== 'POST') {
+        await descartar(pedido)
+        return new Response('use POST', { status: 405 })
+      }
+      if (papel !== 'portaria') {
+        await descartar(pedido)
+        return new Response('so a portaria importa', { status: 403 })
+      }
 
-      const resultado = analisar(await pedido.text())
+      let csv: string
+      try {
+        // Bytes crus, nao text(): text() assume UTF-8 e o Excel pt-BR grava
+        // ANSI. decodificar() tenta UTF-8 estrito e cai para Windows-1252.
+        csv = decodificar(await pedido.arrayBuffer())
+      } catch {
+        return new Response('nao consegui ler a planilha enviada', { status: 400 })
+      }
+
+      const resultado = analisar(csv)
 
       if (resultado.alunos.length === 0) {
         return Response.json(
@@ -126,9 +146,17 @@ export class Portaria {
         const comando = cru as Partial<Comando>
         if (!ehAcao(comando.tipo)) throw new Error('acao desconhecida')
         if (typeof comando.alunoId !== 'string') throw new Error('alunoId precisa ser texto')
+        // Teto no id: ele volta na mensagem de recusa. Sem limite, um cliente
+        // manda 50 mil caracteres e recebe 50 mil de volta.
+        if (comando.alunoId.length > 64) throw new Error('alunoId longo demais')
         alunoId = comando.alunoId
 
-        this.livro.aplicar({ tipo: comando.tipo, alunoId }, Date.now(), sessao.papel)
+        this.livro.aplicar(
+          { tipo: comando.tipo, alunoId },
+          Date.now(),
+          sessao.papel,
+          sessao.turma,
+        )
         this.transmitir()
       } catch (erro) {
         servidor.send(JSON.stringify({ tipo: 'recusa', alunoId, motivo: motivoDe(erro) }))
@@ -165,11 +193,21 @@ export class Portaria {
  * o cliente ja apareceu como "Cannot read properties of null" na tela da
  * professora — texto que nao ajuda ninguem e conta como o servidor e por dentro.
  */
+/** Consome e joga fora o corpo, para nao deixar fluxo aberto ao responder cedo. */
+async function descartar(pedido: Request): Promise<void> {
+  try {
+    await pedido.body?.cancel()
+  } catch {
+    // corpo ja consumido ou inexistente: nada a fazer
+  }
+}
+
 function motivoDe(erro: unknown): string {
-  if (erro instanceof AcaoNaoPermitida) return erro.message
-  if (erro instanceof TransicaoInvalida) return erro.message
-  if (erro instanceof Error && /desconhecid|precisa ser|em saida/.test(erro.message)) {
-    return erro.message
+  const permitido = /desconhecid|precisa ser|em saida|outra turma|declarar a turma|longo demais/
+  if (erro instanceof AcaoNaoPermitida) return erro.message.slice(0, 120)
+  if (erro instanceof TransicaoInvalida) return erro.message.slice(0, 120)
+  if (erro instanceof Error && permitido.test(erro.message)) {
+    return erro.message.slice(0, 120)
   }
   return 'comando recusado'
 }

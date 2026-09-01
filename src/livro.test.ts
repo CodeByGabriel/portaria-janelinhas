@@ -3,11 +3,16 @@ import assert from 'node:assert/strict'
 import { Livro } from './livro.ts'
 import { TransicaoInvalida, AcaoNaoPermitida } from './estados.ts'
 
-/** Atalhos: o ciclo normal, com o papel certo em cada etapa. */
+import { semear } from './semente.ts'
+
+/** A turma de cada aluno da semente, para os atalhos nao precisarem adivinhar. */
+const TURMA_DE = new Map(semear().map((a) => [a.id, a.turma]))
+
+/** Atalhos: o ciclo normal, com o papel E a turma certos em cada etapa. */
 const chamar = (l: Livro, id: string, t: number) =>
   l.aplicar({ tipo: 'chamar', alunoId: id }, t, 'portaria')
 const liberar = (l: Livro, id: string, t: number) =>
-  l.aplicar({ tipo: 'liberar', alunoId: id }, t, 'sala')
+  l.aplicar({ tipo: 'liberar', alunoId: id }, t, 'sala', TURMA_DE.get(id))
 const entregar = (l: Livro, id: string, t: number) =>
   l.aplicar({ tipo: 'entregar', alunoId: id }, t, 'portaria')
 const cancelar = (l: Livro, id: string, t: number) =>
@@ -45,9 +50,9 @@ test('a sala so ve a propria turma', () => {
   const livro = new Livro()
   chamar(livro, 'a01', 1000)
   chamar(livro, 'a09', 1000)
-  const maternal = livro.retratoPara('sala', 'Maternal')
+  const maternal = livro.retratoPara('sala', 'Pré 1')
   assert.equal(maternal.chamadas.length, 1)
-  assert.ok(maternal.chamadas.every((c) => c.turma === 'Maternal'))
+  assert.ok(maternal.chamadas.every((c) => c.turma === 'Pré 1'))
   assert.equal(livro.retratoPara('portaria').chamadas.length, 2)
 })
 
@@ -122,7 +127,7 @@ test('o retrato carrega carimbo de tempo', () => {
 })
 
 test('alunos() devolve o cadastro inteiro', () => {
-  assert.equal(new Livro().alunos().length, 32)
+  assert.equal(new Livro().alunos().length, 44)
 })
 
 // --- regressao: red team C1, papel nao verificado ---
@@ -160,13 +165,18 @@ test('REGRESSAO C1: a portaria NAO consegue liberar sozinha', () => {
 
 test('REGRESSAO S1: entregar remove do retrato; ele nao vira o cadastro', () => {
   const livro = new Livro()
-  for (const id of ['a17', 'a18', 'a19', 'a20', 'a21', 'a22']) {
+  // a17 a a20 sao do 3º ano; a21 e a22, do 4º ano.
+  const turnos = ['a17', 'a18', 'a19', 'a20', 'a21', 'a22']
+  for (const id of turnos) {
     chamar(livro, id, 1000)
     liberar(livro, id, 2000)
     entregar(livro, id, 3000)
   }
   assert.equal(livro.retratoPara('portaria').chamadas.length, 0)
-  assert.equal(livro.retratoPara('sala', 'Jardim II').chamadas.length, 0)
+  // A turma que REALMENTE teve criancas chamadas tem que esvaziar. Conferir
+  // uma turma qualquer passaria mesmo se o retrato nunca fosse limpo.
+  assert.equal(livro.retratoPara('sala', '3º ano').chamadas.length, 0)
+  assert.equal(livro.retratoPara('sala', '4º ano').chamadas.length, 0)
   assert.equal(livro.registro().length, 18)
 })
 
@@ -210,7 +220,76 @@ test('trocar o cadastro com a saida encerrada funciona e preserva a trilha', () 
   const livro = new Livro()
   chamar(livro, 'a01', 1000)
   cancelar(livro, 'a01', 2000)
-  livro.substituirCadastro([{ id: 'z1', nome: 'Novo Aluno', turma: 'Maternal' }])
+  livro.substituirCadastro([{ id: 'z1', nome: 'Novo Aluno', turma: 'Pré 1' }])
   assert.equal(livro.alunos().length, 1)
   assert.equal(livro.registro().length, 2)
+})
+
+// --- regressao: red team 2, furo 1 — a sala liberava aluno de outra turma ---
+
+test('REGRESSAO: a sala do Pré 1 NAO libera aluno do 9º ano', () => {
+  const livro = new Livro()
+  chamar(livro, 'a41', 1000) // Giovanna Paixao, 9º ano
+  assert.throws(
+    () => livro.aplicar({ tipo: 'liberar', alunoId: 'a41' }, 2000, 'sala', 'Pré 1'),
+    /outra turma/,
+  )
+  assert.equal(livro.retratoPara('portaria').chamadas[0].estado, 'chamado')
+})
+
+test('REGRESSAO: sala sem turma declarada NAO age sobre ninguem', () => {
+  const livro = new Livro()
+  chamar(livro, 'a01', 1000)
+  assert.throws(
+    () => livro.aplicar({ tipo: 'liberar', alunoId: 'a01' }, 2000, 'sala'),
+    /declarar a turma/,
+  )
+  assert.equal(livro.retratoPara('portaria').chamadas[0].estado, 'chamado')
+})
+
+test('REGRESSAO: varrer os ids de outra turma nao libera ninguem', () => {
+  const livro = new Livro()
+  const alvos = ['a05', 'a09', 'a17', 'a41']
+  for (const id of alvos) chamar(livro, id, 1000)
+  for (const id of alvos) {
+    try {
+      livro.aplicar({ tipo: 'liberar', alunoId: id }, 2000, 'sala', 'Pré 1')
+    } catch {
+      // esperado para todos: nenhum deles e do Pré 1
+    }
+  }
+  const liberados = livro
+    .retratoPara('portaria')
+    .chamadas.filter((c) => c.estado === 'liberado')
+  assert.equal(liberados.length, 0, 'nenhum deveria ter sido liberado')
+})
+
+test('a sala da turma certa continua liberando normalmente', () => {
+  const livro = new Livro()
+  chamar(livro, 'a01', 1000)
+  livro.aplicar({ tipo: 'liberar', alunoId: 'a01' }, 2000, 'sala', 'Pré 1')
+  assert.equal(livro.retratoPara('portaria').chamadas[0].estado, 'liberado')
+})
+
+test('o registro guarda a ORIGEM da acao, para rastrear o incidente', () => {
+  const livro = new Livro()
+  chamar(livro, 'a01', 1000)
+  liberar(livro, 'a01', 2000)
+  assert.equal(livro.registro()[0].origem, 'portaria')
+  assert.equal(livro.registro()[1].origem, 'Pré 1')
+  assert.equal(livro.registro()[1].turma, 'Pré 1')
+})
+
+// --- versao do cadastro ---
+
+test('a versao do cadastro sobe a cada troca', () => {
+  const livro = new Livro()
+  const antes = livro.versao()
+  livro.substituirCadastro([{ id: 'z1', nome: 'Novo Aluno', turma: 'Pré 1' }])
+  assert.equal(livro.versao(), antes + 1)
+})
+
+test('o retrato carrega a versao do cadastro', () => {
+  const livro = new Livro()
+  assert.equal(livro.retratoPara('portaria').cadastro, livro.versao())
 })

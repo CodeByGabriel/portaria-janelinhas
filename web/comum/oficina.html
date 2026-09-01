@@ -3,73 +3,88 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Oficina da janelinha</title>
+  <title>Oficina — Janelinhas do Saber</title>
   <link rel="stylesheet" href="./tokens.css">
   <style>
-    body {
-      margin: 0;
-      background: var(--papel);
-      font-family: system-ui, -apple-system, sans-serif;
-      color: var(--tinta);
-      padding: 2rem;
-    }
-    h1 { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.09em;
-         color: var(--tinta-suave); margin: 0 0 0.4rem; }
-    p.dica { color: var(--tinta-suave); margin: 0 0 1.6rem; max-width: 60ch; }
-    .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-             gap: 1.8rem; max-width: 940px; }
-    .controles { margin: 2rem 0 0; display: flex; gap: 0.6rem; flex-wrap: wrap; }
-    button { font: inherit; padding: 0.6rem 1.1rem; border-radius: 8px;
-             border: 2px solid var(--moldura); background: var(--papel);
-             color: var(--tinta); cursor: pointer; }
-    button:hover { background: var(--papel-fundo); }
+    main { padding: 1.5rem; max-width: 1000px; margin: 0 auto; }
+    p.dica { color: var(--tinta-media); max-width: 62ch; margin: 0 0 1.6rem; font-size: 0.92rem; }
+    .controles { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1.6rem 0; }
+    ul { list-style: none; padding: 0; margin: 0; }
   </style>
 </head>
 <body>
-  <h1>Oficina da janelinha</h1>
-  <p class="dica">
-    Bancada para ver os quatro estados sem precisar de portaria nem de sala.
-    Fechada, os batentes cobrem o retrato: ninguém vê quem está atrás.
-  </p>
 
-  <div class="grade" id="grade"></div>
+  <header class="cabecalho">
+    <span class="marca-glifo" aria-hidden="true"></span>
+    <div>
+      <p class="titulo">Janelinhas do Saber</p>
+      <p class="subtitulo">Oficina de componentes</p>
+    </div>
+  </header>
 
-  <div class="controles">
-    <button data-estado="aguardando">Fechar todas</button>
-    <button data-estado="chamado">Chamar todas</button>
-    <button data-estado="liberado">Liberar todas</button>
-    <button data-estado="entregue">Entregar todas</button>
-  </div>
+  <main>
+    <p class="dica">
+      Os dois formatos em que um aluno aparece, nos quatro estados. Cartão para a
+      sala, linha para a portaria. Nenhum servidor envolvido.
+    </p>
+
+    <p class="secao">Cartão — tela da sala</p>
+    <div class="grade" id="grade"></div>
+
+    <div class="controles">
+      <button data-estado="aguardando">Aguardando</button>
+      <button data-estado="chamado" class="principal">Chamado</button>
+      <button data-estado="liberado">Liberado</button>
+    </div>
+
+    <p class="secao">Linha — tela da portaria</p>
+    <ul id="linhas"></ul>
+
+    <p class="secao">Etiquetas</p>
+    <div class="controles" id="etiquetas"></div>
+  </main>
 
   <script type="module">
-    import { criarJanelinha } from './janelinha.js'
+    import { criarCartao, criarLinha, etiquetaDe } from './cartao.js'
     import { destravar, tocarAbertura, tocarEntrega } from './som.js'
 
     const ELENCO = [
-      ['Thaís Gonçalves', 'Jardim II'],
-      ['João Conceição', 'Maternal'],
-      ['Lara Mendonça', 'Jardim I'],
-      ['Ravi Bacelar', '1º ano'],
-      ['Íris Pacheco', 'Jardim II'],
-      ['Théo Marçal', 'Maternal'],
-      ['Maitê Salgado', 'Jardim I'],
-      ['Benício Andrade', '1º ano'],
+      ['Maria Cecília Rocha', 'Pré 1'],
+      ['Anthony Peçanha', '2º ano'],
+      ["Maria Sant'Ana", '6º ano'],
+      ['Gustavo Bandeira', '9º ano'],
+      ['Ana-Clara Vasconcelos', '7º ano'],
     ]
 
     const grade = document.getElementById('grade')
-    const janelas = ELENCO.map(([nome, turma]) => {
-      const j = criarJanelinha({ nome, turma })
-      grade.append(j)
-      return j
+    const cartoes = ELENCO.map(([nome, turma]) => {
+      const c = criarCartao({ nome, turma })
+      grade.append(c)
+      return c
     })
 
-    for (const botao of document.querySelectorAll('.controles button')) {
+    const linhas = document.getElementById('linhas')
+    for (const [i, [nome, turma]] of ELENCO.entries()) {
+      const estado = ['aguardando', 'chamado', 'liberado', 'chamado', 'liberado'][i]
+      linhas.append(criarLinha({ nome, turma, estado }))
+    }
+
+    const etiquetas = document.getElementById('etiquetas')
+    for (const [texto, estado] of [
+      ['responsável chegou', 'chamado'],
+      ['liberado', 'liberado'],
+      ['já em saída', null],
+    ]) {
+      etiquetas.append(etiquetaDe(texto, estado))
+    }
+
+    for (const botao of document.querySelectorAll('.controles button[data-estado]')) {
       botao.onclick = () => {
         destravar()
         const estado = botao.dataset.estado
-        janelas.forEach((j) => j.definirEstado(estado))
+        cartoes.forEach((c) => c.definirEstado(estado))
         if (estado === 'chamado') tocarAbertura()
-        if (estado === 'entregue') tocarEntrega()
+        if (estado === 'liberado') tocarEntrega()
       }
     }
   </script>

@@ -26,9 +26,8 @@ const ler = (p) => readFileSync(join(raiz, p), 'utf8')
 /** Ordem de dependencia: quem e importado vem antes de quem importa. */
 const MODULOS = [
   'web/comum/estados.js',
-  'web/comum/dom.js',
   'web/comum/avatar.js',
-  'web/comum/janelinha.js',
+  'web/comum/cartao.js',
   'web/comum/som.js',
 ]
 

@@ -41,8 +41,8 @@ async function principal() {
   console.log('\n== ciclo normal ==')
 
   const portaria = await ligar('papel=portaria')
-  const maternal = await ligar('papel=sala&turma=Maternal')
-  const jardim = await ligar('papel=sala&turma=Jardim%20I')
+  const maternal = await ligar('papel=sala&turma=Pr%C3%A9%201')
+  const jardim = await ligar('papel=sala&turma=1%C2%BA%20ano')
   await esperar(300)
 
   conferir('as tres conexoes recebem retrato inicial',
@@ -52,8 +52,8 @@ async function principal() {
   await esperar(400)
 
   conferir('a portaria ve a chamada', ultimo(portaria)?.chamadas.length === 1)
-  conferir('o Maternal ve a propria crianca', ultimo(maternal)?.chamadas.length === 1)
-  conferir('o Jardim I NAO ve crianca de outra turma',
+  conferir('o Pré 1 ve a propria crianca', ultimo(maternal)?.chamadas.length === 1)
+  conferir('o 1º ano NAO ve crianca de outra turma',
     ultimo(jardim)?.chamadas.length === 0)
   conferir('o estado e chamado', ultimo(maternal)?.chamadas[0]?.estado === 'chamado')
   conferir('a chamada carrega desde e em',
@@ -111,10 +111,33 @@ async function principal() {
     chamadasDepois.every((c) =>
       ['chamado', 'liberado'].includes(c.estado)))
 
+  // Furo 1 da segunda passagem: a sala liberava aluno de QUALQUER turma.
+  // O filtro existia na leitura (retratoPara) e nao existia na escrita.
+  console.log('\n== turma na escrita, nao so na leitura ==')
+  portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a41' })) // 9º ano
+  await esperar(400)
+  maternal.ws.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a41' })) // sala do Pré 1
+  await esperar(400)
+  const alvo = (ultimo(portaria)?.chamadas ?? []).find((c) => c.alunoId === 'a41')
+  conferir('a sala do Pré 1 NAO libera aluno do 9º ano',
+    alvo?.estado === 'chamado',
+    `estado ficou "${alvo?.estado}"`)
+  conferir('a sala recebe recusa dizendo que e de outra turma',
+    /outra turma/.test(recusas(maternal).at(-1)?.motivo ?? ''),
+    `motivo: ${recusas(maternal).at(-1)?.motivo}`)
+
+  portaria.ws.send(JSON.stringify({ tipo: 'cancelar', alunoId: 'a41' }))
+  await esperar(300)
+
+  // A trilha precisa dizer de ONDE partiu cada acao
+  const trilhaOrigem = await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())
+  conferir('a trilha guarda a origem de cada acao',
+    trilhaOrigem.every((e) => typeof e.origem === 'string' && e.origem.length > 0))
+
   // C2 — papel fail-closed
   console.log('\n== papel fail-closed ==')
-  for (const q of ['papel=Sala&turma=Maternal', 'papel=SALA', 'papel=professora',
-                   'papel=', 'turma=Maternal']) {
+  for (const q of ['papel=Sala&turma=Pré 1', 'papel=SALA', 'papel=professora',
+                   'papel=', 'turma=Pré 1']) {
     let recusou = false
     try { await ligar(q) } catch { recusou = true }
     conferir(`C2: "${q}" e RECUSADO`, recusou)

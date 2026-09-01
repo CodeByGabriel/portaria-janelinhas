@@ -21,6 +21,14 @@ export interface Retrato {
   tipo: 'retrato'
   chamadas: Chamada[]
   em: number
+  /**
+   * Muda toda vez que o cadastro e trocado por uma importacao.
+   *
+   * Existe porque um tablet com a lista velha na memoria chamava o id errado
+   * depois de uma reimportacao. O cliente compara com o que tem e rebusca a
+   * lista quando difere — sem isso, a tela mente em silencio.
+   */
+  cadastro: number
 }
 
 export interface Comando {
@@ -37,8 +45,11 @@ export interface Recusa {
 export interface EventoAuditoria {
   alunoId: string
   nome: string
+  turma: Turma
   acao: Acao
   papel: string
+  /** De qual sala partiu a acao, ou 'portaria'. Rastreabilidade do incidente. */
+  origem: string
   de: Estado
   para: Estado
   em: number

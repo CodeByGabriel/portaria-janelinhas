@@ -6,89 +6,73 @@
   <title>Demo — Janelinhas do Saber</title>
   <link rel="stylesheet" href="../comum/tokens.css">
   <style>
-    body {
-      margin: 0; min-height: 100vh; background: var(--papel); color: var(--tinta);
-      font-family: system-ui, -apple-system, sans-serif;
-      display: grid; grid-template-columns: 1fr 1fr;
+    .colunas { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 58px); }
+    .coluna { padding: 1.15rem; }
+    .coluna + .coluna { border-left: 1px solid var(--borda); background: #fafbfa; }
+    .rotulo {
+      font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--tinta-fraca); margin: 0 0 0.15rem;
     }
-    section { padding: 1.5rem 1.4rem 2.5rem; }
-    section + section { border-left: 3px dashed var(--vidro-fosco); background: var(--papel-fundo); }
-    h1 {
-      font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em;
-      color: var(--tinta-suave); margin: 0 0 0.2rem;
-    }
-    .sub { font-size: 0.8rem; color: var(--tinta-suave); margin: 0 0 1.2rem; }
+    .explica { font-size: 0.85rem; color: var(--tinta-media); margin: 0 0 1rem; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li {
-      display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0.1rem;
-      border-bottom: 1px solid var(--vidro-fosco);
+    .grade { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .cartao button { width: 100%; }
+    .selo {
+      position: fixed; bottom: 0.9rem; right: 1rem; font-size: 0.75rem;
+      color: var(--tinta-fraca); background: var(--superficie);
+      border: 1px solid var(--borda); border-radius: 999px; padding: 0.2rem 0.7rem;
     }
-    .moldurinha {
-      width: 40px; height: 40px; flex: none; border: 3px solid var(--moldura);
-      border-radius: 4px; overflow: hidden; background: var(--vidro-fundo);
-    }
-    .moldurinha svg { width: 100%; height: 100%; display: block; }
-    .nome { flex: 1; font-size: 0.92rem; line-height: 1.3; }
-    .detalhe { font-size: 0.76rem; color: var(--tinta-suave); }
-    button {
-      font: inherit; font-size: 0.88rem; padding: 0.35rem 0.75rem; border-radius: 7px;
-      border: 2px solid var(--moldura); background: var(--papel);
-      color: var(--tinta); cursor: pointer; flex: none;
-    }
-    button:hover { background: var(--papel-fundo); }
-    button.principal { background: var(--moldura); color: #fff; border-color: var(--moldura-escura); }
-    .palco { display: grid; place-items: center; min-height: 62vh; text-align: center; }
-    .palco > div { width: min(84%, 300px); }
-    .vazio { color: var(--tinta-suave); }
-    .liberar {
-      background: var(--moldura); color: #fff; border-color: var(--moldura-escura);
-      width: 100%; margin-top: 1rem; padding: 0.75rem; font-size: 1rem;
-    }
-    .semrede {
-      position: fixed; bottom: 0.8rem; right: 1rem; font-size: 0.76rem;
-      color: var(--tinta-suave); background: var(--papel); padding: 0.2rem 0.6rem;
-      border-radius: 999px; border: 1px solid var(--vidro-fosco);
-    }
-    .fila { color: var(--tinta-suave); font-size: 0.85rem; margin: 0.7rem 0 0; }
   </style>
 </head>
 <body>
-  <section>
-    <h1>Portaria</h1>
-    <p class="sub">o responsável chegou no portão</p>
-    <ul id="cadastro"></ul>
-    <h1 style="margin-top:1.8rem">Em saída</h1>
-    <ul id="ativas"></ul>
-    <p class="vazio" id="nenhuma" style="font-size:0.85rem">Ninguém em saída agora.</p>
-  </section>
 
-  <section>
-    <h1>Sala — Jardim II</h1>
-    <p class="sub">a professora libera</p>
-    <div class="palco" id="palco"><p class="vazio">Nenhuma chamada agora.</p></div>
-  </section>
+  <header class="cabecalho">
+    <span class="marca-glifo" aria-hidden="true"></span>
+    <div>
+      <p class="titulo">Janelinhas do Saber</p>
+      <p class="subtitulo">Demonstração — portaria e sala lado a lado</p>
+    </div>
+  </header>
 
-  <p class="semrede">modo demo · sem rede</p>
+  <div class="colunas">
+    <section class="coluna">
+      <p class="rotulo">Portaria</p>
+      <p class="explica">O responsável chegou no portão.</p>
+      <ul id="cadastro"></ul>
+
+      <p class="secao">Em saída</p>
+      <ul id="ativas"></ul>
+      <p class="vazio" id="nenhuma">Ninguém em saída agora.</p>
+    </section>
+
+    <section class="coluna">
+      <p class="rotulo">Sala — 4º ano</p>
+      <p class="explica">A professora confirma a saída.</p>
+      <p class="vazio" id="vazio">Nenhuma chamada agora.</p>
+      <div class="grade" id="grade"></div>
+    </section>
+  </div>
+
+  <p class="selo">modo demonstração · sem rede</p>
 
   <script type="module">
     import { proximo, exigirDono } from '../comum/estados.js'
-    import { criarJanelinha } from '../comum/janelinha.js'
-    import { retratoDe } from '../comum/avatar.js'
+    import { criarCartao, criarLinha, etiquetaDe } from '../comum/cartao.js'
     import { destravar, tocarAbertura, tocarEntrega } from '../comum/som.js'
-    import { linhaDupla } from '../comum/dom.js'
 
+    const TURMA = '4º ano'
     const ALUNOS = [
-      { id: 'd1', nome: 'Thaís Gonçalves', turma: 'Jardim II' },
-      { id: 'd2', nome: 'João Conceição', turma: 'Jardim II' },
-      { id: 'd3', nome: 'Lara Mendonça', turma: 'Jardim II' },
-      { id: 'd4', nome: 'Ravi Bacelar', turma: 'Jardim II' },
-      { id: 'd5', nome: 'Íris Pacheco', turma: 'Jardim II' },
-      { id: 'd6', nome: 'Théo Marçal', turma: 'Jardim II' },
+      { id: 'd1', nome: 'Maria Cecília Rocha', turma: TURMA },
+      { id: 'd2', nome: 'Anthony Peçanha', turma: TURMA },
+      { id: 'd3', nome: 'Isabela Furtado', turma: TURMA },
+      { id: 'd4', nome: 'Lorenzo Sampaio', turma: TURMA },
+      { id: 'd5', nome: "Maria Sant'Ana", turma: TURMA },
+      { id: 'd6', nome: 'Ravi Bacelar', turma: TURMA },
     ]
 
     const chamadas = new Map()
+    const cartoes = new Map()
     let relogio = 0
-    let atual = null, ultimoId = null, ultimoEstado = null
 
     function aplicar(alunoId, acao, papel) {
       const aluno = ALUNOS.find((a) => a.id === alunoId)
@@ -98,25 +82,25 @@
       const para = proximo(de, acao)
       relogio++
       if (para === 'aguardando' || para === 'entregue') chamadas.delete(alunoId)
-      else chamadas.set(alunoId, {
-        ...aluno, alunoId, estado: para,
-        desde: anterior?.desde ?? relogio, em: relogio,
-      })
+      else
+        chamadas.set(alunoId, {
+          ...aluno,
+          alunoId,
+          estado: para,
+          desde: anterior?.desde ?? relogio,
+          em: relogio,
+        })
       desenhar()
-    }
-
-    function moldurinha(nome) {
-      const c = document.createElement('div')
-      c.className = 'moldurinha'
-      c.append(retratoDe(nome))
-      return c
     }
 
     function botao(texto, principal, aoTocar) {
       const b = document.createElement('button')
       b.textContent = texto
       if (principal) b.className = 'principal'
-      b.onclick = () => { destravar(); aoTocar() }
+      b.onclick = () => {
+        destravar()
+        aoTocar()
+      }
       return b
     }
 
@@ -127,9 +111,7 @@
       ul.innerHTML = ''
       document.getElementById('nenhuma').hidden = ativas.length > 0
       for (const c of ativas) {
-        const li = document.createElement('li')
-        li.append(moldurinha(c.nome))
-        li.append(linhaDupla(c.nome, c.estado))
+        const li = criarLinha({ nome: c.nome, turma: c.turma, estado: c.estado })
         if (c.estado === 'chamado') {
           li.append(botao('Cancelar', false, () => aplicar(c.alunoId, 'cancelar', 'portaria')))
         }
@@ -141,57 +123,49 @@
 
       desenharCadastro()
 
-      const palco = document.getElementById('palco')
-      const vez = ativas[0]
-      if (!vez) {
-        palco.innerHTML = '<p class="vazio">Nenhuma chamada agora.</p>'
-        atual = null; ultimoId = null; ultimoEstado = null
-        return
+      const grade = document.getElementById('grade')
+      const presentes = new Set(ativas.map((c) => c.alunoId))
+      for (const [id, cartao] of cartoes) {
+        if (!presentes.has(id)) {
+          cartao.remove()
+          cartoes.delete(id)
+        }
       }
 
-      if (vez.alunoId !== ultimoId) {
-        ultimoId = vez.alunoId
-        ultimoEstado = null
-        palco.innerHTML = ''
-        const caixa = document.createElement('div')
-        atual = criarJanelinha({ nome: vez.nome, turma: vez.turma })
-        atual.definirEstado('aguardando')
-        const liberar = botao('Liberar saída', false, () => aplicar(vez.alunoId, 'liberar', 'sala'))
-        liberar.className = 'liberar'
-        const fila = document.createElement('p')
-        fila.className = 'fila'
-        caixa.append(atual, liberar, fila)
-        palco.append(caixa)
+      for (const c of ativas) {
+        let cartao = cartoes.get(c.alunoId)
+        if (!cartao) {
+          cartao = criarCartao({ nome: c.nome, turma: c.turma })
+          const liberar = botao('Liberar saída', true, () =>
+            aplicar(c.alunoId, 'liberar', 'sala'),
+          )
+          cartao.acrescentar(liberar)
+          cartao.__botao = liberar
+          cartao.__estado = null
+          cartoes.set(c.alunoId, cartao)
+          grade.append(cartao)
+          tocarAbertura()
+        }
+        if (c.estado !== cartao.__estado) {
+          cartao.definirEstado(c.estado)
+          if (c.estado === 'liberado') tocarEntrega()
+          cartao.__estado = c.estado
+        }
+        cartao.__botao.disabled = c.estado === 'liberado'
+        cartao.__botao.textContent =
+          c.estado === 'liberado' ? 'Aguardando no portão' : 'Liberar saída'
       }
 
-      if (vez.estado !== ultimoEstado) {
-        requestAnimationFrame(() => atual.definirEstado(vez.estado))
-        if (vez.estado === 'chamado') tocarAbertura()
-        if (vez.estado === 'liberado') tocarEntrega()
-        ultimoEstado = vez.estado
-      }
-
-      const liberar = palco.querySelector('.liberar')
-      if (liberar) liberar.disabled = vez.estado === 'liberado'
-      palco.querySelector('.fila').textContent =
-        ativas.length > 1 ? `mais ${ativas.length - 1} na fila` : ''
+      document.getElementById('vazio').hidden = ativas.length > 0
     }
 
     function desenharCadastro() {
       const cadastro = document.getElementById('cadastro')
       cadastro.innerHTML = ''
       for (const aluno of ALUNOS) {
-        const li = document.createElement('li')
-        li.append(moldurinha(aluno.nome))
-        li.append(linhaDupla(aluno.nome, aluno.turma))
-        if (chamadas.has(aluno.id)) {
-          const marca = document.createElement('span')
-          marca.className = 'detalhe'
-          marca.textContent = 'em saída'
-          li.append(marca)
-        } else {
-          li.append(botao('Chamar', true, () => aplicar(aluno.id, 'chamar', 'portaria')))
-        }
+        const li = criarLinha({ nome: aluno.nome, turma: aluno.turma })
+        if (chamadas.has(aluno.id)) li.append(etiquetaDe('em saída'))
+        else li.append(botao('Chamar', true, () => aplicar(aluno.id, 'chamar', 'portaria')))
         cadastro.append(li)
       }
     }
