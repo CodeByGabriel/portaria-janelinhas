@@ -27,7 +27,9 @@ function ligar(query) {
     ws.addEventListener('message', (e) => recebidos.push(JSON.parse(e.data)))
     ws.addEventListener('open', () => resolve({ ws, recebidos }))
     ws.addEventListener('error', () => reject(new Error(`nao ligou: ${query}`)))
-    setTimeout(() => reject(new Error(`timeout ligando ${query}`)), 5000)
+    // 15s, nao 5s: o Durable Object frio demora na primeira conexao e um
+    // timeout apertado vira falha falsa que manda a gente cacar bug que nao existe.
+    setTimeout(() => reject(new Error(`timeout ligando ${query}`)), 15000)
   })
 }
 
