@@ -1,0 +1,163 @@
+/*
+  Janelinhas do Saber — a linguagem visual.
+
+  O nome da escola e a mecanica: cada crianca e uma janelinha de moldura de
+  madeira. Fechada, os vidros sao foscos e ninguem ve quem esta atras. Chamada,
+  os batentes giram para fora e revelam o retrato.
+
+  As cores marcadas com --_todo dependem da marca real da escola, que nao
+  conhecemos: conteudo/institucional/ ainda e todo TODO(visita).
+*/
+
+:root {
+  --moldura: #a85f18;
+  --moldura-clara: #c98338;
+  --moldura-escura: #6f3d0c;
+  --peitoril: #8a4d13;
+
+  --vidro: #dce9f3;
+  --vidro-fundo: #eef5fa;
+  --vidro-fosco: #c0cfda;
+
+  --entregue: #2f7d55;
+  --entregue-claro: #d8ece1;
+  --aviso: #a3521f;
+
+  --tinta: #2c1e11;
+  --tinta-suave: #6f5943;
+  --papel: #fdf8f0;
+  --papel-fundo: #f6ecdd;
+
+  --abertura: 380ms;
+  --curva: cubic-bezier(0.34, 1.16, 0.64, 1);
+  --canto: 10px;
+
+  --_todo-marca-primaria: var(--moldura);
+  --_todo-marca-secundaria: var(--vidro);
+}
+
+/* ---------- a janelinha ---------- */
+
+.janelinha {
+  width: 100%;
+  text-align: center;
+}
+
+.caixilho {
+  position: relative;
+  aspect-ratio: 1;
+  border: 12px solid var(--moldura);
+  border-bottom-width: 16px;
+  border-radius: 6px;
+  background: var(--vidro-fundo);
+  overflow: hidden;
+  perspective: 900px;
+  box-shadow: inset 0 0 0 2px var(--moldura-escura);
+}
+
+.retrato {
+  position: absolute;
+  inset: 2%;
+  display: grid;
+  place-items: center;
+}
+
+.retrato svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* os dois batentes que giram para fora */
+.batente {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: var(--vidro-fosco);
+  border: 5px solid var(--moldura-clara);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 5px;
+  padding: 5px;
+  transition: transform var(--abertura) var(--curva);
+  backface-visibility: hidden;
+}
+
+.batente span {
+  background: var(--vidro);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.esquerdo {
+  left: 0;
+  transform-origin: left center;
+}
+
+.direito {
+  right: 0;
+  transform-origin: right center;
+}
+
+/*
+  Aberta: os batentes giram para DENTRO do vao, afastando-se do observador.
+
+  O sinal importa. Girando para fora (sinal oposto), a perspectiva aproxima a
+  borda livre do observador e infla o batente ate ele ocupar um terco do vao,
+  espremendo a crianca no meio. Verificado no navegador.
+
+  88 graus, e nao 90: a 90 o batente some por completo e a janela deixa de
+  parecer uma janela. A lasca que sobra e o que da a leitura de profundidade.
+*/
+.janelinha[data-estado='chamado'] .esquerdo,
+.janelinha[data-estado='liberado'] .esquerdo,
+.janelinha[data-estado='entregue'] .esquerdo {
+  transform: rotateY(88deg);
+}
+
+.janelinha[data-estado='chamado'] .direito,
+.janelinha[data-estado='liberado'] .direito,
+.janelinha[data-estado='entregue'] .direito {
+  transform: rotateY(-88deg);
+}
+
+/* liberada: a moldura confirma que a professora ja autorizou */
+.janelinha[data-estado='liberado'] .caixilho {
+  border-color: var(--entregue);
+  box-shadow: inset 0 0 0 2px #1e5c3c;
+}
+
+.janelinha[data-estado='entregue'] .caixilho {
+  border-color: var(--entregue);
+  opacity: 0.55;
+}
+
+.nome {
+  font-weight: 600;
+  color: var(--tinta);
+  margin: 0.7rem 0 0;
+  line-height: 1.2;
+}
+
+.turma {
+  color: var(--tinta-suave);
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+}
+
+.selo {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  background: var(--entregue-claro);
+  color: #1e5c3c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .batente {
+    transition: none;
+  }
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oficina da janelinha</title>
+  <link rel="stylesheet" href="./tokens.css">
+  <style>
+    body {
+      margin: 0;
+      background: var(--papel);
+      font-family: system-ui, -apple-system, sans-serif;
+      color: var(--tinta);
+      padding: 2rem;
+    }
+    h1 { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.09em;
+         color: var(--tinta-suave); margin: 0 0 0.4rem; }
+    p.dica { color: var(--tinta-suave); margin: 0 0 1.6rem; max-width: 60ch; }
+    .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+             gap: 1.8rem; max-width: 940px; }
+    .controles { margin: 2rem 0 0; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    button { font: inherit; padding: 0.6rem 1.1rem; border-radius: 8px;
+             border: 2px solid var(--moldura); background: var(--papel);
+             color: var(--tinta); cursor: pointer; }
+    button:hover { background: var(--papel-fundo); }
+  </style>
+</head>
+<body>
+  <h1>Oficina da janelinha</h1>
+  <p class="dica">
+    Bancada para ver os quatro estados sem precisar de portaria nem de sala.
+    Fechada, os batentes cobrem o retrato: ninguém vê quem está atrás.
+  </p>
+
+  <div class="grade" id="grade"></div>
+
+  <div class="controles">
+    <button data-estado="aguardando">Fechar todas</button>
+    <button data-estado="chamado">Chamar todas</button>
+    <button data-estado="liberado">Liberar todas</button>
+    <button data-estado="entregue">Entregar todas</button>
+  </div>
+
+  <script type="module">
+    import { criarJanelinha } from './janelinha.js'
+    import { destravar, tocarAbertura, tocarEntrega } from './som.js'
+
+    const ELENCO = [
+      ['Thaís Gonçalves', 'Jardim II'],
+      ['João Conceição', 'Maternal'],
+      ['Lara Mendonça', 'Jardim I'],
+      ['Ravi Bacelar', '1º ano'],
+      ['Íris Pacheco', 'Jardim II'],
+      ['Théo Marçal', 'Maternal'],
+      ['Maitê Salgado', 'Jardim I'],
+      ['Benício Andrade', '1º ano'],
+    ]
+
+    const grade = document.getElementById('grade')
+    const janelas = ELENCO.map(([nome, turma]) => {
+      const j = criarJanelinha({ nome, turma })
+      grade.append(j)
+      return j
+    })
+
+    for (const botao of document.querySelectorAll('.controles button')) {
+      botao.onclick = () => {
+        destravar()
+        const estado = botao.dataset.estado
+        janelas.forEach((j) => j.definirEstado(estado))
+        if (estado === 'chamado') tocarAbertura()
+        if (estado === 'entregue') tocarEntrega()
+      }
+    }
+  </script>
+</body>
+</html>
