@@ -1,0 +1,14 @@
+name = "portaria-janelinhas"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[[durable_objects.bindings]]
+name = "PORTARIA"
+class_name = "Portaria"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Portaria"]
+
+[assets]
+directory = "web"

@@ -12,7 +12,22 @@
 
 - Node >= 22. Verificado: `v22.13.0`.
 - **npm**, não pnpm. Este projeto é autocontido e fica fora do workspace do repo raiz.
-- Testes rodam com `node --test --experimental-strip-types`. Imports entre arquivos `.ts` **precisam da extensão explícita**: `from './estados.ts'`, não `from './estados'`. Sem isso o strip-types falha em tempo de execução.
+- Imports entre arquivos `.ts` **precisam da extensão explícita**: `from './estados.ts'`, não `from './estados'`.
+- **Invocação exata dos testes** (verificada na Task 1, as variações falham):
+  `node --experimental-strip-types --test "src/*.test.ts"`.
+  A flag tem que vir **antes** de `--test`; depois dela é ignorada nos processos filhos. E o
+  alvo tem que ser um **glob** — passar o diretório `src/` faz o Node tentar carregá-lo como
+  módulo e morrer com `MODULE_NOT_FOUND`.
+- **Proibido usar parameter property.** O strip-only do Node **não suporta**
+  `constructor(readonly x: T)` nem `constructor(private y: T)` — eles exigem geração de
+  código, não só apagar tipos, e quebram com `ERR_INVALID_TYPESCRIPT_SYNTAX`. Declare o campo
+  e atribua no corpo do construtor. Vale para todo `.ts` do projeto, inclusive os que só rodam
+  no wrangler: manter a regra única evita descobrir isso de novo mais tarde.
+- **Não fixar `@cloudflare/workers-types`.** Fixar a versão conflita com a que o wrangler
+  resolve (ERESOLVE). O wrangler traz a sua; se precisar dos tipos, gere com `npm run tipos`.
+- **Nunca canalizar a saída de um comando de verificação para `tail`/`grep` sem checar o
+  código de saída.** O pipe entrega o código do último comando, e um `npm install` que falhou
+  passa como sucesso. Rode o comando cru, ou termine com `; echo "EXIT=$?"`.
 - Nomes de arquivos, funções, tipos e variáveis em **português**, seguindo a convenção do repo (`pode.ts`, `matriz.ts`, `traducao.ts`).
 - **Nenhum dado real de aluno.** Toda a semente é ficção declarada.
 - O navegador não pode depender de rede externa: **sem CDN, sem fonte remota, sem biblioteca**. O modo demo tem que funcionar com o cabo desconectado.
