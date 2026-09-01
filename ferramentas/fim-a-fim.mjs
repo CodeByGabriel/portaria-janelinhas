@@ -6,6 +6,12 @@
  *
  * A segunda metade sao os ataques que o red team reproduziu ao vivo. Eles
  * ficam aqui para sempre: um furo consertado sem teste volta.
+ *
+ * EXIGE SERVIDOR LIMPO. As contagens sao absolutas ("a portaria ve 1
+ * chamada"), entao chamada deixada por outra sessao faz falhar sem haver
+ * bug. Se der falha estranha, reinicie:
+ *
+ *   taskkill //F //IM workerd.exe && rm -rf .wrangler/state && npm run dev
  */
 const BASE = process.env.BASE ?? 'ws://127.0.0.1:8787'
 const HTTP = BASE.replace(/^ws/, 'http')
