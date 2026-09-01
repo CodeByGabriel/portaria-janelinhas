@@ -118,6 +118,42 @@ Entregar antes da visita à escola. Nada aqui depende de decisão da escola.
 | **Risco/rollback** | Médio. Rollback isolado: a tarefa toca um arquivo só |
 | **Depende de** | 0.2 |
 
+### 0.3 — BLOQUEADA em 01/09/2026, por bug do runtime
+
+Tentada e revertida. A migração está escrita e funciona nos cenários isolados, mas **não
+passa nos três portões**, e por isso não foi embarcada.
+
+**O que acontece.** Com `ctx.acceptWebSocket()` + `serializeAttachment()` no lugar do
+`Set<Sessao>`, a suíte do workerd derruba o runtime inteiro:
+
+```
+*** Fatal uncaught kj::Exception: kj/async.c++:2187:
+    failed: Promise callback destroyed itself.
+```
+
+**O que eu verifiquei antes de desistir.** Não é o nosso código:
+
+- Os dois cenários que falham na suíte — sala com turma válida e sala sem turma — **passam
+  quando rodados isolados**, com broadcast chegando nos dois lados.
+- `getWebSockets()` devolve as conexões certas e `deserializeAttachment()` devolve
+  `{papel:'sala'}` e `{papel:'portaria'}` corretamente. Instrumentei e conferi.
+- Não é o handler de fechamento: reproduz com `webSocketClose` vazio, com `ws.close()` sem
+  argumento e com `ws.close(1000, …)` explícito.
+- Não é o alarme da poda: reproduz com ele desligado.
+- Fechar o lado servidor de todas as conexões antes do `reset()` também não resolve.
+
+O erro é uma asserção interna do `workerd` sobre o ciclo de vida de promessas, disparada
+pela combinação de WebSocket hibernável com o teardown entre testes do miniflare.
+
+**Por que não embarcar assim mesmo.** O benefício de correção que a hibernação traria —
+estado sobreviver à evicção — **já foi entregue pela 0.2**. O que sobra é economia de
+duração faturada. Embarcar mudança não verificável na peça que decide se uma criança pode
+sair da escola troca uma economia por um risco, na direção errada.
+
+**O que destrava.** Nova versão do `@cloudflare/vitest-plugin` ou do `workerd`; ou provar a
+hibernação pelo caminho de integração, contra o `wrangler dev`, fora do miniflare de teste.
+Retomar como tarefa própria, não dentro de outra.
+
 ### 0.4 — A portaria para de destruir o DOM sob o dedo (M) — **acrescentado por mim**
 
 | | |
