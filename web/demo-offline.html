@@ -296,6 +296,45 @@ function exigirDono(acao, papel) {
 }
 
 
+/* ===== web/comum/dom.js ===== */
+/*
+  Construcao de DOM sem innerHTML.
+
+  Nome de crianca chega de planilha colada pela secretaria. Interpolar isso
+  num template de innerHTML transforma um nome como <img src=x onerror=...>
+  em codigo executando na tela da portaria. textContent nao interpreta
+  marcacao — o nome aparece literal, que e o comportamento certo.
+
+  O analisador de importacao tambem recusa < e >, mas defesa que depende de
+  uma camada so e defesa que ja falhou uma vez.
+*/
+
+/** Uma linha de duas alturas: nome em cima, detalhe menor embaixo. */
+function linhaDupla(principal, detalhe) {
+  const caixa = document.createElement('div')
+  caixa.className = 'nome'
+
+  caixa.append(document.createTextNode(principal))
+  caixa.append(document.createElement('br'))
+
+  const span = document.createElement('span')
+  span.className = 'detalhe'
+  span.textContent = detalhe
+  caixa.append(span)
+
+  return caixa
+}
+
+/** Uma etiqueta com estado, para pendurar ao lado do nome. */
+function marca(texto, estado) {
+  const span = document.createElement('span')
+  span.className = 'marca'
+  if (estado) span.dataset.estado = estado
+  span.textContent = texto
+  return span
+}
+
+
 /* ===== web/comum/avatar.js ===== */
 /*
   Retrato ilustrado deterministico, derivado do nome.
@@ -491,6 +530,7 @@ function tocarEntrega() {
 
 
 
+
     const ALUNOS = [
       { id: 'd1', nome: 'Thaís Gonçalves', turma: 'Jardim II' },
       { id: 'd2', nome: 'João Conceição', turma: 'Jardim II' },
@@ -543,10 +583,7 @@ function tocarEntrega() {
       for (const c of ativas) {
         const li = document.createElement('li')
         li.append(moldurinha(c.nome))
-        const nome = document.createElement('div')
-        nome.className = 'nome'
-        nome.innerHTML = `${c.nome}<br><span class="detalhe">${c.estado}</span>`
-        li.append(nome)
+        li.append(linhaDupla(c.nome, c.estado))
         if (c.estado === 'chamado') {
           li.append(botao('Cancelar', false, () => aplicar(c.alunoId, 'cancelar', 'portaria')))
         }
@@ -600,10 +637,7 @@ function tocarEntrega() {
       for (const aluno of ALUNOS) {
         const li = document.createElement('li')
         li.append(moldurinha(aluno.nome))
-        const nome = document.createElement('div')
-        nome.className = 'nome'
-        nome.innerHTML = `${aluno.nome}<br><span class="detalhe">${aluno.turma}</span>`
-        li.append(nome)
+        li.append(linhaDupla(aluno.nome, aluno.turma))
         if (chamadas.has(aluno.id)) {
           const marca = document.createElement('span')
           marca.className = 'detalhe'

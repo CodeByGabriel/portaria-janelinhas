@@ -75,6 +75,7 @@
     import { criarJanelinha } from '../comum/janelinha.js'
     import { retratoDe } from '../comum/avatar.js'
     import { destravar, tocarAbertura, tocarEntrega } from '../comum/som.js'
+    import { linhaDupla } from '../comum/dom.js'
 
     const ALUNOS = [
       { id: 'd1', nome: 'Thaís Gonçalves', turma: 'Jardim II' },
@@ -128,10 +129,7 @@
       for (const c of ativas) {
         const li = document.createElement('li')
         li.append(moldurinha(c.nome))
-        const nome = document.createElement('div')
-        nome.className = 'nome'
-        nome.innerHTML = `${c.nome}<br><span class="detalhe">${c.estado}</span>`
-        li.append(nome)
+        li.append(linhaDupla(c.nome, c.estado))
         if (c.estado === 'chamado') {
           li.append(botao('Cancelar', false, () => aplicar(c.alunoId, 'cancelar', 'portaria')))
         }
@@ -185,10 +183,7 @@
       for (const aluno of ALUNOS) {
         const li = document.createElement('li')
         li.append(moldurinha(aluno.nome))
-        const nome = document.createElement('div')
-        nome.className = 'nome'
-        nome.innerHTML = `${aluno.nome}<br><span class="detalhe">${aluno.turma}</span>`
-        li.append(nome)
+        li.append(linhaDupla(aluno.nome, aluno.turma))
         if (chamadas.has(aluno.id)) {
           const marca = document.createElement('span')
           marca.className = 'detalhe'

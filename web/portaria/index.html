@@ -46,6 +46,35 @@
     .rede[data-rede="desligado"] { color: var(--aviso); font-weight: 600; }
     .nada { color: var(--tinta-suave); font-size: 0.9rem; padding: 0.4rem 0.2rem; }
     .aviso { color: var(--aviso); font-size: 0.85rem; min-height: 1.3em; margin: 0.4rem 0 0; }
+
+    details { margin-top: 2rem; border-top: 1px solid var(--vidro-fosco); padding-top: 1rem; }
+    summary {
+      cursor: pointer; font-size: 0.95rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--tinta-suave);
+    }
+    .lgpd {
+      background: var(--papel-fundo); border-left: 4px solid var(--moldura);
+      padding: 0.7rem 0.9rem; font-size: 0.85rem; margin: 0.9rem 0 0.6rem;
+    }
+    textarea {
+      width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace;
+      font-size: 0.85rem; padding: 0.7rem; border-radius: 8px;
+      border: 2px solid var(--moldura); background: #fff; color: var(--tinta);
+      margin: 0.5rem 0;
+    }
+    code { background: var(--papel-fundo); padding: 0.05rem 0.3rem; border-radius: 4px; }
+    .placar { display: flex; gap: 0.6rem; margin: 0.9rem 0 0; }
+    .placar div {
+      flex: 1; text-align: center; background: var(--papel-fundo);
+      border-radius: 8px; padding: 0.6rem 0.3rem;
+    }
+    .placar .valor { font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
+    .placar .rotulo {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--tinta-suave);
+    }
+    .placar .ruim .valor { color: var(--aviso); }
+    .listaErros { font-size: 0.82rem; color: var(--aviso); margin: 0.7rem 0 0; padding-left: 1.1rem; }
   </style>
 </head>
 <body>
@@ -60,10 +89,27 @@
   <ul id="ativas"></ul>
   <p class="nada" id="nenhuma">Ninguém em saída agora.</p>
 
+  <details id="painelImportar">
+    <summary>Importar planilha</summary>
+    <p class="lgpd">
+      Esta planilha traz nome e turma. Consentimento de imagem e dados do responsável
+      não vêm dela — a escola trata isso à parte.
+    </p>
+    <p class="detalhe">
+      Colunas exigidas: <code>Nome</code> e <code>Turma</code>. Outras colunas são ignoradas.
+      Aceita vírgula ou ponto e vírgula.
+    </p>
+    <textarea id="planilha" rows="6"
+      placeholder="Nome,Turma&#10;Ana Souza,Maternal&#10;Bia Lima,Jardim I"></textarea>
+    <button class="principal" id="importar">Importar</button>
+    <div id="resultadoImportacao"></div>
+  </details>
+
   <script type="module">
     import { buscar } from '../comum/busca.js'
     import { retratoDe } from '../comum/avatar.js'
     import { ligar } from '../comum/ligacao.js'
+    import { linhaDupla, marca } from '../comum/dom.js'
 
     const rede = document.getElementById('rede')
     const aviso = document.getElementById('aviso')
@@ -118,16 +164,10 @@
         const li = document.createElement('li')
         li.append(moldurinha(aluno.nome))
 
-        const nome = document.createElement('div')
-        nome.className = 'nome'
-        nome.innerHTML = `${aluno.nome}<br><span class="detalhe">${aluno.turma}</span>`
-        li.append(nome)
+        li.append(linhaDupla(aluno.nome, aluno.turma))
 
         if (chamados.has(aluno.id)) {
-          const marca = document.createElement('span')
-          marca.className = 'marca'
-          marca.textContent = 'já em saída'
-          li.append(marca)
+          li.append(marca('já em saída'))
         } else {
           li.append(botao('Chamar', true, () => {
             conexao.enviar({ tipo: 'chamar', alunoId: aluno.id })
@@ -157,12 +197,9 @@
         const li = document.createElement('li')
         li.append(moldurinha(c.nome))
 
-        const nome = document.createElement('div')
-        nome.className = 'nome'
-        nome.innerHTML =
-          `${c.nome}<br><span class="detalhe">${c.turma}</span> ` +
-          `<span class="marca" data-estado="${c.estado}">${c.estado}</span>`
-        li.append(nome)
+        const bloco = linhaDupla(c.nome, c.turma)
+        bloco.append(document.createTextNode(' '), marca(c.estado, c.estado))
+        li.append(bloco)
 
         if (c.estado === 'chamado') {
           li.append(botao('Cancelar', false, () =>
@@ -173,6 +210,70 @@
             conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId })))
         }
         ul.append(li)
+      }
+    }
+
+    function placar(rotulo, valor, ruim) {
+      const d = document.createElement('div')
+      if (ruim && valor > 0) d.className = 'ruim'
+      const n = document.createElement('div')
+      n.className = 'valor'
+      n.textContent = String(Number(valor) || 0)
+      const r = document.createElement('div')
+      r.className = 'rotulo'
+      r.textContent = rotulo
+      d.append(n, r)
+      return d
+    }
+
+    document.getElementById('importar').onclick = async () => {
+      const texto = document.getElementById('planilha').value
+      const caixa = document.getElementById('resultadoImportacao')
+      caixa.innerHTML = ''
+
+      if (texto.trim() === '') {
+        caixa.innerHTML = '<p class="aviso">Cole a planilha antes de importar.</p>'
+        return
+      }
+
+      let r
+      try {
+        const resposta = await fetch('/importar?papel=portaria', { method: 'POST', body: texto })
+        r = await resposta.json()
+      } catch {
+        caixa.innerHTML = '<p class="aviso">Não consegui falar com o servidor.</p>'
+        return
+      }
+
+      const linha = document.createElement('div')
+      linha.className = 'placar'
+      linha.append(
+        placar('alunos', r.alunos ?? 0, false),
+        placar('duplicados', r.duplicados ?? 0, false),
+        placar('erros', (r.erros ?? []).length, true),
+      )
+      caixa.append(linha)
+
+      const erros = r.erros ?? []
+      if (erros.length > 0) {
+        const ul = document.createElement('ul')
+        ul.className = 'listaErros'
+        for (const e of erros.slice(0, 10)) {
+          const li = document.createElement('li')
+          li.textContent = e.linha > 0 ? `linha ${e.linha}: ${e.motivo}` : e.motivo
+          ul.append(li)
+        }
+        if (erros.length > 10) {
+          const mais = document.createElement('li')
+          mais.textContent = `e mais ${erros.length - 10}`
+          ul.append(mais)
+        }
+        caixa.append(ul)
+      }
+
+      if (r.trocado) {
+        alunos = await fetch('/alunos?papel=portaria').then((x) => x.json())
+        document.getElementById('planilha').value = ''
       }
     }
   </script>

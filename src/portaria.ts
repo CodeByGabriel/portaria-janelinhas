@@ -1,6 +1,7 @@
 import { Livro } from './livro.ts'
 import { ehPapel, ehAcao, AcaoNaoPermitida, TransicaoInvalida, type Papel } from './estados.ts'
 import { TURMAS, type Turma } from './semente.ts'
+import { analisar } from './importar.ts'
 import type { Comando } from './protocolo.ts'
 
 interface Sessao {
@@ -61,6 +62,39 @@ export class Portaria {
     if (url.pathname === '/registro') {
       if (papel !== 'portaria') return new Response('so a portaria le o registro', { status: 403 })
       return Response.json(this.livro.registro())
+    }
+
+    if (url.pathname === '/importar') {
+      if (pedido.method !== 'POST') return new Response('use POST', { status: 405 })
+      if (papel !== 'portaria') return new Response('so a portaria importa', { status: 403 })
+
+      const resultado = analisar(await pedido.text())
+
+      if (resultado.alunos.length === 0) {
+        return Response.json(
+          { alunos: 0, duplicados: resultado.duplicados, erros: resultado.erros, trocado: false },
+          { status: 422 },
+        )
+      }
+
+      try {
+        this.livro.substituirCadastro(resultado.alunos)
+      } catch (erro) {
+        // Ha crianca em saida agora. Trocar o cadastro sumiria com ela de
+        // todas as telas e deixaria a trilha com um liberar sem entregar.
+        return Response.json(
+          { alunos: 0, duplicados: 0, erros: [{ linha: 0, motivo: motivoDe(erro) }], trocado: false },
+          { status: 409 },
+        )
+      }
+
+      this.transmitir()
+      return Response.json({
+        alunos: resultado.alunos.length,
+        duplicados: resultado.duplicados,
+        erros: resultado.erros,
+        trocado: true,
+      })
     }
 
     if (url.pathname !== '/ws') {
