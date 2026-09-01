@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
-const SAIDA = join(RAIZ, 'prints')
+const SAIDA = process.env.SAIDA ? join(RAIZ, process.env.SAIDA) : join(RAIZ, 'prints')
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const PORTA = 9222
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'

@@ -1,0 +1,102 @@
+{
+  "latenciaServidor": {
+    "amostras": 10,
+    "mediana": 4.421300000000201,
+    "pior": 5.552300000000059,
+    "melhor": 3.7513999999996486
+  },
+  "peso": {
+    "requisicoes": 8,
+    "bytes": 11988,
+    "detalhe": [
+      {
+        "url": "/portaria/",
+        "tipo": "Document",
+        "bytes": 3548
+      },
+      {
+        "url": "/comum/tokens.css",
+        "tipo": "Stylesheet",
+        "bytes": 2606
+      },
+      {
+        "url": "/comum/busca.js",
+        "tipo": "Script",
+        "bytes": 849
+      },
+      {
+        "url": "/comum/cartao.js",
+        "tipo": "Script",
+        "bytes": 1168
+      },
+      {
+        "url": "/comum/ligacao.js",
+        "tipo": "Script",
+        "bytes": 1147
+      },
+      {
+        "url": "/comum/avatar.js",
+        "tipo": "Script",
+        "bytes": 1628
+      },
+      {
+        "url": "/alunos?papel=portaria",
+        "tipo": "Fetch",
+        "bytes": 870
+      },
+      {
+        "url": "/favicon.ico",
+        "tipo": "Other",
+        "bytes": 172
+      }
+    ]
+  },
+  "alvosPortaria": [
+    {
+      "rotulo": "campo de busca",
+      "largura": 393.2,
+      "altura": 46.8
+    },
+    {
+      "rotulo": "Chamar",
+      "largura": 82.4,
+      "altura": 40.1
+    },
+    {
+      "rotulo": "Cancelar/Entregar",
+      "ausente": true
+    },
+    {
+      "rotulo": "Importar",
+      "largura": 90.1,
+      "altura": 40.1
+    },
+    {
+      "rotulo": "abrir importacao",
+      "largura": 359.2,
+      "altura": 18.7
+    }
+  ],
+  "latenciaRender": 9,
+  "alvosSala": [
+    {
+      "rotulo": "Liberar saida",
+      "largura": 171,
+      "altura": 40.1
+    },
+    {
+      "rotulo": "mudo",
+      "largura": 106.6,
+      "altura": 40.1
+    }
+  ],
+  "quinze": {
+    "linhas": 15,
+    "alturaListaPx": 1372,
+    "alturaJanelaPx": 880,
+    "rolagensNecessarias": 1.56,
+    "temContagem": false,
+    "temTimer": false,
+    "agrupadoPorEstado": false
+  }
+}
