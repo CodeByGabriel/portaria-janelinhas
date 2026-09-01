@@ -4,17 +4,20 @@
   "version": "0.1.0",
   "description": "App de saida de alunos da escola Janelinhas do Saber. Vitrine.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "test": "node --experimental-strip-types --test \"src/*.test.ts\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "wrangler types && tsc --noEmit",
     "tipos": "wrangler types",
     "demo:offline": "node ferramentas/construir-demo.mjs",
     "fim-a-fim": "node ferramentas/fim-a-fim.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.27.0",
-    "typescript": "^5.6.0"
+    "@types/node": "^26.4.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.27.0"
   }
 }
