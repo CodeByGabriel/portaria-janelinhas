@@ -1,10 +1,13 @@
 import { proximo, exigirDono, type Estado, type Papel, type Acao } from './estados.ts'
 import { semear, type Aluno, type Turma } from './semente.ts'
-import type { Chamada, Retrato, Comando, EventoAuditoria } from './protocolo.ts'
+import type { Chamada, Retrato, Comando, EventoAuditoria, Instantaneo } from './protocolo.ts'
 
 /**
  * O estado do dia da escola. Puro: sem rede, sem relogio, sem armazenamento.
  * O relogio entra sempre por parametro, para que o teste mande no tempo.
+ *
+ * A persistencia mora fora, em deposito.ts, e este arquivo nao a conhece. Quem
+ * costura os dois e o Durable Object.
  */
 export class Livro {
   private readonly cadastro = new Map<string, Aluno>()
@@ -13,8 +16,24 @@ export class Livro {
   /** Sobe a cada troca de cadastro. O cliente usa para saber que a lista dele venceu. */
   private versaoCadastro = 1
 
-  constructor(alunos: Aluno[] = semear()) {
-    for (const aluno of alunos) this.cadastro.set(aluno.id, aluno)
+  /**
+   * Aceita uma lista de alunos (uso de teste) ou o instantaneo completo vindo
+   * do disco (uso de producao).
+   *
+   * CUIDADO com o padrao `semear()`: em producao ele nunca deve ser alcancado.
+   * Foi exatamente por ele que um reinicio substituia a lista real da escola
+   * pelos alunos ficticios, em silencio. O Durable Object sempre constroi a
+   * partir de `Deposito.carregar()`, que so semeia na primeirissima vez.
+   */
+  constructor(inicio: Aluno[] | Instantaneo = semear()) {
+    const dados: Instantaneo = Array.isArray(inicio)
+      ? { alunos: inicio, chamadas: [], trilha: [], versaoCadastro: 1 }
+      : inicio
+
+    for (const aluno of dados.alunos) this.cadastro.set(aluno.id, aluno)
+    for (const chamada of dados.chamadas) this.chamadas.set(chamada.alunoId, chamada)
+    this.trilha.push(...dados.trilha)
+    this.versaoCadastro = dados.versaoCadastro
   }
 
   versao(): number {

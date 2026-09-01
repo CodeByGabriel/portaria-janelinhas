@@ -9,8 +9,19 @@ export interface Erro {
 export interface Resultado {
   alunos: Aluno[]
   duplicados: number
+  /** No maximo LIMITE_ERROS itens. Use `errosTotal` para saber quantos houve. */
   erros: Erro[]
+  errosTotal: number
 }
+
+/**
+ * Teto de erros devolvidos.
+ *
+ * Sem ele, uma planilha com cem mil linhas invalidas devolvia cem mil objetos
+ * de erro na resposta JSON. Cem ja e mais do que qualquer secretaria vai ler;
+ * o que ela precisa saber e o total, e esse vai separado.
+ */
+const LIMITE_ERROS = 100
 
 /*
   ---------------------------------------------------------------------------
@@ -180,6 +191,7 @@ export function analisar(csv: string): Resultado {
       alunos,
       duplicados,
       erros: [{ linha: 1, motivo: 'a planilha precisa das colunas Nome e Turma' }],
+      errosTotal: 1,
     }
   }
 
@@ -226,5 +238,5 @@ export function analisar(csv: string): Resultado {
     alunos.push({ id, nome, turma: turma as Turma })
   }
 
-  return { alunos, duplicados, erros }
+  return { alunos, duplicados, erros: erros.slice(0, LIMITE_ERROS), errosTotal: erros.length }
 }

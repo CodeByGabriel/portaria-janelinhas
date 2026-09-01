@@ -25,5 +25,8 @@ export default defineConfig({
   ],
   test: {
     include: ['src/**/*.spec.ts'],
+    // Cada teste de persistencia abre WebSockets, evicta o objeto e reconecta.
+    // 5s (o padrao) e apertado para isso e produz falha falsa.
+    testTimeout: 20000,
   },
 })

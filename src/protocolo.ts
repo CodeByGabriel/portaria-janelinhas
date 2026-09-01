@@ -1,5 +1,5 @@
 import type { Estado, Acao } from './estados.ts'
-import type { Turma } from './semente.ts'
+import type { Aluno, Turma } from './semente.ts'
 
 export interface Chamada {
   alunoId: string
@@ -40,6 +40,20 @@ export interface Recusa {
   tipo: 'recusa'
   alunoId: string
   motivo: string
+}
+
+/**
+ * O estado do dia inteiro, como sai do disco e entra no Livro.
+ *
+ * Mora aqui, e nao em deposito.ts, de proposito: assim o Livro consegue
+ * hidratar sem importar nada que saiba o que e armazenamento. A pureza dele
+ * e um invariante, nao um detalhe de estilo.
+ */
+export interface Instantaneo {
+  alunos: Aluno[]
+  chamadas: Chamada[]
+  trilha: EventoAuditoria[]
+  versaoCadastro: number
 }
 
 export interface EventoAuditoria {

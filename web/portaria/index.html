@@ -249,11 +249,14 @@
       linha.append(
         placar('alunos', r.alunos ?? 0, false),
         placar('duplicados', r.duplicados ?? 0, false),
-        placar('erros', (r.erros ?? []).length, true),
+        placar('erros', r.errosTotal ?? (r.erros ?? []).length, true),
       )
       caixa.append(linha)
 
       const erros = r.erros ?? []
+      // errosTotal, nao erros.length: o servidor limita a resposta a 100
+      // itens, entao contar o array mentiria sobre o tamanho do estrago.
+      const totalErros = r.errosTotal ?? erros.length
       if (erros.length > 0) {
         const ul = document.createElement('ul')
         ul.className = 'listaErros'
@@ -262,9 +265,9 @@
           li.textContent = e.linha > 0 ? `Linha ${e.linha}: ${e.motivo}` : e.motivo
           ul.append(li)
         }
-        if (erros.length > 10) {
+        if (totalErros > 10) {
           const mais = document.createElement('li')
-          mais.textContent = `e mais ${erros.length - 10}`
+          mais.textContent = `e mais ${totalErros - 10}`
           ul.append(mais)
         }
         caixa.append(ul)
