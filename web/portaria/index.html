@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portaria — Janelinhas do Saber</title>
+  <link rel="stylesheet" href="../comum/tokens.css">
+  <style>
+    body {
+      margin: 0 auto; padding: 1rem 1rem 3rem; max-width: 520px;
+      background: var(--papel); color: var(--tinta);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    h1 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.08em;
+         color: var(--tinta-suave); margin: 1.6rem 0 0.4rem; }
+    h1:first-of-type { margin-top: 0.8rem; }
+    input {
+      width: 100%; font: inherit; font-size: 1.05rem; padding: 0.85rem;
+      border-radius: 10px; border: 2px solid var(--moldura);
+      background: #fff; color: var(--tinta); box-sizing: border-box;
+    }
+    ul { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+    li {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.2rem;
+      border-bottom: 1px solid var(--vidro-fosco);
+    }
+    li .moldurinha {
+      width: 42px; height: 42px; flex: none; border: 3px solid var(--moldura);
+      border-radius: 4px; overflow: hidden; background: var(--vidro-fundo);
+    }
+    li .moldurinha svg { width: 100%; height: 100%; display: block; }
+    .nome { flex: 1; line-height: 1.3; }
+    .detalhe { font-size: 0.8rem; color: var(--tinta-suave); }
+    button {
+      font: inherit; padding: 0.45rem 0.85rem; border-radius: 7px;
+      border: 2px solid var(--moldura); background: var(--papel);
+      color: var(--tinta); cursor: pointer; flex: none;
+    }
+    button:hover { background: var(--papel-fundo); }
+    button.principal { background: var(--moldura); color: #fff; border-color: var(--moldura-escura); }
+    button.principal:hover { background: var(--moldura-escura); }
+    .marca { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
+             font-size: 0.75rem; background: var(--papel-fundo); color: var(--tinta-suave); }
+    .marca[data-estado="liberado"] { background: var(--entregue-claro); color: #1e5c3c; }
+    .rede { font-size: 0.8rem; color: var(--tinta-suave); margin: 0 0 0.6rem; }
+    .rede[data-rede="desligado"] { color: var(--aviso); font-weight: 600; }
+    .nada { color: var(--tinta-suave); font-size: 0.9rem; padding: 0.4rem 0.2rem; }
+    .aviso { color: var(--aviso); font-size: 0.85rem; min-height: 1.3em; margin: 0.4rem 0 0; }
+  </style>
+</head>
+<body>
+  <p class="rede" id="rede">ligando…</p>
+
+  <h1>Chamar</h1>
+  <input id="consulta" placeholder="Nome da criança" autocomplete="off" autocapitalize="off">
+  <p class="aviso" id="aviso"></p>
+  <ul id="resultados"></ul>
+
+  <h1>Em saída</h1>
+  <ul id="ativas"></ul>
+  <p class="nada" id="nenhuma">Ninguém em saída agora.</p>
+
+  <script type="module">
+    import { buscar } from '../comum/busca.js'
+    import { retratoDe } from '../comum/avatar.js'
+    import { ligar } from '../comum/ligacao.js'
+
+    const rede = document.getElementById('rede')
+    const aviso = document.getElementById('aviso')
+    const campo = document.getElementById('consulta')
+
+    let alunos = []
+    let ativas = []
+
+    const conexao = ligar({
+      papel: 'portaria',
+      aoEstadoDaRede: (estado) => {
+        rede.dataset.rede = estado
+        rede.textContent = estado === 'ligado' ? 'ligado' : 'religando…'
+      },
+      aoRetrato: (retrato) => {
+        ativas = retrato.chamadas
+        desenharAtivas()
+      },
+      aoRecusa: (recusa) => {
+        aviso.textContent = `recusado: ${recusa.motivo}`
+        setTimeout(() => { aviso.textContent = '' }, 4000)
+      },
+    })
+
+    fetch('/alunos')
+      .then((r) => r.json())
+      .then((lista) => { alunos = lista })
+      .catch(() => { aviso.textContent = 'não consegui carregar a lista de alunos' })
+
+    function moldurinha(nome) {
+      const caixa = document.createElement('div')
+      caixa.className = 'moldurinha'
+      caixa.append(retratoDe(nome))
+      return caixa
+    }
+
+    function botao(texto, principal, aoTocar) {
+      const b = document.createElement('button')
+      b.textContent = texto
+      if (principal) b.className = 'principal'
+      b.onclick = aoTocar
+      return b
+    }
+
+    campo.oninput = () => {
+      const ul = document.getElementById('resultados')
+      ul.innerHTML = ''
+      const chamados = new Set(ativas.map((c) => c.alunoId))
+
+      for (const aluno of buscar(alunos, campo.value)) {
+        const li = document.createElement('li')
+        li.append(moldurinha(aluno.nome))
+
+        const nome = document.createElement('div')
+        nome.className = 'nome'
+        nome.innerHTML = `${aluno.nome}<br><span class="detalhe">${aluno.turma}</span>`
+        li.append(nome)
+
+        if (chamados.has(aluno.id)) {
+          const marca = document.createElement('span')
+          marca.className = 'marca'
+          marca.textContent = 'já em saída'
+          li.append(marca)
+        } else {
+          li.append(botao('Chamar', true, () => {
+            conexao.enviar({ tipo: 'chamar', alunoId: aluno.id })
+            campo.value = ''
+            ul.innerHTML = ''
+          }))
+        }
+        ul.append(li)
+      }
+    }
+
+    function desenharAtivas() {
+      const ul = document.getElementById('ativas')
+      ul.innerHTML = ''
+      const ordenadas = [...ativas].sort((a, b) => a.em - b.em)
+      document.getElementById('nenhuma').hidden = ordenadas.length > 0
+
+      for (const c of ordenadas) {
+        const li = document.createElement('li')
+        li.append(moldurinha(c.nome))
+
+        const nome = document.createElement('div')
+        nome.className = 'nome'
+        nome.innerHTML =
+          `${c.nome}<br><span class="detalhe">${c.turma}</span> ` +
+          `<span class="marca" data-estado="${c.estado}">${c.estado}</span>`
+        li.append(nome)
+
+        if (c.estado === 'chamado') {
+          li.append(botao('Cancelar', false, () =>
+            conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId })))
+        }
+        if (c.estado === 'liberado') {
+          li.append(botao('Entregar', true, () =>
+            conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId })))
+        }
+        ul.append(li)
+      }
+    }
+  </script>
+</body>
+</html>
