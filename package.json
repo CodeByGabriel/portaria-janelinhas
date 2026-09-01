@@ -9,7 +9,9 @@
     "dev": "wrangler dev",
     "test": "node --experimental-strip-types --test \"src/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "tipos": "wrangler types"
+    "tipos": "wrangler types",
+    "demo:offline": "node ferramentas/construir-demo.mjs",
+    "fim-a-fim": "node ferramentas/fim-a-fim.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.27.0",

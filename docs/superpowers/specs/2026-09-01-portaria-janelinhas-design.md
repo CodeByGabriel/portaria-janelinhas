@@ -112,9 +112,17 @@ Janelinhas pequenas em lista — densidade alta.
 janelinha grande, uma criança por vez**. Se duas forem chamadas juntas, enfileiram. Um toque
 libera. Botão de mudo sempre visível.
 
-**Demo** (`web/demo/`). As duas telas lado a lado numa página só, sem WebSocket e sem
-servidor, usando o mesmo `estados.ts` em memória. Existe porque wifi de escola cai na hora
-da reunião. Como o núcleo é puro, esta tela não pode divergir da real.
+**Demo** (`web/demo/`). As duas telas lado a lado numa página só, sem WebSocket, usando a
+mesma máquina de estados em memória. Existe porque wifi de escola cai na hora da reunião.
+Como a regra é a mesma dos dois lados, esta tela não pode divergir da real.
+
+**Demo offline** (`web/demo-offline.html`, gerado por `npm run demo:offline`). O mesmo, mas
+num arquivo único com CSS e scripts embutidos.
+
+Isto não é redundância: `web/demo/` usa módulos ES, e **o navegador recusa carregar módulo
+por `file://`** — ele só funciona servido. O arquivo único abre com duplo clique, sem
+servidor e sem Node. São dois planos de contingência para duas falhas diferentes: o wifi da
+escola cair, e o notebook não conseguir subir o `npm run dev` na hora.
 
 ## 7. Linguagem visual: a janelinha
 
