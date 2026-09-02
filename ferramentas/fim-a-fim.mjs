@@ -13,6 +13,8 @@
  * sobrevive, e uma rodada do `prints.mjs` — que semeia tres chamados — fazia
  * quatro verificacoes falharem sem haver bug nenhum.
  */
+import { TOKEN, cookieDe, comoAparelho, exigirModoDemonstracao } from './aparelho.mjs'
+
 const BASE = process.env.BASE ?? 'ws://127.0.0.1:8787'
 const HTTP = BASE.replace(/^ws/, 'http')
 
@@ -26,16 +28,23 @@ function conferir(rotulo, condicao, detalhe = '') {
   }
 }
 
-function ligar(query) {
+/*
+  Liga como um APARELHO, e nao com um papel escrito na URL.
+
+  O cookie vai no aperto de mao, exatamente como o navegador manda o dele.
+  Verificado que o WebSocket do Node envia o header: um caminho so, para o
+  navegador e para a ferramenta.
+*/
+function ligar(token) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`${BASE}/ws?${query}`)
+    const ws = new WebSocket(`${BASE}/ws`, { headers: { Cookie: cookieDe(token) } })
     const recebidos = []
     ws.addEventListener('message', (e) => recebidos.push(JSON.parse(e.data)))
     ws.addEventListener('open', () => resolve({ ws, recebidos }))
-    ws.addEventListener('error', () => reject(new Error(`nao ligou: ${query}`)))
+    ws.addEventListener('error', () => reject(new Error(`nao ligou como ${token}`)))
     // 15s, nao 5s: o Durable Object frio demora na primeira conexao e um
     // timeout apertado vira falha falsa que manda a gente cacar bug que nao existe.
-    setTimeout(() => reject(new Error(`timeout ligando ${query}`)), 15000)
+    setTimeout(() => reject(new Error(`timeout ligando como ${token}`)), 15000)
   })
 }
 
@@ -94,7 +103,7 @@ async function limparMesa(portaria) {
   ids sao formados.
 */
 async function resolverIds() {
-  const alunos = await fetch(`${HTTP}/alunos?papel=portaria`).then((r) => r.json())
+  const alunos = await fetch(`${HTTP}/alunos`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
   if (alunos.length < 6) throw new Error(`cadastro pequeno demais: ${alunos.length}`)
 
   const doPre1 = alunos.filter((a) => a.turma === 'Pré 1')
@@ -117,13 +126,15 @@ async function resolverIds() {
 }
 
 async function principal() {
+  await exigirModoDemonstracao(HTTP)
+
   console.log('\n== ciclo normal ==')
 
   const ID = await resolverIds()
 
-  const portaria = await ligar('papel=portaria')
-  const maternal = await ligar('papel=sala&turma=Pr%C3%A9%201')
-  const jardim = await ligar('papel=sala&turma=1%C2%BA%20ano')
+  const portaria = await ligar(TOKEN.portaria)
+  const maternal = await ligar(TOKEN.sala(decodeURIComponent('Pr%C3%A9%201')))
+  const jardim = await ligar(TOKEN.sala(decodeURIComponent('1%C2%BA%20ano')))
   await esperar(300)
 
   conferir('as tres conexoes recebem retrato inicial',
@@ -142,10 +153,10 @@ async function principal() {
     que ele mesmo acabou de fazer.
   */
   const marcaDaTrilha = (
-    await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())
+    await fetch(`${HTTP}/registro`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
   ).length
   const trilhaDesta = async () =>
-    (await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())).slice(marcaDaTrilha)
+    (await fetch(`${HTTP}/registro`, comoAparelho(TOKEN.portaria)).then((r) => r.json())).slice(marcaDaTrilha)
 
   portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: ID.a01 }))
   await esperar(400)
@@ -344,32 +355,79 @@ async function principal() {
   await esperar(300)
 
   // A trilha precisa dizer de ONDE partiu cada acao
-  const trilhaOrigem = await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())
+  const trilhaOrigem = await fetch(`${HTTP}/registro`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
   conferir('a trilha guarda a origem de cada acao',
     trilhaOrigem.every((e) => typeof e.origem === 'string' && e.origem.length > 0))
 
-  // C2 — papel fail-closed
-  console.log('\n== papel fail-closed ==')
-  for (const q of ['papel=Sala&turma=Pré 1', 'papel=SALA', 'papel=professora',
-                   'papel=', 'turma=Pré 1']) {
+  // C2 — o gate, agora de APARELHO
+  console.log('\n== aparelho fail-closed ==')
+  /*
+    O C2 original: papel escrito na URL, e "Sala", "SALA", " sala",
+    "professora", vazio e ausente TODOS viravam portaria — que enxerga a escola
+    inteira. Consertado validando o papel; mas papel na URL nunca foi
+    identidade, era uma etiqueta que o cliente colava em si mesmo.
+
+    A forma do teste continua: entrada NAO RECONHECIDA nao vira acesso, e muito
+    menos vira o papel de maior alcance.
+  */
+  const TOKENS_INVALIDOS = [
+    '',
+    'portaria',
+    'papel=portaria',
+    'demonstracao-portaria-000',
+    'demonstracao-portaria-00000',
+    'DEMONSTRACAO-PORTARIA-0000',
+    'demonstracao-sala-turma-que-nao-existe',
+  ]
+  for (const token of TOKENS_INVALIDOS) {
     let recusou = false
-    try { await ligar(q) } catch { recusou = true }
-    conferir(`C2: "${q}" e RECUSADO`, recusou)
+    try {
+      await ligar(token)
+    } catch {
+      recusou = true
+    }
+    conferir(`C2: aparelho "${token || '(vazio)'}" e RECUSADO`, recusou)
   }
+
+  let semCookie = false
+  try {
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${BASE}/ws`)
+      ws.addEventListener('open', () => resolve(ws))
+      ws.addEventListener('error', () => reject(new Error('recusado')))
+      setTimeout(() => reject(new Error('timeout')), 5000)
+    })
+  } catch {
+    semCookie = true
+  }
+  conferir('C2: conexao SEM cookie de aparelho e recusada', semCookie)
 
   // C3 — rotas HTTP fechadas
   console.log('\n== rotas HTTP ==')
   const semPapel = await fetch(`${HTTP}/alunos`)
-  conferir('C3: /alunos sem papel e recusado', semPapel.status === 400,
+  conferir('C3: /alunos sem aparelho e recusado', semPapel.status === 401,
     `status ${semPapel.status}`)
-  const comoSala = await fetch(`${HTTP}/alunos?papel=sala`)
+  const comoSala = await fetch(`${HTTP}/alunos`, comoAparelho(TOKEN.sala('Pré 1')))
   conferir('C3: /alunos como sala e recusado', comoSala.status === 403,
     `status ${comoSala.status}`)
-  const comoPortaria = await fetch(`${HTTP}/alunos?papel=portaria`)
+  const comoPortaria = await fetch(`${HTTP}/alunos`, comoAparelho(TOKEN.portaria))
   conferir('C3: /alunos como portaria funciona', comoPortaria.status === 200)
 
   const regSemPapel = await fetch(`${HTTP}/registro`)
-  conferir('C3: /registro sem papel e recusado', regSemPapel.status === 400)
+  conferir('C3: /registro sem aparelho e recusado', regSemPapel.status === 401)
+
+  /*
+    E o que a fase 2 acrescenta: emitir aparelho exige a chave de
+    administracao, que nao existe em tela nenhuma. Um tablet roubado da
+    portaria nao fabrica mais aparelhos.
+  */
+  const semChave = await fetch(`${HTTP}/dispositivos`, {
+    method: 'POST',
+    ...comoAparelho(TOKEN.portaria),
+    body: JSON.stringify({ papel: 'portaria', apelido: 'invasor' }),
+  })
+  conferir('C4: nem a portaria emite aparelho sem a chave de administracao',
+    semChave.status === 401, `status ${semChave.status}`)
 
   // malformada
   portaria.ws.send('{ isto nao e json')

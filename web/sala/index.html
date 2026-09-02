@@ -14,12 +14,12 @@
       letter-spacing: 0.07em; color: var(--tinta-fraca); margin-bottom: 0.4rem;
     }
     .entrada select { margin-bottom: 1rem; }
-    /* A turma lembrada é um palpite anunciado, não uma decisão tomada. */
-    .lembrada {
-      margin: -0.5rem 0 1rem;
-      font-size: var(--t-detalhe);
-      color: var(--estado-chamado);
-      font-weight: 500;
+    /* A turma do aparelho é um fato, não um palpite: ela vem da escola. */
+    .turma-do-aparelho {
+      font-size: var(--t-nome);
+      font-weight: 600;
+      color: var(--tinta);
+      margin: 0 0 0.4rem;
     }
     /*
       O rodapé é fixo, então o palco precisa terminar acima dele.
@@ -77,18 +77,25 @@
 </head>
 <body>
 
+  <!--
+    A turma vem do APARELHO, e por isso não há mais o que escolher aqui.
+
+    Até a fase 2 esta tela tinha um seletor de turma, e a memória da 1.8 servia
+    para pré-selecionar a última usada — com um aviso, porque entrar na sala
+    errada é ver a criança de outra turma sumir da tela sem explicação, e não
+    ver a da sua. O próprio plano dizia que aquilo valia "até existir login".
+
+    Agora existe. O tablet foi autorizado como a sala do 3º ano pela escola, e
+    a tela não oferece nada que contrarie isso — o erro deixou de ser possível
+    em vez de ficar sendo avisado.
+
+    O botão continua, e continua sendo necessário: destravar o áudio e pedir o
+    bloqueio de tela exigem um gesto do usuário, e este é o gesto.
+  -->
   <div id="entrada" class="entrada">
     <h2>Tela da sala</h2>
-    <p>Escolha a turma. Você será avisado quando o responsável de um aluno chegar no portão.</p>
-    <label for="turma">Turma</label>
-    <select id="turma"></select>
-    <!--
-      A turma lembrada aparece PRÉ-SELECIONADA e anunciada, nunca aplicada
-      sozinha. Entrar na sala errada é ver a criança de outra turma sumir da
-      tela sem explicação — e não ver a da sua. Enquanto não houver login, o
-      toque em "Entrar" é a confirmação.
-    -->
-    <p class="lembrada" id="lembrada" hidden></p>
+    <p class="turma-do-aparelho" id="turmaDoAparelho"></p>
+    <p>Você será avisado quando o responsável de um aluno chegar no portão.</p>
     <button class="principal larga" id="entrar">Entrar na sala</button>
   </div>
 
@@ -159,6 +166,7 @@
   <script type="module">
     import { criarCartao } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
+    import { exigirAparelho } from '../comum/porta.js'
     import {
       destravar,
       tocarAbertura,
@@ -172,8 +180,6 @@
     } from '../comum/som.js'
     import { manterTelaAcesa, aoMudarTelaAcesa } from '../comum/tela-acesa.js'
     import { podeSeguir } from '../comum/alerta.js'
-
-    const TURMA_LEMBRADA = 'janelinhas:turma'
 
     /*
       O código vai para a trilha; a frase fica aqui.
@@ -193,56 +199,21 @@
       ['outro', 'Outro motivo'],
     ]
 
-    const TURMAS = [
-      ['Educação Infantil', ['Pré 1', 'Pré 2']],
-      ['Fundamental I', ['1º ano', '2º ano', '3º ano', '4º ano', '5º ano']],
-      ['Fundamental II', ['6º ano', '7º ano', '8º ano', '9º ano']],
-    ]
-
-    const seletor = document.getElementById('turma')
-    for (const [segmento, turmas] of TURMAS) {
-      const grupo = document.createElement('optgroup')
-      grupo.label = segmento
-      for (const t of turmas) {
-        const opcao = document.createElement('option')
-        opcao.value = t
-        opcao.textContent = t
-        grupo.append(opcao)
-      }
-      seletor.append(grupo)
-    }
-    const TODAS_AS_TURMAS = TURMAS.flatMap(([, t]) => t)
-
-    function turmaGuardada() {
-      try {
-        const t = localStorage.getItem(TURMA_LEMBRADA)
-        // Valida contra a lista: uma turma renomeada ou um valor adulterado no
-        // armazenamento deixaria o seletor num estado que não existe.
-        return TODAS_AS_TURMAS.includes(t) ? t : null
-      } catch {
-        return null
-      }
-    }
-
     /*
-      A URL manda sobre o que foi lembrado.
+      Quem e este aparelho. A tela nao existe antes disso.
 
-      Um link com `?turma=` é alguém dizendo qual sala é esta agora — a memória
-      do aparelho é só o palpite da última vez.
+      A porta fica na frente ate o codigo ser aceito; so entao sabemos qual sala
+      esta e podemos escrever a turma na tela.
     */
-    const daUrl = new URLSearchParams(location.search).get('turma')
-    const lembrada = turmaGuardada()
-    const aviso = document.getElementById('lembrada')
+    const aparelho = await exigirAparelho()
+    const turmaDoAparelho = aparelho.turma
 
-    if (daUrl) {
-      seletor.value = daUrl
-    } else if (lembrada) {
-      seletor.value = lembrada
-      aviso.textContent = `Última turma usada neste aparelho: ${lembrada}. Confira antes de entrar.`
-      aviso.hidden = false
-    }
+    const rotuloTurma = document.getElementById('turmaDoAparelho')
+    rotuloTurma.textContent = turmaDoAparelho
+      ? `Esta é a tela do ${turmaDoAparelho}.`
+      : 'Este aparelho não está autorizado como sala.'
 
-    const botaoMudo = document.getElementById('mudo')
+        const botaoMudo = document.getElementById('mudo')
     const rede = document.getElementById('rede')
     const grade = document.getElementById('grade')
     const faixa = document.getElementById('faixa')
@@ -322,20 +293,14 @@
     document.getElementById('entrar').onclick = () => {
       destravar()
       manterTelaAcesa()
-      turma = seletor.value
-      try {
-        localStorage.setItem(TURMA_LEMBRADA, turma)
-      } catch {
-        /* sem armazenamento: vale só para esta sessão */
-      }
+      turma = turmaDoAparelho
+
       document.getElementById('entrada').hidden = true
       document.getElementById('app').hidden = false
       document.getElementById('turmaAtual').textContent = turma
       document.title = `${turma} — Janelinhas do Saber`
 
       conexao = ligar({
-        papel: 'sala',
-        turma,
         aoEstadoDaRede: (estado) => {
           rede.dataset.rede = estado
           rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'

@@ -143,6 +143,7 @@
     import { buscar } from '../comum/busca.js'
     import { criarLinha, etiquetaDe, etiquetaDoEstado } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
+    import { exigirAparelho } from '../comum/porta.js'
     import { podeSeguir } from '../comum/alerta.js'
 
     const rede = document.getElementById('rede')
@@ -194,8 +195,16 @@
     ]
     const PRIORIDADE = Object.fromEntries(GRUPOS.map(([e], i) => [e, i]))
 
+    /*
+      Nada da tela existe antes de o aparelho estar autorizado.
+
+      A porta fica na frente ate o codigo ser aceito. Desenhar a lista e depois
+      descobrir que ninguem pode ve-la seria mostrar nome de crianca a quem o
+      servidor vai recusar em seguida.
+    */
+    await exigirAparelho()
+
     const conexao = ligar({
-      papel: 'portaria',
       aoEstadoDaRede: (estado) => {
         rede.dataset.rede = estado
         rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'
@@ -229,7 +238,7 @@
 
     async function recarregarCadastro(mensagem) {
       try {
-        alunos = await fetch('/alunos?papel=portaria').then((r) => r.json())
+        alunos = await fetch('/alunos').then((r) => r.json())
         campo.value = ''
         campo.oninput()
         if (mensagem) mostrarAviso(mensagem)
@@ -247,7 +256,7 @@
       setTimeout(() => { aviso.innerHTML = '' }, 5000)
     }
 
-    fetch('/alunos?papel=portaria')
+    fetch('/alunos')
       .then((r) => r.json())
       .then((lista) => { alunos = lista })
       .catch(() => mostrarAviso('Não consegui carregar a lista de alunos.'))
@@ -623,7 +632,7 @@
 
       let r
       try {
-        const resposta = await fetch('/importar?papel=portaria', { method: 'POST', body: texto })
+        const resposta = await fetch('/importar', { method: 'POST', body: texto })
         r = await resposta.json()
       } catch {
         mostrarAviso('Não consegui falar com o servidor.')

@@ -12,11 +12,27 @@
  * com a mao ocupada e a fila andando. A sala abre uma vez por turno, num
  * aparelho parado.
  *
- * Mede os bytes servidos, sem compressao de transporte: e o pior caso, e o
- * numero que nao depende de o proxy do dia estar ligado. O que este script nao
- * ve — imagem embutida, importacao dinamica — nao existe hoje, e um dia que
- * passar a existir o numero aqui vai mentir. Por isso ele lista o que somou.
+ * Mede as DUAS coisas, e cobra so uma.
+ *
+ * O teto do plano e sobre bytes TRANSFERIDOS, e todo servidor serve texto
+ * comprimido — inclusive a Cloudflare, por padrao. Cobrar o tamanho cru
+ * criaria uma pressao errada: comentario nao viaja pela rede, mas pesa no
+ * arquivo, e um portao que conta bytes crus empurra alguem a apagar a
+ * explicacao de por que uma trava existe para caber num numero que o usuario
+ * nunca sente.
+ *
+ * Entao o relatorio mostra os dois, e o teto vale para o comprimido. O gzip
+ * daqui e uma estimativa deterministica do que a rede entrega — nao depende
+ * de o proxy do dia estar ligado, e nao muda entre maquinas.
+ *
+ * O que este script nao ve — imagem embutida, importacao dinamica — nao existe
+ * hoje, e um dia que passar a existir o numero aqui vai mentir. Por isso ele
+ * lista o que somou.
  */
+import { TOKEN, comoAparelho } from './aparelho.mjs'
+
+import { gzipSync } from 'node:zlib'
+
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'
 const TETO = 120 * 1024
 
@@ -26,12 +42,25 @@ const TETO = 120 * 1024
   dispara depois do estrago nao e teto, e permissao.
 */
 
+/*
+  Gzip nivel 9. Nao e o que um servidor usa em tempo real (custaria CPU por
+  requisicao), mas e deterministico e fica dentro de poucos por cento do que a
+  Cloudflare entrega com brotli. O que importa e a ORDEM de grandeza e a
+  comparacao entre execucoes.
+*/
+const comprimir = (dados) => gzipSync(dados, { level: 9 }).byteLength
+
+const pesar = (caminho, texto) => {
+  const dados = new TextEncoder().encode(texto)
+  return { caminho, bytes: dados.byteLength, comprimido: comprimir(dados) }
+}
+
 /** Tudo o que a portaria pede antes de estar utilizavel. */
 async function baixar(caminho) {
-  const r = await fetch(`${BASE}${caminho}`)
+  const r = await fetch(`${BASE}${caminho}`, comoAparelho(TOKEN.portaria))
   if (!r.ok) throw new Error(`${caminho} respondeu ${r.status}`)
-  const bytes = (await r.arrayBuffer()).byteLength
-  return { caminho, bytes }
+  const dados = new Uint8Array(await r.arrayBuffer())
+  return { caminho, bytes: dados.byteLength, comprimido: comprimir(dados) }
 }
 
 function referencias(html) {
@@ -81,8 +110,8 @@ const paginas = []
 const vistos = new Set()
 const fila = []
 
-const html = await fetch(`${BASE}/portaria/`).then((r) => r.text())
-paginas.push({ caminho: '/portaria/', bytes: new TextEncoder().encode(html).length })
+const html = await fetch(`${BASE}/portaria/`, comoAparelho(TOKEN.portaria)).then((r) => r.text())
+paginas.push(pesar('/portaria/', html))
 for (const caminho of referencias(html)) fila.push(caminho)
 
 while (fila.length > 0) {
@@ -90,10 +119,10 @@ while (fila.length > 0) {
   if (vistos.has(caminho)) continue
   vistos.add(caminho)
 
-  const r = await fetch(`${BASE}${caminho}`)
+  const r = await fetch(`${BASE}${caminho}`, comoAparelho(TOKEN.portaria))
   if (!r.ok) throw new Error(`${caminho} respondeu ${r.status}`)
   const texto = await r.text()
-  paginas.push({ caminho, bytes: new TextEncoder().encode(texto).length })
+  paginas.push(pesar(caminho, texto))
 
   if (caminho.endsWith('.js')) {
     for (const m of texto.matchAll(IMPORTA)) fila.push(resolver(caminho, m[1]))
@@ -108,22 +137,31 @@ while (fila.length > 0) {
 }
 
 const total = paginas.reduce((s, p) => s + p.bytes, 0)
-
-paginas.sort((a, b) => b.bytes - a.bytes)
-for (const p of paginas) {
-  console.log(`  ${String(Math.round(p.bytes / 102.4) / 10).padStart(6)} KB  ${p.caminho}`)
-}
+const totalComprimido = paginas.reduce((s, p) => s + p.comprimido, 0)
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`
-console.log(`\n  total: ${kb(total)} em ${paginas.length} arquivos (teto ${kb(TETO)})`)
 
-if (total > TETO) {
+paginas.sort((a, b) => b.comprimido - a.comprimido)
+console.log('\n  comprimido      cru   arquivo')
+for (const p of paginas) {
+  console.log(
+    `  ${kb(p.comprimido).padStart(9)}  ${kb(p.bytes).padStart(9)}   ${p.caminho}`,
+  )
+}
+
+console.log(
+  `\n  total: ${kb(totalComprimido)} na rede (${kb(total)} crus) ` +
+    `em ${paginas.length} arquivos`,
+)
+console.log(`  teto:  ${kb(TETO)} transferidos`)
+
+if (totalComprimido > TETO) {
   console.error(
-    `\nORCAMENTO ESTOURADO: ${kb(total - TETO)} acima do teto.\n` +
+    `\nORCAMENTO ESTOURADO: ${kb(totalComprimido - TETO)} acima do teto.\n` +
       'Nao suba isso sem decidir o que sai. A rede e o wifi de uma escola.\n',
   )
   process.exit(1)
 }
 
-console.log(`  folga: ${kb(TETO - total)}\n`)
+console.log(`  folga: ${kb(TETO - totalComprimido)}\n`)
 process.exit(0)

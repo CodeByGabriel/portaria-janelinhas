@@ -508,6 +508,60 @@ Portões ao fim da fase: `npm test` 173 + 43, `typecheck`, `fim-a-fim` (48), `te
 
 ## 6. Fase 2 — "A quem" e identidade
 
+#### 2.2 — feita primeiro, e por quê
+
+O plano listava 2.1 antes de 2.2. Inverti: **2.2 primeiro**, porque ela é a cerca e a 2.1
+põe mais coisa no quintal. Com a ordem original, as rotas de responsáveis nasceriam
+abertas e seriam fechadas depois — e "fechar depois" é como se esquece de fechar uma.
+
+**O token é opaco, e o banco guarda só a impressão.** SHA-256, hex. Um vazamento da tabela
+de aparelhos não entrega nenhum token utilizável, do mesmo jeito que uma tabela de senhas
+não deve entregar senha. Como o token é aleatório de 32 bytes, não há dicionário a
+percorrer: hash simples basta.
+
+**Opaco em vez de assinado, porque revogar precisa ser imediato.** Um token assinado
+carregaria papel e turma e dispensaria consulta ao banco — mas revogá-lo exigiria uma
+lista de bloqueio, que é a consulta ao banco de volta, com uma indireção a mais. Aparelho
+perdido às 15h não pode continuar chamando criança às 15h05.
+
+**Cookie, e não parâmetro nem cabeçalho.** `HttpOnly` tira o token do alcance de um XSS;
+`SameSite=Strict` impede que um link mandado num grupo aja na sessão de quem clicar. E o
+navegador manda cookie sozinho no aperto de mão do WebSocket, o que dá **um caminho só**
+para as duas telas e para as ferramentas — verifiquei que o `WebSocket` do Node também
+envia o cabeçalho, então não foi preciso inventar um segundo transporte.
+
+**A recusa é uma só.** Token inexistente e token revogado devolvem exatamente a mesma
+resposta, byte a byte. A diferença seria um oráculo: quem varre tokens saberia quando
+acertou um que já existiu.
+
+**O modo demonstração se anuncia.** Os tokens de demonstração são previsíveis de propósito
+— as ferramentas e a apresentação na escola precisam entrar sem ninguém digitar nada — e
+por isso as telas mostram uma tarja vermelha permanente quando ele está ligado. Um sistema
+com tokens conhecidos que *não* diz isso é uma armadilha esperando alguém confundi-lo com
+produção. O interruptor vive em `.dev.vars`, que o `wrangler dev` lê e o `wrangler deploy`
+não envia: não é disciplina de quem opera, é o mecanismo que impede.
+
+**A 1.8 foi aposentada, como o próprio plano previa.** A memória da última turma existia
+"até existir login". Existe. A tela da sala não tem mais seletor de turma: o tablet foi
+autorizado como a sala do 3º ano, e o erro deixou de ser *possível* em vez de ficar sendo
+avisado.
+
+Três coisas que só apareceram rodando:
+
+**O token de demonstração tinha `é`.** `demonstracao-sala-pré-1` era aceito pelo servidor e
+recusado na rede: cookie viaja em cabeçalho HTTP, que é ASCII, e as duas pontas
+codificavam o acento de formas diferentes. Token agora é ASCII por construção.
+
+**O portão de peso media a coisa errada.** Ele contava bytes crus, e o plano fala em
+*transferidos*. A diferença não é acadêmica: com 114 KB crus contra um teto de 120, o
+próximo passo natural seria apagar comentário — que não viaja pela rede — para caber num
+número que ninguém sente. Agora ele mede os dois e cobra o comprimido: **67,4 KB na rede,
+52,6 KB de folga**.
+
+**A porta deixava a aplicação espiar por baixo.** `max-width` na caixa fixa fazia o
+cabeçalho verde aparecer nas beiradas. Enquanto o aparelho não está autorizado não pode
+haver aplicação por baixo — nem de relance.
+
 ### 2.1 Responsáveis autorizados (G)
 Nome, vínculo, telefone; foto só com consentimento. "Entregar" passa a exigir a escolha do responsável e a trilha grava o adulto. A restrição da 1.9 evolui para nomeada. **Habilita a chamada agrupada de irmãos** (1.4), que passa a usar "mesmo responsável" como vínculo.
 

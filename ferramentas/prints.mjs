@@ -20,6 +20,8 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SAIDA = process.env.SAIDA ? join(RAIZ, process.env.SAIDA) : join(RAIZ, 'prints')
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const PORTA = 9222
+import { TOKEN, cookieDe, comoAparelho } from './aparelho.mjs'
+
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'
 
 /*
@@ -44,6 +46,28 @@ if (!VISOES.includes(VISAO)) {
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const TELAS = [
+  {
+    /*
+      A porta de entrada.
+
+      E a primeira tela que a escola vai ver em cada tablet, e a unica que
+      existe quando o aparelho ainda nao foi autorizado. Sem print dela, a
+      documentacao mostraria um app que ninguem consegue abrir da primeira vez.
+
+      A tarja vermelha em cima e do modo demonstracao, e aparece de proposito:
+      um servidor com tokens conhecidos que nao anuncia isso e uma armadilha.
+    */
+    arquivo: 'porta.png',
+    url: `${BASE}/portaria/`,
+    largura: 430,
+    altura: 620,
+    espera: 1600,
+    antes: async (cdp) => {
+      await cdp.chamar('Network.clearBrowserCookies')
+    },
+    roteiro: null,
+    pronto: `document.querySelector('.porta') !== null`,
+  },
   {
     arquivo: 'portaria.png',
     url: `${BASE}/portaria/`,
@@ -191,17 +215,38 @@ class Cdp {
   como "quadro vazio" e nao limpava nada — foi assim que o print da caixa de
   restricao saiu sem a caixa, com a crianca ja em saida e sem botao para tocar.
 */
-function ligarWs(query) {
+/*
+  Autoriza o navegador do print colocando o cookie do aparelho.
+
+  O print existe para mostrar o produto, e o produto agora tem uma porta. Ela
+  tem print proprio (`porta.png`); nas outras telas a ferramenta entra como um
+  tablet ja autorizado, que e o estado em que a escola vai usar o app todo dia.
+*/
+async function autorizarNavegador(cdp, token) {
+  await cdp.chamar('Network.enable')
+  await cdp.chamar('Network.setCookie', {
+    name: 'janelinhas_dispositivo',
+    value: token,
+    domain: '127.0.0.1',
+    path: '/',
+    httpOnly: true,
+    sameSite: 'Strict',
+  })
+}
+
+function ligarWs(token) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`${BASE.replace(/^http/, 'ws')}/ws?${query}`)
+    const ws = new WebSocket(`${BASE.replace(/^http/, 'ws')}/ws`, {
+      headers: { Cookie: cookieDe(token) },
+    })
     ws.__retratos = []
     ws.addEventListener('message', (e) => {
       const m = JSON.parse(e.data)
       if (m.tipo === 'retrato') ws.__retratos.push(m)
     })
     ws.addEventListener('open', () => resolve(ws))
-    ws.addEventListener('error', () => reject(new Error(`nao ligou: ${query}`)))
-    setTimeout(() => reject(new Error(`timeout: ${query}`)), 15000)
+    ws.addEventListener('error', () => reject(new Error(`nao ligou como ${token}`)))
+    setTimeout(() => reject(new Error(`timeout ligando como ${token}`)), 15000)
   })
 }
 
@@ -213,8 +258,8 @@ const FECHA_ESTADO = {
 }
 
 async function semear() {
-  const portaria = await ligarWs('papel=portaria')
-  const sala = await ligarWs('papel=sala&turma=3%C2%BA%20ano')
+  const portaria = await ligarWs(TOKEN.portaria)
+  const sala = await ligarWs(TOKEN.sala('3º ano'))
 
   /*
     Comeca de quadro conhecido.
@@ -311,12 +356,21 @@ async function principal() {
   const cdp = new Cdp(ws)
   await cdp.chamar('Page.enable')
   await cdp.chamar('Runtime.enable')
+  await autorizarNavegador(cdp, TOKEN.portaria)
   if (VISAO !== 'none') {
     await cdp.chamar('Emulation.setEmulatedVisionDeficiency', { type: VISAO })
     console.log(`  visao emulada: ${VISAO}`)
   }
 
   for (const tela of TELAS) {
+    /*
+      Algumas telas precisam de um preparo ANTES da navegacao — a porta de
+      entrada, por exemplo, so existe quando o aparelho NAO esta autorizado, e
+      o cookie precisa sair antes de a pagina carregar.
+    */
+    if (tela.antes) await tela.antes(cdp)
+    else await autorizarNavegador(cdp, TOKEN.portaria)
+
     await cdp.chamar('Emulation.setDeviceMetricsOverride', {
       width: tela.largura,
       height: tela.altura,

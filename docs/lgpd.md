@@ -5,7 +5,7 @@ coleta, onde guarda, por quanto tempo e quem alcança — escrito pela engenhari
 do código, para que um advogado tenha o que analisar. **Nenhum dado real de aluno deve
 entrar no sistema antes de revisão jurídica e da decisão da escola sobre a base legal.**
 
-Atualizado em 02/09/2026 (a coluna `razao` entrou na 1.1). Cada afirmação aponta o arquivo que a sustenta; quando o código
+Atualizado em 02/09/2026 (a `razao` entrou na 1.1; a autenticação por aparelho, na 2.2). Cada afirmação aponta o arquivo que a sustenta; quando o código
 mudar, este documento mente até ser atualizado junto.
 
 ---
@@ -214,13 +214,25 @@ planilha nova sem aquele aluno (`trocarCadastro` substitui o cadastro inteiro).
 |---|---|
 | Portaria | O cadastro **inteiro** e a trilha inteira, `razao` incluída |
 | Sala | Só as chamadas da **própria turma**, filtrado no servidor, na leitura e na escrita |
-| Qualquer um com o link | **Tudo o que a portaria alcança** — ver abaixo |
+| Qualquer um com o link | **Nada.** Sem aparelho autorizado, toda rota responde 401 |
 
-> 🔴 **O maior furo aberto, e ele é conhecido.** O papel vem da *query string*
-> (`?papel=portaria`). Não há autenticação. Quem souber o endereço vê o cadastro inteiro.
-> Isso é aceitável numa demonstração com dados fictícios e **inaceitável com dados
-> reais**. A correção é a Fase 2 (token por dispositivo). **Não subir com dado real antes
-> disso.** `TODO(fase2)`
+> ✅ **Fechado na 2.2.** O papel vinha da *query string* (`?papel=portaria`), o que nunca foi
+> autenticação: era uma etiqueta que o cliente colava em si mesmo, e quem soubesse o
+> endereço via o cadastro inteiro. Agora a escola emite um **token por aparelho**, ele é
+> colado uma vez e vira um cookie `HttpOnly` + `SameSite=Strict` que o JavaScript da
+> página não alcança. Revogar tem efeito imediato — aparelho perdido às 15h não chama
+> criança às 15h05.
+>
+> Emitir aparelho exige uma **chave de administração** que é segredo do Worker e não
+> existe em tela nenhuma: um tablet roubado da portaria não fabrica mais aparelhos. Ele
+> consegue *revogar* — escolha deliberada, porque a alternativa faria a escola depender de
+> achar um notebook no dia em que um aparelho some. Sabotagem se desfaz emitindo de novo;
+> aparelho perdido que continua valendo, não.
+>
+> **O que isso NÃO resolve:** o app continua sem saber *qual pessoa* está operando — sabe
+> qual aparelho. A trilha responde "o tablet da sala do 3º ano liberou", não "a professora
+> Fulana liberou". Identidade de pessoa é outra decisão, e ela não é necessária para subir
+> dado real.
 
 > 🟡 **Minimização ao contrário.** `/alunos` entrega **o cadastro inteiro ao navegador**
 > e a busca roda no cliente (`src/portaria.ts:120-123`). Foi escolha de latência —
@@ -285,7 +297,7 @@ razoável. Isso precisa estar no contrato de operador, não só aqui. `TODO(juri
 
 1. Decisão da base legal (§4) — **bloqueante**
 2. Contrato de operador assinado (§1) — **bloqueante**
-3. Autenticação por dispositivo, Fase 2 (§6) — **bloqueante**
+3. ~~Autenticação por dispositivo~~ — **feito na 2.2**
 4. Encarregado nomeado e contato publicado (§7)
 5. Aviso de privacidade específico, entregue às famílias
 6. Decisão sobre região do armazenamento (§6)

@@ -495,6 +495,100 @@ body {
   font-size: var(--t-nome);
 }
 
+/* ---------- porta de entrada do aparelho ---------- */
+
+/*
+  A porta cobre a tela inteira e nao tem como ser dispensada.
+
+  Nao e um aviso que a pessoa fecha: enquanto o aparelho nao esta autorizado
+  nao ha tela nenhuma por baixo, porque desenhar a lista e depois descobrir
+  que ninguem pode ve-la seria mostrar nome de crianca a quem o servidor vai
+  recusar em seguida.
+*/
+.porta {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--fundo);
+  padding: 3rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/*
+  O fundo cobre a TELA; a largura de leitura limita o CONTEUDO.
+
+  A primeira versao punha `max-width` na propria caixa fixa, e o resultado era
+  o cabecalho verde da pagina aparecendo nas beiradas, por tras da porta — uma
+  tela que a pessoa nao pode usar, espiando por baixo de outra que ela precisa
+  usar. Cobrir tudo e o ponto: enquanto o aparelho nao esta autorizado, nao ha
+  aplicacao por baixo.
+*/
+.porta > * {
+  width: 100%;
+  max-width: 26rem;
+  margin-inline: auto;
+}
+
+.porta h2 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: var(--t-titulo);
+  font-weight: 600;
+  margin: 0;
+}
+
+.porta p {
+  color: var(--tinta-media);
+  font-size: var(--t-detalhe);
+  margin: 0 0 0.6rem;
+}
+
+.porta label {
+  font-size: var(--t-etiqueta);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-etiqueta);
+  color: var(--tinta-fraca);
+}
+
+.porta input { margin-bottom: 0.6rem; }
+
+.porta-erro {
+  color: var(--alerta);
+  font-weight: 600;
+  font-size: var(--t-detalhe);
+  margin: 0 0 0.6rem;
+}
+
+/*
+  A tarja do modo demonstracao.
+
+  Fixa no topo, acima de tudo, inclusive da porta: um servidor com tokens
+  conhecidos que nao anuncia isso e uma armadilha esperando alguem confundi-lo
+  com producao. Ela nao se fecha.
+*/
+.tarja-demo {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 0.4rem 0.9rem;
+  background: var(--alerta);
+  color: var(--tinta-clara);
+  font-size: var(--t-etiqueta);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+/* Empurra o conteudo para baixo da tarja, quando ela existe. */
+body:has(.tarja-demo) .cabecalho,
+body:has(.tarja-demo) .porta,
+body:has(.tarja-demo) .entrada { margin-top: 1.9rem; }
+
 /* ---------- cartao do aluno ---------- */
 
 .cartao {

@@ -16,7 +16,15 @@ function esperaDaTentativa(tentativa) {
   return Math.min(500 * 2 ** tentativa, TETO_MS)
 }
 
-export function ligar({ papel, turma, aoRetrato, aoRecusa, aoEstadoDaRede }) {
+/*
+  Quem e este aparelho NAO viaja mais na URL.
+
+  Ate a fase 2 a conexao levava `?papel=portaria&turma=...` — uma etiqueta que o
+  cliente colava em si mesmo. Agora o navegador manda sozinho o cookie do
+  aparelho no aperto de mao do WebSocket, e o servidor decide. Nao ha o que
+  passar daqui.
+*/
+export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
   let ws = null
   let tentativa = 0
   let vivo = true
@@ -26,9 +34,7 @@ export function ligar({ papel, turma, aoRetrato, aoRecusa, aoEstadoDaRede }) {
     if (!vivo) return
 
     const protocolo = location.protocol === 'https:' ? 'wss' : 'ws'
-    const params = new URLSearchParams({ papel })
-    if (turma) params.set('turma', turma)
-    ws = new WebSocket(`${protocolo}://${location.host}/ws?${params}`)
+    ws = new WebSocket(`${protocolo}://${location.host}/ws`)
 
     ws.onopen = () => {
       tentativa = 0

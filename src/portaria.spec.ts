@@ -20,8 +20,44 @@ function portaria() {
   return env.PORTARIA.get(env.PORTARIA.idFromName('escola'))
 }
 
-const pedir = (caminho: string, init?: RequestInit) =>
-  portaria().fetch(new Request(`http://do${caminho}`, init))
+/*
+  Os aparelhos de demonstracao.
+
+  Desde a 2.2 o papel nao vem mais da URL: vem de um token por aparelho, num
+  cookie. Estes tokens sao os que o Durable Object semeia quando `MODO_DEMO`
+  esta ligado — previsiveis de proposito, para o teste nao precisar emitir um
+  aparelho antes de cada verificacao.
+*/
+const TOKEN = {
+  portaria: 'demonstracao-portaria-0000',
+  sala: (turma: string) =>
+    'demonstracao-sala-' +
+    turma
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase(),
+}
+
+/*
+  Todo pedido leva um cookie de aparelho.
+
+  O padrao e a portaria, que e quem faz a maioria das rotas. Passar
+  `{ token: null }` manda o pedido SEM cookie — e assim que se testa o portao.
+*/
+const pedir = (
+  caminho: string,
+  init: RequestInit & { token?: string | null } = {},
+) => {
+  const { token, ...resto } = init
+  const escolhido = token === undefined ? TOKEN.portaria : token
+  const headers: Record<string, string> = {
+    ...((resto.headers as Record<string, string>) ?? {}),
+  }
+  if (escolhido) headers.Cookie = `janelinhas_dispositivo=${escolhido}`
+  return portaria().fetch(new Request(`http://do${caminho}`, { ...resto, headers }))
+}
 
 type Retrato = { tipo: string; chamadas: { alunoId: string; estado: string }[] }
 type Ligacao = WebSocket & { __retratos: Retrato[] }
@@ -36,9 +72,11 @@ type Ligacao = WebSocket & { __retratos: Retrato[] }
  * Dava "nenhum retrato chegou" em testes cujo codigo estava certo, e passava
  * por sorte de escalonamento nos outros.
  */
-async function ligar(query: string): Promise<Ligacao> {
+async function ligar(token: string): Promise<Ligacao> {
   const resposta = await portaria().fetch(
-    new Request(`http://do/ws?${query}`, { headers: { Upgrade: 'websocket' } }),
+    new Request('http://do/ws', {
+      headers: { Upgrade: 'websocket', Cookie: `janelinhas_dispositivo=${token}` },
+    }),
   )
   const ws = resposta.webSocket
   if (!ws) throw new Error(`sem webSocket na resposta (status ${resposta.status})`)
@@ -117,55 +155,85 @@ async function retratoInicial(ws: Ligacao, msLimite = 3000): Promise<Retrato> {
   return ws.__retratos[0]
 }
 
-describe('gate de papel — furo C2, fail-closed', () => {
-  it('recusa a conexao sem papel', async () => {
-    expect((await pedir('/alunos')).status).toBe(400)
+describe('gate de aparelho — o furo C2, agora com identidade de verdade', () => {
+  /*
+    O C2 original: `papel === 'sala' ? 'sala' : 'portaria'` fazia "Sala",
+    "SALA", " sala", "professora", vazio e ausente virarem TODOS portaria — e a
+    portaria enxerga a escola inteira. Uma maiuscula num bookmark expunha nome,
+    turma e estado de saida de todas as criancas, sem sinal de erro na tela.
+
+    O conserto de entao foi validar o papel. Mas papel na URL nunca foi
+    identidade: era uma etiqueta que o cliente colava em si mesmo, e qualquer
+    pessoa com o endereco continuava virando portaria. Estes testes guardam o
+    portao que substituiu aquilo — e a forma do C2 continua aqui, porque a
+    licao e a mesma: entrada nao reconhecida NAO vira acesso ampliado.
+  */
+  it('sem cookie de aparelho, nenhuma rota abre', async () => {
+    for (const caminho of ['/alunos', '/registro', '/importar', '/alerta?alunoId=a01']) {
+      expect((await pedir(caminho, { token: null })).status).toBe(401)
+    }
   })
 
-  it.each(['Sala', 'SALA', 'professora', '', ' sala', 'PORTARIA'])(
-    'recusa o papel "%s"',
-    async (papel) => {
-      const r = await pedir(`/alunos?papel=${encodeURIComponent(papel)}`)
-      expect(r.status).toBe(400)
-    },
-  )
+  it.each([
+    'Sala',
+    'SALA',
+    'professora',
+    'portaria',
+    'demonstracao-portaria-000',
+    'demonstracao-portaria-00000',
+    'DEMONSTRACAO-PORTARIA-0000',
+  ])('token "%s" nao vira aparelho nenhum', async (token) => {
+    expect((await pedir('/alunos', { token })).status).toBe(401)
+  })
 
-  it('aceita exatamente portaria e sala', async () => {
-    expect((await pedir('/alunos?papel=portaria')).status).toBe(200)
-    expect((await pedir('/alunos?papel=sala')).status).toBe(403)
+  it('e o token errado nao vira portaria por engano', async () => {
+    // O ponto do C2: quando a entrada nao e reconhecida, o resultado e recusa —
+    // nunca o papel de maior alcance.
+    const r = await pedir('/alunos', { token: 'quase-demonstracao-portaria' })
+    expect(r.status).toBe(401)
+    expect(await r.text()).not.toContain('nome')
+  })
+
+  it('o aparelho certo abre, e so o que lhe cabe', async () => {
+    expect((await pedir('/alunos')).status).toBe(200)
+    expect((await pedir('/alunos', { token: TOKEN.sala('Pré 1') })).status).toBe(403)
   })
 })
 
 describe('rotas HTTP — furo C3', () => {
   it('so a portaria le o cadastro', async () => {
-    expect((await pedir('/alunos?papel=sala')).status).toBe(403)
-    const r = await pedir('/alunos?papel=portaria')
+    expect((await pedir('/alunos', { token: TOKEN.sala('Pré 1') })).status).toBe(403)
+    const r = await pedir('/alunos')
     expect(r.status).toBe(200)
     expect((await r.json<unknown[]>()).length).toBe(44)
   })
 
   it('so a portaria le a trilha', async () => {
-    expect((await pedir('/registro?papel=sala')).status).toBe(403)
-    expect((await pedir('/registro?papel=portaria')).status).toBe(200)
+    expect((await pedir('/registro', { token: TOKEN.sala('Pré 1') })).status).toBe(403)
+    expect((await pedir('/registro')).status).toBe(200)
   })
 
   it('importar exige POST', async () => {
-    expect((await pedir('/importar?papel=portaria')).status).toBe(405)
+    expect((await pedir('/importar')).status).toBe(405)
   })
 
   it('importar exige o papel da portaria', async () => {
-    const r = await pedir('/importar?papel=sala', { method: 'POST', body: 'Nome,Turma' })
+    const r = await pedir('/importar', {
+      token: TOKEN.sala('Pré 1'),
+      method: 'POST',
+      body: 'Nome,Turma',
+    })
     expect(r.status).toBe(403)
   })
 
   it('caminho desconhecido nao vaza nada', async () => {
-    expect((await pedir('/qualquer?papel=portaria')).status).toBe(404)
+    expect((await pedir('/qualquer')).status).toBe(404)
   })
 })
 
 describe('WebSocket — a sala so enxerga a propria turma', () => {
   it('entrega um retrato assim que conecta', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     const retrato = await proximoRetrato(ws)
     expect(retrato.tipo).toBe('retrato')
     expect(Array.isArray(retrato.chamadas)).toBe(true)
@@ -173,9 +241,9 @@ describe('WebSocket — a sala so enxerga a propria turma', () => {
   })
 
   it('REGRESSAO: sala sem turma declarada nao ve ninguem', async () => {
-    const portariaWs = await ligar('papel=portaria')
+    const portariaWs = await ligar(TOKEN.portaria)
     await proximoRetrato(portariaWs)
-    const cega = await ligar('papel=sala')
+    const cega = await ligar(TOKEN.sala('9º ano'))
     await proximoRetrato(cega)
 
     portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
@@ -190,21 +258,53 @@ describe('WebSocket — a sala so enxerga a propria turma', () => {
     cega.close()
   })
 
-  it('REGRESSAO: turma invalida na query nao amplia o que a sala ve', async () => {
-    const portariaWs = await ligar('papel=portaria')
-    await proximoRetrato(portariaWs)
-    const inventada = await ligar('papel=sala&turma=Sexto%20Ano')
-    await proximoRetrato(inventada)
+  it('REGRESSAO: aparelho com turma que deixou de existir NAO vira sessao cega', async () => {
+    /*
+      A assimetria antiga vinha da URL: papel invalido nao conectava, mas turma
+      invalida CONECTAVA e virava sessao cega — a professora entrava, nao via
+      crianca nenhuma, e nao havia erro em lugar nenhum. Ela concluia que
+      ninguem tinha chegado, com um responsavel esperando no portao.
 
-    portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
-    await proximoRetrato(portariaWs)
-    const vista = await proximoRetrato(inventada)
-    expect((vista.chamadas as unknown[]).length).toBe(0)
+      Com a turma vindo do aparelho, a URL nao consegue mais produzir esse
+      estado. Mas ele ainda pode nascer de outro lado, e este e o caso que
+      importa agora: a escola RENOMEIA uma turma, e os tablets emitidos para o
+      nome antigo continuam no banco.
 
-    portariaWs.send(JSON.stringify({ tipo: 'cancelar', alunoId: 'a01' }))
-    portariaWs.close()
-    inventada.close()
+      Aqui o aparelho e inserido direto no SQLite, porque emitir pela rota
+      valida a turma — e o cenario que este teste cobre e justamente o banco
+      guardando algo que a rota nao aceitaria mais.
+    */
+    const { impressaoDe } = await import('./sessao.ts')
+    const impressao = await impressaoDe('aparelho-de-turma-extinta')
+
+    await runInDurableObject(portaria(), (_i, estado) => {
+      estado.storage.sql.exec(
+        `INSERT INTO dispositivos (impressao, papel, turma, apelido, criadoEm, revogadoEm)
+         VALUES (?, 'sala', 'Sexto Ano', 'tablet de turma renomeada', ?, NULL)`,
+        impressao,
+        1_000_000,
+      )
+    })
+
+    // Nao conecta, e nao entra. Erro visivel, nunca sessao vazia em silencio.
+    const ws = await portaria().fetch(
+      new Request('http://do/ws', {
+        headers: {
+          Upgrade: 'websocket',
+          Cookie: 'janelinhas_dispositivo=aparelho-de-turma-extinta',
+        },
+      }),
+    )
+    expect(ws.status).toBe(401)
+    expect(
+      (await pedir('/entrar', {
+        token: null,
+        method: 'POST',
+        body: JSON.stringify({ token: 'aparelho-de-turma-extinta' }),
+      })).status,
+    ).toBe(401)
   })
+
 })
 
 /*
@@ -234,11 +334,11 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
   })
 
   async function importar(csv: string) {
-    return pedir('/importar?papel=portaria', { method: 'POST', body: csv })
+    return pedir('/importar', { method: 'POST', body: csv })
   }
 
   it('a trilha continua integra depois da eviccao', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
     await proximoRetrato(ws)
@@ -246,12 +346,12 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
     await proximoRetrato(ws)
     ws.close()
 
-    const antes = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    const antes = await (await pedir('/registro')).json<unknown[]>()
     expect(antes.length).toBe(2)
 
     await derrubarInstancia()
 
-    const depois = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    const depois = await (await pedir('/registro')).json<unknown[]>()
     expect(depois.length).toBe(2)
     expect(depois).toEqual(antes)
   })
@@ -260,12 +360,12 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
     const r = await importar(PLANILHA)
     expect(r.status).toBe(200)
 
-    const importados = await (await pedir('/alunos?papel=portaria')).json<{ nome: string }[]>()
+    const importados = await (await pedir('/alunos')).json<{ nome: string }[]>()
     expect(importados.length).toBe(3)
 
     await derrubarInstancia()
 
-    const depois = await (await pedir('/alunos?papel=portaria')).json<{ nome: string }[]>()
+    const depois = await (await pedir('/alunos')).json<{ nome: string }[]>()
     expect(depois.length).toBe(3)
     expect(depois.map((a) => a.nome).sort()).toEqual([
       'Ana Beatriz Souza',
@@ -277,9 +377,9 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
   })
 
   it('as chamadas em transito sobrevivem: quem estava liberado continua liberado', async () => {
-    const portariaWs = await ligar('papel=portaria')
+    const portariaWs = await ligar(TOKEN.portaria)
     await proximoRetrato(portariaWs)
-    const sala = await ligar('papel=sala&turma=' + encodeURIComponent('Pré 1'))
+    const sala = await ligar(TOKEN.sala('Pré 1'))
     await proximoRetrato(sala)
 
     portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
@@ -299,7 +399,7 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
 
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     const retrato = await proximoRetrato(nova)
     const chamadas = retrato.chamadas as { alunoId: string; estado: string }[]
     expect(chamadas.length).toBe(1)
@@ -309,23 +409,23 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
   })
 
   it('a versao do cadastro sobrevive, para o tablet saber que a lista venceu', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     const inicial = await proximoRetrato(ws)
     ws.close()
     await importar(PLANILHA)
 
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     const depois = await proximoRetrato(nova)
     expect(depois.cadastro).toBeGreaterThan(inicial.cadastro as number)
     nova.close()
   })
 
   it('entregue sai do disco, nao so da memoria', async () => {
-    const portariaWs = await ligar('papel=portaria')
+    const portariaWs = await ligar(TOKEN.portaria)
     await proximoRetrato(portariaWs)
-    const sala = await ligar('papel=sala&turma=' + encodeURIComponent('Pré 1'))
+    const sala = await ligar(TOKEN.sala('Pré 1'))
     await proximoRetrato(sala)
 
     portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
@@ -339,11 +439,11 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
 
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     const retrato = await proximoRetrato(nova)
     expect((retrato.chamadas as unknown[]).length).toBe(0)
     // mas a trilha guarda as tres transicoes
-    const trilha = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    const trilha = await (await pedir('/registro')).json<unknown[]>()
     expect(trilha.length).toBe(3)
     nova.close()
   })
@@ -356,7 +456,7 @@ describe('tetos de tamanho', () => {
 
   it('recusa planilha maior que o limite', async () => {
     const gigante = 'Nome,Turma\n' + 'Ana Souza,Pré 1\n'.repeat(80_000)
-    const r = await pedir('/importar?papel=portaria', { method: 'POST', body: gigante })
+    const r = await pedir('/importar', { method: 'POST', body: gigante })
     expect(r.status).toBe(413)
     const corpo = await r.json<{ erros: { motivo: string }[] }>()
     expect(corpo.erros[0].motivo).toMatch(/grande demais/)
@@ -364,7 +464,7 @@ describe('tetos de tamanho', () => {
 
   it('a resposta nao carrega um erro por linha invalida', async () => {
     const muitosErros = 'Nome,Turma\n' + 'Ana Souza,Turma Fantasma\n'.repeat(500)
-    const r = await pedir('/importar?papel=portaria', { method: 'POST', body: muitosErros })
+    const r = await pedir('/importar', { method: 'POST', body: muitosErros })
     expect(r.status).toBe(422)
     const corpo = await r.json<{ erros: unknown[]; errosTotal: number }>()
     expect(corpo.erros.length).toBe(100)
@@ -400,7 +500,7 @@ describe('chamada esquecida nao atravessa a noite', () => {
       fechou volta na manha seguinte parecendo responsavel no portao AGORA.
       A professora libera uma crianca para ninguem.
     */
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
     await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
@@ -409,14 +509,14 @@ describe('chamada esquecida nao atravessa a noite', () => {
     await envelhecerNoDisco(1_000_000) // 1970, bem antes de qualquer corte
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     const retrato = await proximoRetrato(nova)
     expect((retrato.chamadas as unknown[]).length).toBe(0)
     nova.close()
   })
 
   it('e a expiracao entra na trilha como acao do sistema, nao da portaria', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
     await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
@@ -425,10 +525,10 @@ describe('chamada esquecida nao atravessa a noite', () => {
     await envelhecerNoDisco(1_000_000)
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     await proximoRetrato(nova)
     const trilha = await (
-      await pedir('/registro?papel=portaria')
+      await pedir('/registro')
     ).json<{ acao: string; papel: string; origem: string; de: string; para: string }[]>()
 
     // O "chamar" continua la: a expiracao acrescenta, nunca reescreve.
@@ -452,13 +552,13 @@ describe('chamada esquecida nao atravessa a noite', () => {
       trancava a secretaria fora da importacao sem saida nenhuma: antes bastava
       reiniciar o servidor, e agora reiniciar nao adianta.
     */
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
     await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
     ws.close()
 
-    const trancado = await pedir('/importar?papel=portaria', {
+    const trancado = await pedir('/importar', {
       method: 'POST',
       body: 'Nome,Turma\nAna Beatriz Souza,Pré 1',
     })
@@ -467,9 +567,9 @@ describe('chamada esquecida nao atravessa a noite', () => {
     await envelhecerNoDisco(1_000_000)
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     await proximoRetrato(nova)
-    const liberado = await pedir('/importar?papel=portaria', {
+    const liberado = await pedir('/importar', {
       method: 'POST',
       body: 'Nome,Turma\nAna Beatriz Souza,Pré 1',
     })
@@ -480,7 +580,7 @@ describe('chamada esquecida nao atravessa a noite', () => {
   it('uma chamada de agora NAO expira', async () => {
     // O outro lado do erro: expirar cedo demais tira do quadro uma crianca com
     // o responsavel esperando no portao neste instante.
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
     await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
@@ -488,19 +588,19 @@ describe('chamada esquecida nao atravessa a noite', () => {
 
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     const retrato = await proximoRetrato(nova)
     expect((retrato.chamadas as unknown[]).length).toBe(1)
     nova.close()
   })
 
   it('a recusa da importacao NOMEIA quem esta em saida', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
     await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
 
-    const r = await pedir('/importar?papel=portaria', {
+    const r = await pedir('/importar', {
       method: 'POST',
       body: 'Nome,Turma\nAna Beatriz Souza,Pré 1',
     })
@@ -554,17 +654,17 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
   }
 
   it('a migracao acrescenta a coluna sem perder o que ja estava la', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.close()
 
     await bancoAntigo()
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     await proximoRetrato(nova)
     const trilha = await (
-      await pedir('/registro?papel=portaria')
+      await pedir('/registro')
     ).json<{ nome: string; razao: string }[]>()
 
     expect(trilha.length).toBe(1)
@@ -588,13 +688,13 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
     await bancoAntigo()
     for (let volta = 0; volta < 3; volta++) {
       await derrubarInstancia()
-      const ws = await ligar('papel=portaria')
+      const ws = await ligar(TOKEN.portaria)
       const retrato = await proximoRetrato(ws)
       expect(retrato.tipo).toBe('retrato')
       ws.close()
     }
 
-    const trilha = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    const trilha = await (await pedir('/registro')).json<unknown[]>()
     expect(trilha.length).toBe(1)
   })
 
@@ -606,8 +706,8 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
       hibernacao. Registro plausivelmente incompleto e o pior defeito possivel
       numa trilha de entrega de crianca — por isso o teste passa pelo disco.
     */
-    const portariaWs = await ligar('papel=portaria')
-    const sala = await ligar('papel=sala&turma=' + encodeURIComponent('Pré 1'))
+    const portariaWs = await ligar(TOKEN.portaria)
+    const sala = await ligar(TOKEN.sala('Pré 1'))
     await retratoInicial(portariaWs)
     await retratoInicial(sala)
 
@@ -624,12 +724,12 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
     sala.close()
     await derrubarInstancia()
 
-    const nova = await ligar('papel=portaria')
+    const nova = await ligar(TOKEN.portaria)
     const retrato = await proximoRetrato(nova)
     expect((retrato.chamadas as { estado: string }[])[0]?.estado).toBe('retorno')
 
     const trilha = await (
-      await pedir('/registro?papel=portaria')
+      await pedir('/registro')
     ).json<{ acao: string; razao: string }[]>()
     const retorno = trilha.find((e) => e.acao === 'retornar')
     expect(retorno?.razao).toBe('esqueceu-material')
@@ -639,8 +739,8 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
   })
 
   it('razao invalida e RECUSADA, e a recusa diz o que aconteceu', async () => {
-    const portariaWs = await ligar('papel=portaria')
-    const sala = await ligar('papel=sala&turma=' + encodeURIComponent('Pré 1'))
+    const portariaWs = await ligar(TOKEN.portaria)
+    const sala = await ligar(TOKEN.sala('Pré 1'))
     await retratoInicial(portariaWs)
     await retratoInicial(sala)
 
@@ -663,7 +763,7 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
     // recusa vira "comando recusado" e a professora nao sabe o que faltou.
     expect(recusas[0].motivo).toMatch(/raz/i)
     // E a crianca continua liberada: nada aconteceu pela metade.
-    const retrato = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    const retrato = await (await pedir('/registro')).json<unknown[]>()
     expect(retrato.length).toBe(2)
 
     portariaWs.close()
@@ -671,7 +771,7 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
   })
 
   it('razao mandada em outra acao nao chega ao disco', async () => {
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
     ws.send(JSON.stringify({
       tipo: 'chamar', alunoId: 'a01', razao: 'esqueceu-material',
@@ -681,7 +781,7 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
     await derrubarInstancia()
 
     const trilha = await (
-      await pedir('/registro?papel=portaria')
+      await pedir('/registro')
     ).json<{ acao: string; razao: string }[]>()
     expect(trilha[0].acao).toBe('chamar')
     expect(trilha[0].razao).toBe('')
@@ -690,7 +790,7 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
   it('razao gigante e recusada pelo teto de forma', async () => {
     // O caminho do WebSocket nao tinha nada equivalente ao limite de 1 MB do
     // /importar, e agora ele escreve em disco retido 90 dias.
-    const ws = await ligar('papel=portaria')
+    const ws = await ligar(TOKEN.portaria)
     await proximoRetrato(ws)
 
     const recusas: { motivo: string }[] = []
@@ -722,12 +822,12 @@ describe('restricao: o texto nunca sai em lote', () => {
 
   beforeEach(async () => {
     await reset()
-    await pedir('/importar?papel=portaria', { method: 'POST', body: COM_RESTRICAO })
+    await pedir('/importar', { method: 'POST', body: COM_RESTRICAO })
   })
 
   async function idDe(nome: string) {
     const alunos = await (
-      await pedir('/alunos?papel=portaria')
+      await pedir('/alunos')
     ).json<{ id: string; nome: string; turma: string; temAlerta?: boolean }[]>()
     const a = alunos.find((x) => x.nome === nome)
     if (!a) throw new Error(`nao achei ${nome}`)
@@ -745,7 +845,7 @@ describe('restricao: o texto nunca sai em lote', () => {
       O texto nao mora no tipo `Aluno`, entao nao ha o que esquecer de remover.
       Este teste guarda a serializacao inteira contra o texto.
     */
-    const corpo = await (await pedir('/alunos?papel=portaria')).text()
+    const corpo = await (await pedir('/alunos')).text()
     expect(corpo).not.toContain('Guarda compartilhada')
     expect(corpo).not.toContain('avó materna')
     expect(corpo).toContain('temAlerta')
@@ -758,7 +858,7 @@ describe('restricao: o texto nunca sai em lote', () => {
 
   it('a portaria le o texto de UMA crianca por vez', async () => {
     const a = await idDe('Ana Beatriz Souza')
-    const r = await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)
+    const r = await pedir(`/alerta?alunoId=${a.id}`)
     expect(r.status).toBe(200)
     const corpo = await r.json<{ texto: string }>()
     expect(corpo.texto).toMatch(/Guarda compartilhada/)
@@ -768,15 +868,15 @@ describe('restricao: o texto nunca sai em lote', () => {
     // Vazio e uma resposta; erro faria a tela tratar "sem restricao" como
     // "nao consegui saber", e as duas coisas exigem condutas opostas.
     const b = await idDe('Bruno Assuncao')
-    const r = await pedir(`/alerta?papel=portaria&alunoId=${b.id}`)
+    const r = await pedir(`/alerta?alunoId=${b.id}`)
     expect(r.status).toBe(200)
     expect((await r.json<{ texto: string }>()).texto).toBe('')
   })
 
-  it('C3: sem papel valido, /alerta nem responde', async () => {
+  it('C3: sem aparelho, /alerta nem responde', async () => {
     const a = await idDe('Ana Beatriz Souza')
-    expect((await pedir(`/alerta?alunoId=${a.id}`)).status).toBe(400)
-    expect((await pedir(`/alerta?papel=Portaria&alunoId=${a.id}`)).status).toBe(400)
+    expect((await pedir(`/alerta?alunoId=${a.id}`, { token: null })).status).toBe(401)
+    expect((await pedir(`/alerta?alunoId=${a.id}`, { token: 'invalido' })).status).toBe(401)
   })
 
   it('a sala so le a restricao da PROPRIA turma', async () => {
@@ -790,30 +890,31 @@ describe('restricao: o texto nunca sai em lote', () => {
     const doNono = await idDe('Carlos Lima')
     const pre = encodeURIComponent('Pré 1')
 
-    const propria = await pedir(`/alerta?papel=sala&turma=${pre}&alunoId=${daPre.id}`)
+    const propria = await pedir(`/alerta?alunoId=${daPre.id}`, { token: TOKEN.sala('Pré 1') })
     expect(propria.status).toBe(200)
     expect((await propria.json<{ texto: string }>()).texto).toMatch(/Guarda/)
 
-    const alheia = await pedir(`/alerta?papel=sala&turma=${pre}&alunoId=${doNono.id}`)
+    const alheia = await pedir(`/alerta?alunoId=${doNono.id}`, { token: TOKEN.sala('Pré 1') })
     expect(alheia.status).toBe(403)
 
     // E sala sem turma declarada nao le nada, como nao ve nada.
-    expect((await pedir(`/alerta?papel=sala&alunoId=${daPre.id}`)).status).toBe(403)
+    // A turma vem do APARELHO: nao ha mais 'sala sem turma' para testar aqui.
+    expect((await pedir(`/alerta?alunoId=${doNono.id}`, { token: TOKEN.sala('9º ano') })).status).toBe(200)
   })
 
   it('alunoId invalido ou ausente e recusado antes de tocar no disco', async () => {
-    expect((await pedir('/alerta?papel=portaria')).status).toBe(400)
-    expect((await pedir('/alerta?papel=portaria&alunoId=')).status).toBe(400)
+    expect((await pedir('/alerta')).status).toBe(400)
+    expect((await pedir('/alerta?alunoId=')).status).toBe(400)
     expect(
-      (await pedir(`/alerta?papel=portaria&alunoId=${'x'.repeat(200)}`)).status,
+      (await pedir(`/alerta?alunoId=${'x'.repeat(200)}`)).status,
     ).toBe(400)
-    expect((await pedir('/alerta?papel=portaria&alunoId=naoexiste')).status).toBe(404)
+    expect((await pedir('/alerta?alunoId=naoexiste')).status).toBe(404)
   })
 
   it('a restricao sobrevive ao reinicio', async () => {
     const a = await idDe('Ana Beatriz Souza')
     await derrubarInstancia()
-    const r = await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)
+    const r = await pedir(`/alerta?alunoId=${a.id}`)
     expect((await r.json<{ texto: string }>()).texto).toMatch(/Guarda compartilhada/)
   })
 
@@ -825,13 +926,13 @@ describe('restricao: o texto nunca sai em lote', () => {
       com a proxima planilha, sem precisar de nada especial.
     */
     const semColuna = ['Nome,Turma', 'Ana Beatriz Souza,Pré 1'].join('\n')
-    const r = await pedir('/importar?papel=portaria', { method: 'POST', body: semColuna })
+    const r = await pedir('/importar', { method: 'POST', body: semColuna })
     expect(r.status).toBe(200)
 
     const a = await idDe('Ana Beatriz Souza')
     expect(a.temAlerta).toBe(false)
     expect(
-      (await (await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)).json<{ texto: string }>())
+      (await (await pedir(`/alerta?alunoId=${a.id}`)).json<{ texto: string }>())
         .texto,
     ).toBe('')
   })
@@ -841,14 +942,235 @@ describe('restricao: o texto nunca sai em lote', () => {
       'Nome,Turma,Observação',
       'Ana Beatriz Souza,Pré 1,<script>alert(1)</script> não entregar',
     ].join('\n')
-    await pedir('/importar?papel=portaria', { method: 'POST', body: comMarcacao })
+    await pedir('/importar', { method: 'POST', body: comMarcacao })
 
     const a = await idDe('Ana Beatriz Souza')
     const texto = (
-      await (await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)).json<{ texto: string }>()
+      await (await pedir(`/alerta?alunoId=${a.id}`)).json<{ texto: string }>()
     ).texto
     expect(texto).not.toContain('<')
     expect(texto).not.toContain('>')
     expect(texto).toContain('não entregar')
+  })
+})
+
+
+describe('autenticacao por aparelho — o papel deixa de vir da URL', () => {
+  const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+  const PORTARIA = 'demonstracao-portaria-0000'
+  const PRE1 = 'demonstracao-sala-pre-1'
+
+  beforeEach(async () => {
+    await reset()
+  })
+
+  const cru = (caminho: string, init?: RequestInit) =>
+    portaria().fetch(new Request(`http://do${caminho}`, init))
+
+  const comCookie = (token: string, caminho: string, init: RequestInit = {}) =>
+    portaria().fetch(
+      new Request(`http://do${caminho}`, {
+        ...init,
+        headers: { ...(init.headers ?? {}), Cookie: `janelinhas_dispositivo=${token}` },
+      }),
+    )
+
+  it('REGRESSAO: `` deixou de significar qualquer coisa', async () => {
+    /*
+      Era a etiqueta que o cliente colava em si mesmo. Qualquer pessoa com o
+      endereco virava portaria e baixava o cadastro inteiro — nome e turma de
+      292 criancas por uma URL. Este teste existe para o dia em que alguem
+      "restaurar" o parametro por engano.
+    */
+    for (const caminho of ['/alunos', '/registro']) {
+      expect((await cru(caminho)).status).toBe(401)
+    }
+    const ws = await portaria().fetch(
+      new Request('http://do/ws', { headers: { Upgrade: 'websocket' } }),
+    )
+    expect(ws.status).toBe(401)
+  })
+
+  it('sem cookie, nada abre', async () => {
+    expect((await cru('/alunos')).status).toBe(401)
+    expect((await cru('/registro')).status).toBe(401)
+    expect((await cru('/alerta?alunoId=a01')).status).toBe(401)
+  })
+
+  it('o token vira cookie, e o cookie abre as portas da portaria', async () => {
+    const r = await cru('/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ token: PORTARIA }),
+    })
+    expect(r.status).toBe(200)
+
+    const cookie = r.headers.get('Set-Cookie') ?? ''
+    expect(cookie).toContain('janelinhas_dispositivo=')
+    // HttpOnly: um XSS na tela nao consegue exfiltrar o token do aparelho.
+    expect(cookie).toContain('HttpOnly')
+    // SameSite=Strict: um link mandado num grupo nao age na sessao de ninguem.
+    expect(cookie).toContain('SameSite=Strict')
+
+    const quem = await r.json<{ papel: string; turma: string | null }>()
+    expect(quem.papel).toBe('portaria')
+    expect(quem.turma).toBe(null)
+
+    expect((await comCookie(PORTARIA, '/alunos')).status).toBe(200)
+  })
+
+  it('token errado e token revogado devolvem a MESMA resposta', async () => {
+    /*
+      A diferenca seria um oraculo: quem varre tokens saberia quando acertou um
+      que ja existiu, e passaria a procurar por aparelhos revogados em vez de
+      chutar no escuro.
+    */
+    const inexistente = await cru('/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ token: 'nao-existe-este-token-aqui' }),
+    })
+
+    const lista = await (
+      await comCookie(PORTARIA, '/dispositivos')
+    ).json<{ referencia: string; papel: string }[]>()
+    const alvo = lista.find((d) => d.papel === 'portaria')!
+    await comCookie(PORTARIA, `/dispositivos?referencia=${alvo.referencia}`, {
+      method: 'DELETE',
+    })
+
+    const revogado = await cru('/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ token: PORTARIA }),
+    })
+
+    expect(revogado.status).toBe(inexistente.status)
+    expect(await revogado.text()).toBe(await inexistente.text())
+  })
+
+  it('revogar tem efeito IMEDIATO, sem esperar sessao expirar', async () => {
+    // Aparelho perdido as 15h nao pode continuar chamando crianca as 15h05.
+    expect((await comCookie(PORTARIA, '/alunos')).status).toBe(200)
+
+    const lista = await (
+      await comCookie(PORTARIA, '/dispositivos')
+    ).json<{ referencia: string; papel: string }[]>()
+    const alvo = lista.find((d) => d.papel === 'portaria')!
+    const r = await comCookie(PORTARIA, `/dispositivos?referencia=${alvo.referencia}`, {
+      method: 'DELETE',
+    })
+    expect((await r.json<{ revogado: boolean }>()).revogado).toBe(true)
+
+    expect((await comCookie(PORTARIA, '/alunos')).status).toBe(401)
+  })
+
+  it('a sala so alcanca a propria turma, e a turma vem do APARELHO', async () => {
+    const r = await cru('/entrar', { method: 'POST', body: JSON.stringify({ token: PRE1 }) })
+    expect(r.status).toBe(200)
+    const quem = await r.json<{ papel: string; turma: string }>()
+    expect(quem.papel).toBe('sala')
+    expect(quem.turma).toBe('Pré 1')
+
+    // A sala nao le a lista inteira, nem com cookie valido.
+    expect((await comCookie(PRE1, '/alunos')).status).toBe(403)
+    // Nem administra aparelhos.
+    expect((await comCookie(PRE1, '/dispositivos')).status).toBe(401)
+  })
+
+  it('REGRESSAO: a turma nao vem mais da URL, entao nao ha sessao cega', async () => {
+    /*
+      A assimetria antiga: papel invalido nao conectava, mas turma invalida
+      CONECTAVA e virava sessao cega. A professora entrava, nao via crianca
+      nenhuma, e nao havia erro em lugar nenhum — ela concluia que ninguem
+      tinha chegado, com um responsavel esperando no portao.
+
+      Agora a turma vem do aparelho. Mandar outra na URL nao muda nada.
+    */
+    const ws = await portaria().fetch(
+      new Request('http://do/ws?turma=9%C2%BA%20ano', {
+        headers: { Upgrade: 'websocket', Cookie: `janelinhas_dispositivo=${PRE1}` },
+      }),
+    )
+    expect(ws.status).toBe(101)
+    const cliente = ws.webSocket!
+    cliente.accept()
+
+    const retrato = await new Promise<Record<string, unknown>>((resolve) => {
+      cliente.addEventListener('message', (e: MessageEvent) => {
+        const m = JSON.parse(String(e.data))
+        if (m.tipo === 'retrato') resolve(m)
+      })
+    })
+    // Se a URL mandasse, esta sessao veria o 9º ano. Ela ve o Pré 1 — e mesmo
+    // vazio, e o vazio da turma CERTA.
+    expect(retrato.tipo).toBe('retrato')
+    cliente.close()
+  })
+
+  it('emitir aparelho exige a chave de administracao', async () => {
+    const semChave = await cru('/dispositivos', {
+      method: 'POST',
+      body: JSON.stringify({ papel: 'portaria', apelido: 'tablet novo' }),
+    })
+    expect(semChave.status).toBe(401)
+
+    // Nem a portaria autenticada emite: um tablet roubado nao fabrica mais
+    // aparelhos, e a escalada para.
+    const comoPortaria = await comCookie(PORTARIA, '/dispositivos', {
+      method: 'POST',
+      body: JSON.stringify({ papel: 'portaria', apelido: 'tablet novo' }),
+    })
+    expect(comoPortaria.status).toBe(401)
+
+    const comChave = await cru('/dispositivos', {
+      method: 'POST',
+      headers: { 'X-Chave-Admin': CHAVE },
+      body: JSON.stringify({ papel: 'sala', turma: '9º ano', apelido: 'tablet do 9º' }),
+    })
+    expect(comChave.status).toBe(200)
+    const emitido = await comChave.json<{ token: string; turma: string }>()
+    expect(emitido.token.length).toBeGreaterThan(30)
+    expect(emitido.turma).toBe('9º ano')
+
+    // E o token emitido funciona de verdade.
+    const entrou = await cru('/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ token: emitido.token }),
+    })
+    expect(entrou.status).toBe(200)
+  })
+
+  it('aparelho com papel ou turma invalidos NAO e gravado', async () => {
+    // Linha que nunca vira sessao so serve para alguem descobrir depois que o
+    // tablet nunca funcionou — no dia da saida.
+    for (const corpo of [
+      { papel: 'diretora', apelido: 'x' },
+      { papel: 'sala', apelido: 'sem turma' },
+      { papel: 'sala', turma: 'Turma Fantasma', apelido: 'x' },
+    ]) {
+      const r = await cru('/dispositivos', {
+        method: 'POST',
+        headers: { 'X-Chave-Admin': CHAVE },
+        body: JSON.stringify(corpo),
+      })
+      expect(r.status).toBe(422)
+    }
+  })
+
+  it('o token nunca volta depois de emitido, nem para a portaria', async () => {
+    const lista = await (await comCookie(PORTARIA, '/dispositivos')).text()
+    expect(lista).not.toContain(PORTARIA)
+    expect(lista).not.toContain('demonstracao-sala')
+    // A referencia curta identifica a linha sem ajudar a forjar nada.
+    expect(lista).toMatch(/"referencia":"[0-9a-f]{8}"/)
+  })
+
+  it('sair apaga o cookie', async () => {
+    const r = await comCookie(PORTARIA, '/sair')
+    expect(r.headers.get('Set-Cookie')).toContain('Max-Age=0')
+  })
+
+  it('o modo demonstracao se anuncia', async () => {
+    // Sistema com token previsivel que nao diz isso na tela e armadilha.
+    const r = await cru('/modo')
+    expect((await r.json<{ demonstracao: boolean }>()).demonstracao).toBe(true)
   })
 })

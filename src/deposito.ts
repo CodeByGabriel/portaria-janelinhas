@@ -1,4 +1,5 @@
 import { semear, alertasDaSemente, type Aluno } from './semente.ts'
+import type { Dispositivo } from './sessao.ts'
 import type { Chamada, EventoAuditoria, Instantaneo } from './protocolo.ts'
 
 /*
@@ -63,11 +64,33 @@ CREATE TABLE IF NOT EXISTS trilha (
 
 CREATE INDEX IF NOT EXISTS trilha_por_tempo ON trilha (em);
 
+CREATE TABLE IF NOT EXISTS dispositivos (
+  impressao  TEXT PRIMARY KEY,
+  papel      TEXT NOT NULL,
+  turma      TEXT NOT NULL DEFAULT '',
+  apelido    TEXT NOT NULL DEFAULT '',
+  criadoEm   INTEGER NOT NULL,
+  revogadoEm INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS meta (
   chave TEXT PRIMARY KEY,
   valor TEXT NOT NULL
 );
 `
+
+/* A linha do SQLite vira Dispositivo. `turma` vazia significa ausente. */
+function comoDispositivo(l: Record<string, unknown>): Dispositivo {
+  const turma = String(l.turma ?? '')
+  return {
+    impressao: String(l.impressao),
+    papel: String(l.papel) as Dispositivo['papel'],
+    turma: turma === '' ? undefined : (turma as Dispositivo['turma']),
+    apelido: String(l.apelido ?? ''),
+    criadoEm: Number(l.criadoEm),
+    revogadoEm: l.revogadoEm === null || l.revogadoEm === undefined ? null : Number(l.revogadoEm),
+  }
+}
 
 export class Deposito {
   private readonly sql: SqlStorage
@@ -242,6 +265,65 @@ export class Deposito {
       )
     }
     this.gravarMeta('versaoCadastro', String(versao))
+  }
+
+  /*
+    Dispositivos autorizados.
+
+    Guarda a IMPRESSAO do token, nunca o token. Um vazamento desta tabela nao
+    entrega nenhum aparelho — do mesmo jeito que uma tabela de senhas nao deve
+    entregar senha.
+
+    Revogar nao apaga a linha: escreve a data. Assim a escola continua sabendo
+    que aquele tablet existiu, quando entrou e quando saiu — e um `DELETE` a
+    mais nao vira, por acidente, um aparelho revogado voltando a funcionar.
+  */
+  registrarDispositivo(d: Dispositivo): void {
+    this.sql.exec(
+      `INSERT INTO dispositivos (impressao, papel, turma, apelido, criadoEm, revogadoEm)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      d.impressao,
+      d.papel,
+      d.turma ?? '',
+      d.apelido,
+      d.criadoEm,
+      d.revogadoEm,
+    )
+  }
+
+  dispositivoPor(impressao: string): Dispositivo | null {
+    const linhas = this.sql
+      .exec(
+        'SELECT impressao, papel, turma, apelido, criadoEm, revogadoEm' +
+          ' FROM dispositivos WHERE impressao = ?',
+        impressao,
+      )
+      .toArray()
+    if (linhas.length === 0) return null
+    return comoDispositivo(linhas[0])
+  }
+
+  listarDispositivos(): Dispositivo[] {
+    return this.sql
+      .exec(
+        'SELECT impressao, papel, turma, apelido, criadoEm, revogadoEm' +
+          ' FROM dispositivos ORDER BY criadoEm',
+      )
+      .toArray()
+      .map(comoDispositivo)
+  }
+
+  revogarDispositivo(impressao: string, em: number): boolean {
+    const antes = this.sql
+      .exec('SELECT revogadoEm FROM dispositivos WHERE impressao = ?', impressao)
+      .toArray()
+    if (antes.length === 0 || antes[0].revogadoEm !== null) return false
+    this.sql.exec('UPDATE dispositivos SET revogadoEm = ? WHERE impressao = ?', em, impressao)
+    return true
+  }
+
+  contarDispositivos(): number {
+    return Number(this.sql.exec('SELECT COUNT(*) AS n FROM dispositivos').one().n)
   }
 
   /**

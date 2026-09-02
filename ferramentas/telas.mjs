@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url'
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const PORTA = 9444
+import { TOKEN, cookieDe, comoAparelho, exigirModoDemonstracao } from './aparelho.mjs'
+
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'
 const WS = BASE.replace(/^http/, 'ws')
 const PERFIL = join(RAIZ, '.telas-perfil')
@@ -80,12 +82,12 @@ class Cdp {
   }
 }
 
-function abrirWs(query) {
+function abrirWs(token) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`${WS}/ws?${query}`)
+    const ws = new WebSocket(`${WS}/ws`, { headers: { Cookie: cookieDe(token) } })
     ws.addEventListener('open', () => resolve(ws))
-    ws.addEventListener('error', () => reject(new Error(`nao ligou: ${query}`)))
-    setTimeout(() => reject(new Error(`timeout: ${query}`)), 15000)
+    ws.addEventListener('error', () => reject(new Error(`nao ligou como ${token}`)))
+    setTimeout(() => reject(new Error(`timeout ligando como ${token}`)), 15000)
   })
 }
 
@@ -154,7 +156,7 @@ async function esvaziarQuadro(ws) {
   */
   let proprio = null
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    proprio = await ligarWs('papel=portaria')
+    proprio = await ligarWs(TOKEN.portaria)
     ws = proprio
     await esperar(500)
   }
@@ -192,10 +194,32 @@ async function esvaziarQuadro(ws) {
   nao vindo nenhum, dava o quadro por vazio e seguia. A secao seguinte entao
   contava criancas que a anterior deixou, e falhava sem haver bug nenhum.
 */
-async function ligarWs(query, tentativas = 4) {
+/*
+  Autoriza o NAVEGADOR do teste, colocando o cookie do aparelho direto.
+
+  A alternativa seria a ferramenta digitar o token na porta a cada tela — o que
+  testaria a porta trinta vezes e o resto nenhuma. A porta tem verificacao
+  propria; aqui o que interessa e o que vem depois dela.
+
+  `Network.setCookie` precisa do dominio, e nao da URL, senao o cookie nao
+  acompanha o WebSocket.
+*/
+async function autorizarNavegador(cdp, token) {
+  await cdp.chamar('Network.enable')
+  await cdp.chamar('Network.setCookie', {
+    name: 'janelinhas_dispositivo',
+    value: token,
+    domain: '127.0.0.1',
+    path: '/',
+    httpOnly: true,
+    sameSite: 'Strict',
+  })
+}
+
+async function ligarWs(token, tentativas = 4) {
   for (let i = 1; i <= tentativas; i++) {
     try {
-      const ws = await abrirWs(query)
+      const ws = await abrirWs(token)
       ws.__retratos = []
       ws.addEventListener('message', (e) => {
         const m = JSON.parse(e.data)
@@ -238,6 +262,7 @@ function limparPerfil() {
 
 async function principal() {
   await esperarServidor()
+  await exigirModoDemonstracao(BASE)
   limparPerfil()
   const chrome = spawn(
     CHROME,
@@ -274,6 +299,7 @@ async function principal() {
   const cdp = new Cdp(wsCdp)
   await cdp.chamar('Page.enable')
   await cdp.chamar('Runtime.enable')
+  await autorizarNavegador(cdp, TOKEN.portaria)
   await cdp.chamar('Emulation.setDeviceMetricsOverride', {
     width: 430,
     height: 880,
@@ -283,7 +309,7 @@ async function principal() {
   await cdp.chamar('Page.navigate', { url: `${BASE}/portaria/` })
   await esperar(2500)
 
-  const outra = await ligarWs('papel=portaria')
+  const outra = await ligarWs(TOKEN.portaria)
   await esperar(400)
 
   console.log('\n== S2, o lado que faltava: o DOM sobrevive ao retrato ==')
@@ -312,7 +338,7 @@ async function principal() {
     `viu ${quantosResultados}`)
 
   // Outra pessoa, em outra sala, mexe no estado. Um retrato chega pela rede.
-  const alunos = await fetch(`${BASE}/alunos?papel=portaria`).then((r) => r.json())
+  const alunos = await fetch(`${BASE}/alunos`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
   const forasteiro = alunos[alunos.length - 1]
   outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
   await esperar(900)
@@ -360,9 +386,7 @@ async function principal() {
   conferir('o quadro comeca vazio para contar', await esvaziarQuadro(outra))
   await esperar(600)
 
-  const salaDoForasteiro = await ligarWs(
-    'papel=sala&turma=' + encodeURIComponent(forasteiro.turma),
-  )
+  const salaDoForasteiro = await ligarWs(TOKEN.sala(forasteiro.turma))
   await esperar(400)
   outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
   await esperar(900)
@@ -514,9 +538,7 @@ async function principal() {
 
   // Outra pessoa, na sala daquela crianca, libera. A etiqueta muda de estado
   // na tela da PORTARIA, que e onde o defeito vivia.
-  const salaDoAluno = await ligarWs(
-    'papel=sala&turma=' + encodeURIComponent(forasteiro.turma),
-  )
+  const salaDoAluno = await ligarWs(TOKEN.sala(forasteiro.turma))
   await esperar(400)
   salaDoAluno.send(JSON.stringify({ tipo: 'liberar', alunoId: forasteiro.id }))
   await esperar(1200)
@@ -844,7 +866,7 @@ async function principal() {
 
   // Agora sim: alguem chega no portao com a tela ja aberta.
   const outroAluno = (
-    await fetch(`${BASE}/alunos?papel=portaria`).then((r) => r.json())
+    await fetch(`${BASE}/alunos`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
   ).filter((a) => a.turma === turmaDoAluno && a.id !== forasteiro.id)[0]
 
   if (outroAluno) {
@@ -980,81 +1002,57 @@ async function principal() {
     readquiriu.travas === 2 && readquiriu.ultimaSolta === false && readquiriu.aviso === false,
     JSON.stringify(readquiriu))
 
-  console.log('\n== a turma volta lembrada, mas nao aplicada sozinha ==')
-
-  const guardada = await cdp.avaliar(`localStorage.getItem('janelinhas:turma')`)
-  conferir('entrar na sala guarda a turma', guardada === turmaDoAluno,
-    `guardou ${JSON.stringify(guardada)}, esperava ${JSON.stringify(turmaDoAluno)}`)
-
-  // Sem `?turma=` na URL: e o caso em que a memoria do aparelho vale.
-  await cdp.chamar('Page.navigate', { url: `${BASE}/sala/` })
-  await esperar(1800)
-  const semUrl = await cdp.avaliar(`
-    (() => ({
-      selecionada: document.getElementById('turma').value,
-      avisoVisivel: document.getElementById('lembrada').hidden === false,
-      avisoTexto: (document.getElementById('lembrada').textContent || '').trim(),
-      entrou: document.getElementById('app').hidden === false,
-    }))()
-  `)
-  conferir('a turma volta pre-selecionada', semUrl.selecionada === turmaDoAluno,
-    JSON.stringify(semUrl))
-  conferir('e o aviso diz de onde ela veio', semUrl.avisoVisivel === true &&
-    semUrl.avisoTexto.includes(turmaDoAluno), JSON.stringify(semUrl))
-  conferir('mas NAO entra sozinho na sala: entrar na turma errada e nao ver a propria crianca',
-    semUrl.entrou === false, JSON.stringify(semUrl))
+  console.log('\n== a turma vem do APARELHO, e a tela nao a contradiz ==')
 
   /*
-    A URL manda sobre o que foi lembrado: um link com `?turma=` e alguem dizendo
-    qual sala e esta agora, e a memoria e so o palpite da ultima vez.
+    Ate a fase 2 esta secao verificava a memoria da turma: a ultima usada
+    voltava pre-selecionada, com aviso, porque entrar na sala errada e ver a
+    crianca de outra turma sumir da tela sem explicacao — e nao ver a da sua.
+    O plano dizia que aquilo valia "ate existir login".
+
+    Agora existe. O tablet foi autorizado como uma sala pela escola, e o erro
+    deixou de ser POSSIVEL em vez de ficar sendo avisado. O que se verifica
+    aqui, entao, e o oposto: que a tela nao oferece nada capaz de contrariar o
+    aparelho.
+  */
+  const salaDoTeste = TOKEN.sala(turmaDoAluno)
+  await autorizarNavegador(cdp, salaDoTeste)
+  await cdp.chamar('Page.navigate', { url: `${BASE}/sala/` })
+  await esperar(2000)
+
+  const semSeletor = await cdp.avaliar(`
+    (() => ({
+      temSeletorDeTurma: !!document.getElementById('turma'),
+      escrito: document.getElementById('turmaDoAparelho')?.textContent ?? '',
+      guardado: localStorage.getItem('janelinhas:turma'),
+    }))()
+  `)
+  conferir('a tela NAO oferece escolha de turma', semSeletor.temSeletorDeTurma === false,
+    JSON.stringify(semSeletor))
+  conferir('ela escreve a turma do aparelho',
+    semSeletor.escrito.includes(turmaDoAluno), JSON.stringify(semSeletor.escrito))
+  conferir('e nao guarda turma nenhuma: a memoria virou o proprio aparelho',
+    semSeletor.guardado === null, JSON.stringify(semSeletor.guardado))
+
+  /*
+    E a URL nao manda mais nada. `?turma=` era o caminho que produzia a sessao
+    cega — a professora entrava numa turma que nao era a dela, nao via crianca
+    nenhuma, e nao havia erro em lugar nenhum.
   */
   const outraTurma = turmaDoAluno === '9º ano' ? 'Pré 1' : '9º ano'
   await cdp.chamar('Page.navigate', {
     url: `${BASE}/sala/?turma=${encodeURIComponent(outraTurma)}`,
   })
-  await esperar(1800)
+  await esperar(2000)
   const comUrl = await cdp.avaliar(`
-    (() => ({
-      selecionada: document.getElementById('turma').value,
-      avisoVisivel: document.getElementById('lembrada').hidden === false,
-    }))()
+    document.getElementById('turmaDoAparelho')?.textContent ?? ''
   `)
-  conferir('a URL vence a turma lembrada', comUrl.selecionada === outraTurma,
+  conferir('a URL nao consegue trocar a turma do aparelho',
+    comUrl.includes(turmaDoAluno) && !comUrl.includes(outraTurma),
     JSON.stringify(comUrl))
-  conferir('e o aviso da memoria some quando a URL manda',
-    comUrl.avisoVisivel === false, JSON.stringify(comUrl))
 
-  // Valor adulterado no armazenamento nao pode deixar o seletor num estado
-  // que nao existe.
-  await cdp.avaliar(`localStorage.setItem('janelinhas:turma', 'Turma Fantasma')`)
-  await cdp.chamar('Page.navigate', { url: `${BASE}/sala/` })
-  await esperar(1800)
-  const lixo = await cdp.avaliar(`
-    (() => ({
-      selecionada: document.getElementById('turma').value,
-      avisoVisivel: document.getElementById('lembrada').hidden === false,
-    }))()
-  `)
-  conferir('turma invalida no armazenamento e ignorada',
-    lixo.selecionada !== 'Turma Fantasma' && lixo.avisoVisivel === false,
-    JSON.stringify(lixo))
-
-  await cdp.avaliar(`localStorage.removeItem('janelinhas:turma')`)
-
-  // devolve o perfil ao estado limpo para a proxima rodada
-  await cdp.avaliar(`localStorage.removeItem('janelinhas:mudo')`)
-  await cdp.chamar('Page.removeScriptToEvaluateOnNewDocument', {
-    identifier: instrumentacao.identifier,
-  })
-
-  // limpa o estado
-  for (const a of [forasteiro, segundo]) {
-    outra.send(JSON.stringify({ tipo: 'cancelar', alunoId: a.id }))
-    await esperar(200)
-  }
-  await esperar(500)
-  outra.close()
-  await esperar(600)
+  // devolve o navegador para a portaria, que e o que as secoes seguintes usam
+  await autorizarNavegador(cdp, TOKEN.portaria)
 
   console.log('\n== homonimo: a turma deixa de ser detalhe ==')
 
@@ -1172,6 +1170,10 @@ async function principal() {
     com o que elas testam. Teste que mexe no cadastro e teste que envenena os
     outros.
   */
+  // Contagem absoluta exige ponto de partida conhecido.
+  conferir('o quadro comeca vazio para a restricao', await esvaziarQuadro(outra))
+  await esperar(500)
+
   await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
   await esperar(2200)
 
@@ -1338,8 +1340,8 @@ async function principal() {
   conferir('a caixa esta aberta para o ataque', abriu === true)
 
   // Com a caixa aberta, outra pessoa reimporta a planilha.
-  const cadastroAntes = await fetch(BASE + '/alunos?papel=portaria').then((r) => r.json())
-  const reimportou = await fetch(BASE + '/importar?papel=portaria', {
+  const cadastroAntes = await fetch(BASE + '/alunos', comoAparelho(TOKEN.portaria)).then((r) => r.json())
+  const reimportou = await fetch(BASE + '/importar', { ...comoAparelho(TOKEN.portaria),
     method: 'POST',
     body:
       'Nome,Turma' +
@@ -1381,17 +1383,17 @@ async function principal() {
     refatoracao: teste que mexe em estado compartilhado e teste que envenena os
     outros, e a conta chega depois.
   */
-  const paraDevolver = await fetch(BASE + '/alunos?papel=portaria').then((r) => r.json())
+  const paraDevolver = await fetch(BASE + '/alunos', comoAparelho(TOKEN.portaria)).then((r) => r.json())
   const linhas = ['Nome,Turma,Restrição']
   for (const a of paraDevolver) {
     const restricao = a.nome === CRIANCA_COM_RESTRICAO ? RESTRICAO_DA_SEMENTE : ''
     linhas.push([a.nome, a.turma, restricao].join(','))
   }
-  const devolvido = await fetch(BASE + '/importar?papel=portaria', {
+  const devolvido = await fetch(BASE + '/importar', { ...comoAparelho(TOKEN.portaria),
     method: 'POST',
     body: linhas.join(String.fromCharCode(10)),
   })
-  const conferindo = await fetch(BASE + '/alunos?papel=portaria').then((r) => r.json())
+  const conferindo = await fetch(BASE + '/alunos', comoAparelho(TOKEN.portaria)).then((r) => r.json())
   conferir(
     'o cadastro volta com a restricao, para a proxima execucao',
     devolvido.status === 200 &&

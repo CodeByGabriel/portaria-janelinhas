@@ -4,8 +4,22 @@ import { TURMAS, type Turma } from './semente.ts'
 import { analisar, decodificar } from './importar.ts'
 import { Deposito } from './deposito.ts'
 import type { Comando, EventoAuditoria } from './protocolo.ts'
+import {
+  NOME_DO_COOKIE,
+  cookieApagado,
+  cookieDeSessao,
+  cookieDo,
+  ehSeguro,
+  gerarToken,
+  impressaoDe,
+  sessaoDe,
+  tokenDemoDe,
+  type Dispositivo,
+  type Sessao as Autorizacao,
+} from './sessao.ts'
 
-interface Sessao {
+/* Uma conexao VIVA. Nao confundir com `Autorizacao`, que e quem o aparelho e. */
+interface Conexao {
   ws: WebSocket
   papel: Papel
   turma?: Turma
@@ -38,12 +52,21 @@ const UMA_HORA = 60 * 60 * 1000
  */
 export class Portaria {
   private readonly estado: DurableObjectState
+  /*
+    Segredos do Worker. `CHAVE_ADMIN` autoriza EMITIR aparelho, e nada mais.
+
+    Sem ela configurada, ninguem emite — nem a portaria. Uma instancia mal
+    configurada recusa aparelho novo em vez de aceitar qualquer um, que e o
+    lado certo para uma configuracao faltando.
+  */
+  private readonly env: { CHAVE_ADMIN?: string; MODO_DEMO?: string }
   private readonly deposito: Deposito
   private livro!: Livro
-  private readonly sessoes = new Set<Sessao>()
+  private readonly sessoes = new Set<Conexao>()
 
-  constructor(estado: DurableObjectState, _env: unknown) {
+  constructor(estado: DurableObjectState, env: { CHAVE_ADMIN?: string; MODO_DEMO?: string }) {
     this.estado = estado
+    this.env = env ?? {}
     this.deposito = new Deposito(estado.storage.sql)
 
     /*
@@ -56,6 +79,7 @@ export class Portaria {
       this.deposito.iniciar()
       this.livro = new Livro(this.deposito.carregar())
       this.expirarEsquecidas()
+      await this.semearAparelhosDeDemonstracao()
       await this.agendarPoda()
     })
   }
@@ -115,29 +139,264 @@ export class Portaria {
     await this.estado.storage.setAlarm(Date.now() + UM_DIA)
   }
 
-  async fetch(pedido: Request): Promise<Response> {
-    const url = new URL(pedido.url)
-    const papelBruto = url.searchParams.get('papel')
+  /*
+    Aparelhos de demonstracao, e por que eles sao seguros de existir.
 
-    /*
-      Papel fail-closed.
+    So sao criados quando `MODO_DEMO` vale exatamente "sim", e essa variavel
+    mora em `.dev.vars` — um arquivo que o `wrangler dev` le e o `wrangler
+    deploy` NAO envia. Nao e disciplina de quem opera; e o mecanismo que
+    impede.
 
-      A versao anterior fazia `papel === 'sala' ? 'sala' : 'portaria'`, entao
-      "Sala", "SALA", " sala", "professora", vazio e ausente TODOS viravam
-      portaria — e portaria enxerga a escola inteira. Uma maiuscula num
-      bookmark do tablet expunha nome, turma e estado de saida de todas as
-      criancas, sem nenhum sinal de erro na tela.
+    Os tokens sao previsiveis de proposito: as ferramentas de teste, os prints e
+    a demonstracao na frente da escola precisam entrar sem ninguem digitar nada.
+    Justamente por isso as telas mostram uma tarja permanente quando este modo
+    esta ligado — ver `/modo`. Um sistema com tokens conhecidos que NAO diz isso
+    na tela e uma armadilha esperando alguem confundi-lo com producao.
 
-      Agora: papel invalido nao entra. Errar da erro visivel, nao acesso
-      ampliado silencioso.
-    */
-    if (!ehPapel(papelBruto)) {
-      return new Response(
-        'informe papel=portaria ou papel=sala (exatamente, em minusculas)',
-        { status: 400 },
+    Roda uma vez, quando a tabela esta vazia: reiniciar nao duplica, e revogar
+    um aparelho de demonstracao nao o traz de volta.
+  */
+  private async semearAparelhosDeDemonstracao(): Promise<void> {
+    if (this.env.MODO_DEMO !== 'sim') return
+    if (this.deposito.contarDispositivos() > 0) return
+
+    const aparelhos: { token: string; papel: Papel; turma?: Turma; apelido: string }[] = [
+      { token: 'demonstracao-portaria-0000', papel: 'portaria', apelido: 'portaria (demo)' },
+      ...TURMAS.map((turma) => ({
+        token: tokenDemoDe(turma),
+        papel: 'sala' as Papel,
+        turma,
+        apelido: `sala ${turma} (demo)`,
+      })),
+    ]
+
+    for (const a of aparelhos) {
+      this.deposito.registrarDispositivo({
+        impressao: await impressaoDe(a.token),
+        papel: a.papel,
+        turma: a.turma,
+        apelido: a.apelido,
+        criadoEm: Date.now(),
+        revogadoEm: null,
+      })
+    }
+  }
+
+  /*
+    Troca um token por um cookie de sessao.
+
+    E a unica rota que aceita o token cru, e ela nao diz NADA sobre por que
+    recusou: token inexistente e token revogado devolvem a mesma resposta. A
+    diferenca seria um oraculo — alguem varrendo tokens saberia quando acertou
+    um que ja existiu.
+
+    So POST: um GET com o token na URL cairia no historico do navegador, nos
+    logs do proxy da escola e no print que alguem manda no grupo.
+  */
+  private async entrar(pedido: Request): Promise<Response> {
+    if (pedido.method !== 'POST') {
+      await descartar(pedido)
+      return new Response('use POST', { status: 405 })
+    }
+
+    let token = ''
+    try {
+      const bytes = await pedido.arrayBuffer()
+      if (bytes.byteLength > 4096) return new Response('token longo demais', { status: 413 })
+      const corpo: unknown = JSON.parse(new TextDecoder().decode(bytes))
+      if (typeof corpo === 'object' && corpo !== null && 'token' in corpo) {
+        const bruto = (corpo as { token: unknown }).token
+        if (typeof bruto === 'string') token = bruto.trim()
+      }
+    } catch {
+      return new Response('corpo invalido', { status: 400 })
+    }
+
+    if (token.length < 16 || token.length > 128) {
+      return new Response('token nao reconhecido', { status: 401 })
+    }
+
+    const quem = sessaoDe(this.deposito.dispositivoPor(await impressaoDe(token)))
+    if (!quem) return new Response('token nao reconhecido', { status: 401 })
+
+    return Response.json(
+      { papel: quem.papel, turma: quem.turma ?? null, apelido: quem.apelido },
+      { headers: { 'Set-Cookie': cookieDeSessao(token, ehSeguro(pedido)) } },
+    )
+  }
+
+  /*
+    Emitir, listar e revogar aparelhos.
+
+    EMITIR exige a chave de administracao, que e um segredo do Worker e nao
+    existe em nenhuma tela. Um tablet roubado da portaria nao consegue fabricar
+    mais aparelhos — a escalada para. O token aparece UMA vez, na resposta:
+    depois disso so existe a impressao dele.
+
+    LISTAR e REVOGAR ficam com a portaria. E uma escolha com custo: um tablet
+    roubado da portaria consegue revogar as salas, o que e sabotagem. A
+    alternativa era revogacao so pela chave de administracao — e ai, no dia em
+    que um aparelho some, a escola depende de alguem achar o notebook certo. Na
+    portaria, a secretaria revoga na hora. Sabotagem se desfaz emitindo de novo;
+    um aparelho perdido que continua valendo, nao.
+  */
+  private async dispositivos(pedido: Request): Promise<Response> {
+    const chaveConfigurada = this.env.CHAVE_ADMIN
+    const chaveDada = pedido.headers.get('X-Chave-Admin')
+
+    if (pedido.method === 'POST') {
+      /*
+        Sem chave configurada, ninguem emite. Fail-closed do lado certo: uma
+        instancia mal configurada nao aceita aparelho novo, em vez de aceitar
+        qualquer um.
+      */
+      if (!chaveConfigurada || chaveDada !== chaveConfigurada) {
+        await descartar(pedido)
+        return new Response('chave de administracao invalida', { status: 401 })
+      }
+
+      let papel = ''
+      let turma: string | undefined
+      let apelido = ''
+      try {
+        const corpo = (await pedido.json()) as Record<string, unknown>
+        papel = String(corpo.papel ?? '')
+        apelido = String(corpo.apelido ?? '').replace(/[<>]/g, '').slice(0, 60)
+        if (corpo.turma !== undefined && corpo.turma !== null) turma = String(corpo.turma)
+      } catch {
+        return new Response('corpo invalido', { status: 400 })
+      }
+
+      const token = gerarToken()
+      const dispositivo: Dispositivo = {
+        impressao: await impressaoDe(token),
+        papel: papel as Papel,
+        turma: turma as Turma | undefined,
+        apelido: apelido || 'sem apelido',
+        criadoEm: Date.now(),
+        revogadoEm: null,
+      }
+
+      // Valida ANTES de gravar: dispositivo que nao vira sessao e uma linha que
+      // so serve para alguem descobrir depois que o tablet nunca funcionou.
+      if (!sessaoDe(dispositivo)) {
+        return new Response('papel ou turma invalidos para um aparelho', { status: 422 })
+      }
+
+      this.deposito.registrarDispositivo(dispositivo)
+      // O token aparece AQUI e nunca mais.
+      return Response.json({ token, papel: dispositivo.papel, turma: dispositivo.turma ?? null })
+    }
+
+    const quem = await this.autorizacaoDe(pedido)
+    if (!quem || quem.papel !== 'portaria') {
+      await descartar(pedido)
+      return new Response('so a portaria administra aparelhos', { status: 401 })
+    }
+
+    if (pedido.method === 'GET') {
+      // Sem a impressao inteira: os primeiros caracteres bastam para a pessoa
+      // reconhecer qual linha e qual aparelho, e nao ajudam quem quer forjar.
+      return Response.json(
+        this.deposito.listarDispositivos().map((d) => ({
+          referencia: d.impressao.slice(0, 8),
+          papel: d.papel,
+          turma: d.turma ?? null,
+          apelido: d.apelido,
+          criadoEm: d.criadoEm,
+          revogadoEm: d.revogadoEm,
+        })),
       )
     }
-    const papel: Papel = papelBruto
+
+    if (pedido.method === 'DELETE') {
+      const referencia = new URL(pedido.url).searchParams.get('referencia') ?? ''
+      if (!/^[0-9a-f]{8}$/.test(referencia)) {
+        return new Response('referencia invalida', { status: 400 })
+      }
+      const alvo = this.deposito
+        .listarDispositivos()
+        .find((d) => d.impressao.startsWith(referencia))
+      if (!alvo) return new Response('aparelho desconhecido', { status: 404 })
+
+      const revogou = this.deposito.revogarDispositivo(alvo.impressao, Date.now())
+      return Response.json({ revogado: revogou })
+    }
+
+    await descartar(pedido)
+    return new Response('metodo nao suportado', { status: 405 })
+  }
+
+  /**
+   * Quem e este aparelho — a UNICA fonte de identidade do sistema.
+   *
+   * Antes vinha da query string (`?papel=portaria`), o que nunca foi
+   * autenticacao: era uma etiqueta que o cliente colava em si mesmo. Agora vem
+   * do cookie, que o JavaScript da pagina nao le, e da tabela de dispositivos,
+   * onde revogar tem efeito imediato.
+   */
+  private async autorizacaoDe(pedido: Request): Promise<Autorizacao | null> {
+    const token = cookieDo(pedido, NOME_DO_COOKIE)
+    if (!token || token.length < 16 || token.length > 128) return null
+    return sessaoDe(this.deposito.dispositivoPor(await impressaoDe(token)))
+  }
+
+  async fetch(pedido: Request): Promise<Response> {
+    const url = new URL(pedido.url)
+
+    /*
+      As rotas de porta de entrada vem ANTES da verificacao, porque sao elas
+      que a produzem. Tudo o mais abaixo exige aparelho autorizado.
+    */
+    if (url.pathname === '/entrar') return this.entrar(pedido)
+    if (url.pathname === '/sair') {
+      return new Response(null, {
+        status: 204,
+        headers: { 'Set-Cookie': cookieApagado(ehSeguro(pedido)) },
+      })
+    }
+    if (url.pathname === '/dispositivos') return this.dispositivos(pedido)
+
+    /*
+      Se este servidor esta em modo demonstracao.
+
+      Aberta de proposito, e sem revelar nada: a resposta e um booleano que
+      qualquer pessoa ja poderia descobrir tentando um token conhecido. Ela
+      existe para a TELA poder anunciar o modo — um sistema com tokens
+      previsiveis que nao diz isso e uma armadilha.
+    */
+    if (url.pathname === '/modo') {
+      return Response.json({ demonstracao: this.env.MODO_DEMO === 'sim' })
+    }
+
+    const quem = await this.autorizacaoDe(pedido)
+
+    /*
+      Quem sou eu — a pergunta que a tela faz ao abrir.
+
+      Fica ANTES da recusa geral porque a resposta dela, quando nao ha ninguem,
+      e a mesma: 401. Mas a tela precisa poder perguntar sem que isso conte como
+      tentativa de entrar.
+    */
+    if (url.pathname === '/eu') {
+      if (!quem) return new Response('aparelho nao autorizado', { status: 401 })
+      return Response.json({
+        papel: quem.papel,
+        turma: quem.turma ?? null,
+        apelido: quem.apelido,
+      })
+    }
+
+    if (!quem) {
+      /*
+        401, e nao 403: a diferenca importa para a tela. 401 significa "nao sei
+        quem voce e" e a pagina abre o campo de token; 403 significaria "sei
+        quem voce e e voce nao pode", que pedir token nenhum resolve.
+      */
+      await descartar(pedido)
+      return new Response('aparelho nao autorizado', { status: 401 })
+    }
+    const papel: Papel = quem.papel
 
     /*
       Estas rotas devolvem dado de crianca. Nao ha autenticacao na vitrine
@@ -176,11 +435,15 @@ export class Portaria {
       const aluno = this.livro.alunos().find((a) => a.id === alunoId)
       if (!aluno) return new Response('aluno desconhecido', { status: 404 })
 
-      if (papel === 'sala') {
-        const turma = url.searchParams.get('turma')
-        if (!turma || aluno.turma !== turma) {
-          return new Response('a sala so le alerta da propria turma', { status: 403 })
-        }
+      /*
+        A turma vem da SESSAO, nao da URL.
+
+        Enquanto ela vinha do parametro, a propria sala escolhia qual turma
+        dizer que era — e o filtro so impedia quem escrevesse o parametro
+        errado. Agora ela vem do aparelho, que a escola emitiu.
+      */
+      if (quem.papel === 'sala' && aluno.turma !== quem.turma) {
+        return new Response('a sala so le alerta da propria turma', { status: 403 })
       }
 
       return Response.json({ alunoId, texto: this.deposito.alertaDe(alunoId) })
@@ -290,8 +553,16 @@ export class Portaria {
       return new Response('esperava upgrade para websocket', { status: 426 })
     }
 
-    const turmaBruta = url.searchParams.get('turma')
-    const turma = TURMAS.find((t) => t === turmaBruta)
+    /*
+      A turma vem do APARELHO, nao da URL.
+
+      Aqui morre a assimetria antiga: papel invalido nao conectava, mas turma
+      invalida conectava e virava sessao cega — a professora entrava, nao via
+      crianca nenhuma, e nao havia erro em lugar nenhum. Ela concluia que
+      ninguem tinha chegado. Agora `sessaoDe` recusa o dispositivo cuja turma
+      nao existe, e a conexao nem acontece.
+    */
+    const turma = quem.turma
 
     if (this.sessoes.size >= LIMITE_SESSOES) {
       return new Response('conexoes demais neste momento', { status: 503 })
@@ -302,7 +573,7 @@ export class Portaria {
     const servidor = par[1]
     servidor.accept()
 
-    const sessao: Sessao = { ws: servidor, papel, turma }
+    const sessao: Conexao = { ws: servidor, papel: quem.papel, turma: quem.turma }
     this.sessoes.add(sessao)
 
     servidor.addEventListener('message', (evento: MessageEvent) => {

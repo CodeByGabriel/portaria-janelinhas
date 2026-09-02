@@ -20,6 +20,8 @@ import { fileURLToPath } from 'node:url'
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const PORTA = 9333
+import { TOKEN, cookieDe, comoAparelho } from './aparelho.mjs'
+
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'
 const WS = BASE.replace(/^http/, 'ws')
 const PERFIL = join(RAIZ, '.baseline-perfil')
