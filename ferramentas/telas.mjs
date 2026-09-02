@@ -287,12 +287,24 @@ async function principal() {
     source: `
       (() => {
         const Original = window.AudioContext
-        if (!Original) return
-        window.__contextos = []
-        window.AudioContext = class extends Original {
-          constructor(...args) {
-            super(...args)
-            window.__contextos.push(this)
+        if (Original) {
+          window.__contextos = []
+          window.AudioContext = class extends Original {
+            constructor(...args) {
+              super(...args)
+              window.__contextos.push(this)
+            }
+          }
+        }
+        // Guarda os bloqueios de tela concedidos, para o teste poder solta-los
+        // como o sistema operacional faria ao esconder a aba.
+        if (navigator.wakeLock) {
+          window.__travas = []
+          const pedirOriginal = navigator.wakeLock.request.bind(navigator.wakeLock)
+          navigator.wakeLock.request = async (tipo) => {
+            const trava = await pedirOriginal(tipo)
+            window.__travas.push(trava)
+            return trava
           }
         }
       })()
@@ -461,6 +473,142 @@ async function principal() {
   conferir('o mudo sobrevive ao recarregamento',
     depoisDoF5.pressed === 'true' && depoisDoF5.texto === 'Som desligado',
     JSON.stringify(depoisDoF5))
+
+  console.log('\n== a tela nao apaga durante a saida ==')
+
+  /*
+    A tela da sala fica minutos parada de proposito: ela so muda quando um
+    responsavel chega no portao. E exatamente ai que o tablet decide apagar — e
+    com a tela apagada o som tambem nao sai, porque o navegador suspende o audio
+    junto. Os dois canais caem ao mesmo tempo, e a professora nao fica sabendo
+    de nada.
+  */
+  await cdp.chamar('Page.navigate', {
+    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+  })
+  await esperar(1800)
+
+  const antesDeEntrar = await cdp.avaliar(`
+    (() => ({
+      suporta: 'wakeLock' in navigator,
+      aviso: document.getElementById('telaApaga').hidden === false,
+      travas: (window.__travas || []).length,
+    }))()
+  `)
+  conferir('o navegador de teste tem a API de bloqueio de tela',
+    antesDeEntrar.suporta === true, JSON.stringify(antesDeEntrar))
+  conferir('fora da sala o bloqueio nem e pedido',
+    antesDeEntrar.travas === 0, JSON.stringify(antesDeEntrar))
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('entrar').click()`,
+    userGesture: true,
+  })
+  await esperar(1000)
+
+  const depoisDeEntrar = await cdp.avaliar(`
+    (() => ({
+      travas: (window.__travas || []).length,
+      solta: (window.__travas || [])[0]?.released,
+      aviso: document.getElementById('telaApaga').hidden === false,
+    }))()
+  `)
+  conferir('entrar na sala pede o bloqueio de tela',
+    depoisDeEntrar.travas === 1 && depoisDeEntrar.solta === false,
+    JSON.stringify(depoisDeEntrar))
+  conferir('com o bloqueio ativo, o rodape nao diz nada',
+    depoisDeEntrar.aviso === false, JSON.stringify(depoisDeEntrar))
+
+  /*
+    O sistema solta o bloqueio sozinho toda vez que a aba deixa de estar
+    visivel: trocar de aplicativo, atender uma ligacao, a tela travar. Sem a
+    reaquisicao, a primeira dessas coisas desliga o bloqueio para o resto do
+    turno — e a professora acha que continua protegida.
+  */
+  const soltou = await cdp.avaliar(`
+    (async () => {
+      await window.__travas[0].release()
+      await new Promise((r) => setTimeout(r, 300))
+      return { solta: window.__travas[0].released,
+               aviso: document.getElementById('telaApaga').hidden === false }
+    })()
+  `)
+  conferir('quando o sistema solta o bloqueio, o rodape avisa',
+    soltou.solta === true && soltou.aviso === true, JSON.stringify(soltou))
+
+  const readquiriu = await cdp.avaliar(`
+    (async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      await new Promise((r) => setTimeout(r, 500))
+      return { travas: window.__travas.length,
+               ultimaSolta: window.__travas.at(-1)?.released,
+               aviso: document.getElementById('telaApaga').hidden === false }
+    })()
+  `)
+  conferir('e voltar para a aba readquire o bloqueio sozinho',
+    readquiriu.travas === 2 && readquiriu.ultimaSolta === false && readquiriu.aviso === false,
+    JSON.stringify(readquiriu))
+
+  console.log('\n== a turma volta lembrada, mas nao aplicada sozinha ==')
+
+  const guardada = await cdp.avaliar(`localStorage.getItem('janelinhas:turma')`)
+  conferir('entrar na sala guarda a turma', guardada === turmaDoAluno,
+    `guardou ${JSON.stringify(guardada)}, esperava ${JSON.stringify(turmaDoAluno)}`)
+
+  // Sem `?turma=` na URL: e o caso em que a memoria do aparelho vale.
+  await cdp.chamar('Page.navigate', { url: `${BASE}/sala/` })
+  await esperar(1800)
+  const semUrl = await cdp.avaliar(`
+    (() => ({
+      selecionada: document.getElementById('turma').value,
+      avisoVisivel: document.getElementById('lembrada').hidden === false,
+      avisoTexto: (document.getElementById('lembrada').textContent || '').trim(),
+      entrou: document.getElementById('app').hidden === false,
+    }))()
+  `)
+  conferir('a turma volta pre-selecionada', semUrl.selecionada === turmaDoAluno,
+    JSON.stringify(semUrl))
+  conferir('e o aviso diz de onde ela veio', semUrl.avisoVisivel === true &&
+    semUrl.avisoTexto.includes(turmaDoAluno), JSON.stringify(semUrl))
+  conferir('mas NAO entra sozinho na sala: entrar na turma errada e nao ver a propria crianca',
+    semUrl.entrou === false, JSON.stringify(semUrl))
+
+  /*
+    A URL manda sobre o que foi lembrado: um link com `?turma=` e alguem dizendo
+    qual sala e esta agora, e a memoria e so o palpite da ultima vez.
+  */
+  const outraTurma = turmaDoAluno === '9º ano' ? 'Pré 1' : '9º ano'
+  await cdp.chamar('Page.navigate', {
+    url: `${BASE}/sala/?turma=${encodeURIComponent(outraTurma)}`,
+  })
+  await esperar(1800)
+  const comUrl = await cdp.avaliar(`
+    (() => ({
+      selecionada: document.getElementById('turma').value,
+      avisoVisivel: document.getElementById('lembrada').hidden === false,
+    }))()
+  `)
+  conferir('a URL vence a turma lembrada', comUrl.selecionada === outraTurma,
+    JSON.stringify(comUrl))
+  conferir('e o aviso da memoria some quando a URL manda',
+    comUrl.avisoVisivel === false, JSON.stringify(comUrl))
+
+  // Valor adulterado no armazenamento nao pode deixar o seletor num estado
+  // que nao existe.
+  await cdp.avaliar(`localStorage.setItem('janelinhas:turma', 'Turma Fantasma')`)
+  await cdp.chamar('Page.navigate', { url: `${BASE}/sala/` })
+  await esperar(1800)
+  const lixo = await cdp.avaliar(`
+    (() => ({
+      selecionada: document.getElementById('turma').value,
+      avisoVisivel: document.getElementById('lembrada').hidden === false,
+    }))()
+  `)
+  conferir('turma invalida no armazenamento e ignorada',
+    lixo.selecionada !== 'Turma Fantasma' && lixo.avisoVisivel === false,
+    JSON.stringify(lixo))
+
+  await cdp.avaliar(`localStorage.removeItem('janelinhas:turma')`)
 
   // devolve o perfil ao estado limpo para a proxima rodada
   await cdp.avaliar(`localStorage.removeItem('janelinhas:mudo')`)
