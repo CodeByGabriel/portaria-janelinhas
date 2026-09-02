@@ -30,6 +30,8 @@
     }
     .contagem { font-size: 0.82rem; color: var(--tinta-media); margin-left: auto; }
     .tela-apaga { font-size: 0.82rem; color: var(--estado-chamado); font-weight: 500; }
+    /* Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`. */
+    .volume { width: auto; min-width: 6.5rem; margin: 0; }
   </style>
 </head>
 <body>
@@ -57,6 +59,15 @@
         <p class="subtitulo" id="turmaAtual"></p>
       </div>
       <div class="direita">
+        <!--
+          Três degraus, não um cursor deslizante. Quem mexe nisto é uma
+          professora de pé, com a turma esperando, num tablet: três alvos
+          grandes acertam de primeira, um cursor exige mira e produz
+          "quase inaudível" por engano — a mesma falha do mudo, sem nada
+          na tela dizendo.
+        -->
+        <label class="fora-da-tela" for="volume">Volume do aviso</label>
+        <select id="volume" class="volume"></select>
         <button class="fantasma" id="mudo" aria-pressed="false">Som ligado</button>
       </div>
     </header>
@@ -101,6 +112,9 @@
       alternarMudo,
       estaMudo,
       aoFalharSom,
+      degraus,
+      volumeAtual,
+      definirVolume,
     } from '../comum/som.js'
     import { manterTelaAcesa, aoMudarTelaAcesa } from '../comum/tela-acesa.js'
 
@@ -200,6 +214,21 @@
       desenharMudo()
     }
 
+    const seletorVolume = document.getElementById('volume')
+    for (const degrau of degraus()) {
+      const opcao = document.createElement('option')
+      opcao.value = degrau
+      opcao.textContent = degrau
+      seletorVolume.append(opcao)
+    }
+    seletorVolume.value = volumeAtual()
+    seletorVolume.onchange = () => {
+      definirVolume(seletorVolume.value)
+      // Toca uma vez para ela ouvir o que escolheu. Escolher volume sem
+      // referência é escolher no escuro, e o erro só aparece na hora errada.
+      tocarEntrega()
+    }
+
     /*
       A tela da sala fica minutos parada de propósito: ela só muda quando um
       responsável chega no portão. É exatamente aí que o tablet decide apagar —
@@ -240,7 +269,22 @@
       })
     }
 
+    /*
+      O primeiro retrato desenha, mas não toca.
+
+      Ele é a fotografia do que já estava acontecendo antes desta tela existir —
+      um F5 no meio da saída, ou a reconexão depois de o wifi cair. Sem esta
+      guarda, recarregar com quatro crianças na fila disparava quatro sinos de
+      uma vez, e nenhum deles correspondia a alguém que acabou de chegar.
+
+      Som que toca quando nada aconteceu ensina a professora a ignorar o som.
+    */
+    let jaDesenhou = false
+
     function desenhar(retrato) {
+      const primeiro = !jaDesenhou
+      jaDesenhou = true
+
       const ativas = retrato.chamadas
         .filter((c) => c.estado === 'chamado' || c.estado === 'liberado')
         .sort((a, b) => a.desde - b.desde)
@@ -268,12 +312,12 @@
           cartao.__estado = null
           cartoes.set(chamada.alunoId, cartao)
           grade.append(cartao)
-          tocarAbertura()
+          if (!primeiro) tocarAbertura()
         }
 
         if (chamada.estado !== cartao.__estado) {
           cartao.definirEstado(chamada.estado)
-          if (chamada.estado === 'liberado') tocarEntrega()
+          if (chamada.estado === 'liberado' && !primeiro) tocarEntrega()
           cartao.__estado = chamada.estado
         }
         cartao.__botao.disabled = chamada.estado === 'liberado'

@@ -289,10 +289,17 @@ async function principal() {
         const Original = window.AudioContext
         if (Original) {
           window.__contextos = []
+          window.__osciladores = 0
           window.AudioContext = class extends Original {
             constructor(...args) {
               super(...args)
               window.__contextos.push(this)
+            }
+            // Conta cada nota efetivamente agendada. E a unica evidencia direta
+            // de que saiu som — ou de que nao saiu, que e o que este teste quer.
+            createOscillator(...args) {
+              window.__osciladores++
+              return super.createOscillator(...args)
             }
           }
         }
@@ -473,6 +480,118 @@ async function principal() {
   conferir('o mudo sobrevive ao recarregamento',
     depoisDoF5.pressed === 'true' && depoisDoF5.texto === 'Som desligado',
     JSON.stringify(depoisDoF5))
+
+  console.log('\n== o som so toca quando algo acontece ==')
+
+  /*
+    O primeiro retrato e a fotografia do que ja estava acontecendo antes desta
+    tela existir: um F5 no meio da saida, ou a reconexao depois de o wifi cair.
+    Sem a guarda, recarregar com criancas na fila disparava um sino para cada
+    uma, de uma vez — e nenhum correspondia a alguem que acabou de chegar.
+
+    Som que toca quando nada aconteceu ensina a professora a ignorar o som, e
+    ai o canal esta perdido para quando importar.
+  */
+  /*
+    Desliga o mudo que a secao anterior deixou ligado.
+
+    Sem isto, "o primeiro retrato nao toca" passava por a sala estar
+    SILENCIADA, e nao pela guarda que este teste existe para proteger — teste
+    verde pelo motivo errado e pior que teste vermelho, porque ninguem volta
+    nele.
+  */
+  await cdp.avaliar(`localStorage.removeItem('janelinhas:mudo')`)
+
+  outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
+  await esperar(800)
+
+  await cdp.chamar('Page.navigate', {
+    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+  })
+  await esperar(1800)
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('entrar').click()`,
+    userGesture: true,
+  })
+  await esperar(1800)
+
+  const aoEntrar = await cdp.avaliar(`
+    (() => ({
+      cartoes: document.querySelectorAll('.cartao').length,
+      osciladores: window.__osciladores,
+      estado: window.__contextos[0]?.state,
+      mudo: document.getElementById('mudo').textContent.trim(),
+    }))()
+  `)
+  conferir('o som esta LIGADO antes de medir silencio',
+    aoEntrar.mudo === 'Som ligado', JSON.stringify(aoEntrar))
+  conferir('a crianca que ja estava na fila aparece no F5',
+    aoEntrar.cartoes >= 1, JSON.stringify(aoEntrar))
+  conferir('REGRESSAO: e o primeiro retrato NAO toca nada',
+    aoEntrar.osciladores === 0, JSON.stringify(aoEntrar))
+
+  // Agora sim: alguem chega no portao com a tela ja aberta.
+  const outroAluno = (
+    await fetch(`${BASE}/alunos?papel=portaria`).then((r) => r.json())
+  ).filter((a) => a.turma === turmaDoAluno && a.id !== forasteiro.id)[0]
+
+  if (outroAluno) {
+    outra.send(JSON.stringify({ tipo: 'chamar', alunoId: outroAluno.id }))
+    await esperar(1500)
+    const aoChegar = await cdp.avaliar(`window.__osciladores`)
+    conferir('mas uma chegada de verdade toca', aoChegar >= 2,
+      `osciladores: ${aoChegar} (a abertura sao duas notas)`)
+    outra.send(JSON.stringify({ tipo: 'cancelar', alunoId: outroAluno.id }))
+    await esperar(400)
+  } else {
+    conferir('mas uma chegada de verdade toca', false,
+      'nao achei um segundo aluno na turma para testar')
+  }
+
+  console.log('\n== o volume tem degraus e e lembrado ==')
+
+  const controle = await cdp.avaliar(`
+    (() => {
+      const s = document.getElementById('volume')
+      if (!s) return { existe: false }
+      const rotulo = document.querySelector('label[for="volume"]')
+      return {
+        existe: true,
+        opcoes: [...s.options].map((o) => o.value),
+        escolhido: s.value,
+        temRotulo: !!rotulo && rotulo.textContent.trim().length > 0,
+        alturaOk: Math.round(s.getBoundingClientRect().height) >= 44,
+        altura: Math.round(s.getBoundingClientRect().height),
+      }
+    })()
+  `)
+  conferir('existe controle de volume', controle.existe === true)
+  conferir('com tres degraus', controle.opcoes?.length === 3, JSON.stringify(controle))
+  conferir('e com rotulo para leitor de tela', controle.temRotulo === true,
+    JSON.stringify(controle))
+  conferir('dentro do alvo de 44px', controle.alturaOk === true,
+    `mede ${controle.altura}px`)
+
+  await cdp.avaliar(`
+    (() => {
+      const s = document.getElementById('volume')
+      s.value = 'baixo'
+      s.dispatchEvent(new Event('change'))
+    })()
+  `)
+  await esperar(300)
+  const guardadoVolume = await cdp.avaliar(`localStorage.getItem('janelinhas:volume')`)
+  conferir('escolher o volume guarda a escolha', guardadoVolume === 'baixo',
+    String(guardadoVolume))
+
+  await cdp.chamar('Page.navigate', {
+    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+  })
+  await esperar(1800)
+  const voltou = await cdp.avaliar(`document.getElementById('volume').value`)
+  conferir('e ela sobrevive ao recarregamento', voltou === 'baixo', String(voltou))
+
+  await cdp.avaliar(`localStorage.removeItem('janelinhas:volume')`)
 
   console.log('\n== a tela nao apaga durante a saida ==')
 

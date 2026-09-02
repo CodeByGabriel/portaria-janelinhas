@@ -280,3 +280,94 @@ test('REGRESSAO: o botao de mudo diz o estado para leitor de tela', () => {
   assert.match(sala, /id="mudo"[^>]*aria-pressed/, 'o botao de mudo nao tem aria-pressed')
   assert.match(sala, /setAttribute\('aria-pressed'/, 'aria-pressed nunca e atualizado')
 })
+
+/*
+  A especificacao do som, virada em portao.
+
+  Frequencia e duracao sao numeros que ninguem confere de ouvido — 392 Hz e
+  660 Hz soam "parecido" numa revisao, e a diferenca so aparece com vinte
+  criancas falando na sala. Entao a faixa util fica escrita aqui.
+*/
+
+/** Le os pares de notas declarados em som.js. */
+function notasDe(fonte: string, nome: string): number[][] {
+  const bloco = fonte.match(new RegExp(`const ${nome} = \\[([^\\]]*(?:\\][^=]*?)*?)\\]\\n`))
+  const cru = bloco?.[1] ?? ''
+  return [...cru.matchAll(/\[([^\]]+)\]/g)].map((m) =>
+    m[1].split(',').map((n) => Number.parseFloat(n.trim())),
+  )
+}
+
+const SOM = readFileSync(join(RAIZ, 'web', 'comum', 'som.js'), 'utf8')
+
+test('os dois toques ficam na faixa que atravessa uma sala com criancas', () => {
+  // Abaixo de 600 Hz o som se perde no ruido de vinte vozes; acima de 2 kHz
+  // fica estridente para quem ouve dezenas de vezes por tarde.
+  for (const nome of ['ABERTURA', 'ENTREGA']) {
+    const notas = notasDe(SOM, nome)
+    assert.ok(notas.length >= 2, `${nome} precisa de fundamental e quinta`)
+    for (const [frequencia] of notas) {
+      assert.ok(
+        frequencia >= 600 && frequencia <= 2000,
+        `${nome}: ${frequencia} Hz fora da faixa de 600 a 2000`,
+      )
+    }
+  }
+})
+
+test('cada toque dura entre 250 ms e 1 s', () => {
+  // Menos que isso nao registra com barulho de fundo; mais que isso ainda esta
+  // tocando quando a professora ja olhou.
+  for (const nome of ['ABERTURA', 'ENTREGA']) {
+    const notas = notasDe(SOM, nome)
+    const fim = Math.max(...notas.map(([, atraso, duracao]) => atraso + duracao))
+    assert.ok(fim >= 0.25, `${nome} dura ${fim}s, curto demais`)
+    assert.ok(fim <= 1.0, `${nome} dura ${fim}s, longo demais`)
+  }
+})
+
+test('as duas notas de cada toque formam uma quinta justa', () => {
+  // Consonante de proposito: nao vira musiquinha que a turma imita, nao vira
+  // alarme, e duas chamadas quase simultaneas nao produzem batimento aspero.
+  for (const nome of ['ABERTURA', 'ENTREGA']) {
+    const [a, b] = notasDe(SOM, nome).map(([f]) => f)
+    const razao = Math.max(a, b) / Math.min(a, b)
+    assert.ok(
+      Math.abs(razao - 1.5) < 0.01,
+      `${nome}: razao ${razao.toFixed(3)}, esperava 1,5 (quinta justa)`,
+    )
+  }
+})
+
+test('abertura sobe e entrega desce, com as mesmas duas notas', () => {
+  // A sala aprende um par de sons, nao quatro, e a direcao carrega o sentido.
+  const abertura = notasDe(SOM, 'ABERTURA').map(([f]) => f)
+  const entrega = notasDe(SOM, 'ENTREGA').map(([f]) => f)
+  assert.ok(abertura[1] > abertura[0], 'a abertura precisa subir')
+  assert.ok(entrega[1] < entrega[0], 'a entrega precisa descer')
+  assert.deepEqual([...abertura].sort(), [...entrega].sort())
+})
+
+test('REGRESSAO: o volume tem degraus e sobrevive ao recarregamento', () => {
+  const som = semComentarios(SOM)
+  assert.match(som, /const VOLUMES = \{/, 'nao ha degraus de volume declarados')
+  assert.match(som, /janelinhas:volume/, 'o volume nao tem chave de armazenamento')
+  assert.match(som, /localStorage\.setItem\(CHAVE_VOLUME/, 'o volume nao e guardado')
+  // Degrau adulterado viraria NaN no ganho, e o oscilador falha em silencio.
+  assert.match(som, /v in VOLUMES \? v : VOLUME_PADRAO/, 'o degrau lido nao e validado')
+})
+
+test('REGRESSAO: o primeiro retrato desenha mas nao toca', () => {
+  /*
+    O primeiro retrato e a fotografia do que ja estava acontecendo antes desta
+    tela existir — um F5 no meio da saida, ou a reconexao depois de o wifi
+    cair. Sem a guarda, recarregar com quatro criancas na fila disparava quatro
+    sinos de uma vez, e nenhum correspondia a alguem que acabou de chegar.
+    Som que toca quando nada aconteceu ensina a professora a ignorar o som.
+  */
+  const sala = readFileSync(join(RAIZ, 'web', 'sala', 'index.html'), 'utf8')
+  assert.match(sala, /if \(!primeiro\) tocarAbertura\(\)/,
+    'a abertura toca no primeiro retrato')
+  assert.match(sala, /=== 'liberado' && !primeiro/,
+    'a entrega toca no primeiro retrato')
+})

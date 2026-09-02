@@ -116,6 +116,25 @@ body {
 
 /* ---------- cabecalho institucional ---------- */
 
+/*
+  Rotulo que so o leitor de tela alcanca.
+
+  Nao usa `display: none` nem `visibility: hidden`: os dois tiram o elemento
+  da arvore de acessibilidade tambem, e ai o campo fica sem nome nenhum. O
+  recorte de 1px e a forma que continua sendo lida.
+*/
+.fora-da-tela {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .cabecalho {
   background: var(--marca);
   color: var(--tinta-clara);
@@ -905,9 +924,22 @@ function criarLinha({ nome, turma, estado }) {
 */
 
 const CHAVE_MUDO = 'janelinhas:mudo'
+const CHAVE_VOLUME = 'janelinhas:volume'
+
+/*
+  Tres degraus, nao um controle continuo.
+
+  Quem mexe nisto e uma professora de pe, com a turma esperando, num tablet.
+  Tres alvos grandes acertam de primeira; um cursor deslizante exige mira e
+  produz "quase inaudivel" por engano — que e a mesma falha que o mudo, so que
+  sem nada na tela dizendo.
+*/
+const VOLUMES = { baixo: 0.45, medio: 1, alto: 1.8 }
+const VOLUME_PADRAO = 'medio'
 
 let contexto = null
 let mudo = mudoGuardado()
+let volume = volumeGuardado()
 let avisar = () => {}
 
 /*
@@ -929,6 +961,42 @@ function guardarMudo(valor) {
   } catch {
     /* sem armazenamento: vale so para esta sessao */
   }
+}
+
+function volumeGuardado() {
+  try {
+    const v = localStorage.getItem(CHAVE_VOLUME)
+    // Valida contra os degraus conhecidos: valor adulterado ou de uma versao
+    // antiga viraria NaN no ganho, e o oscilador falha em silencio.
+    return v && v in VOLUMES ? v : VOLUME_PADRAO
+  } catch {
+    return VOLUME_PADRAO
+  }
+}
+
+/** Devolve os degraus disponiveis, na ordem, para a tela montar o controle. */
+function degraus() {
+  return Object.keys(VOLUMES)
+}
+
+function volumeAtual() {
+  return volume
+}
+
+function definirVolume(degrau) {
+  if (!(degrau in VOLUMES)) return volume
+  volume = degrau
+  try {
+    localStorage.setItem(CHAVE_VOLUME, degrau)
+  } catch {
+    /* sem armazenamento: vale so para esta sessao */
+  }
+  return volume
+}
+
+/** Aplica o degrau escolhido ao ganho base de cada toque. */
+function volumeDe(base) {
+  return base * (VOLUMES[volume] ?? 1)
 }
 
 /**
@@ -1052,17 +1120,46 @@ function tocar(notas) {
   for (const n of notas) nota(...n)
 }
 
-/** Duas notas quentes, subindo. A janelinha abriu. */
+/*
+  Os dois toques, e por que sao estes.
+
+  Faixa util numa sala com criancas falando: 600 Hz a 2 kHz. Abaixo disso o som
+  se perde no ruido de fundo de vinte vozes; acima fica estridente e cansa quem
+  ouve dezenas de vezes por tarde. A versao anterior punha a entrega em 392 Hz e
+  0,16 s — grave demais para atravessar a sala, e tao curta que se confundia com
+  um estalo do proprio tablet.
+
+  Fundamental + quinta justa, sempre. E o intervalo que soa resolvido sem soar
+  melodia: nao vira musiquinha que a turma imita, e nao vira alarme. E, por ser
+  consonante, duas chamadas quase simultaneas nao produzem batimento aspero.
+
+    abertura  E5 659,25 + B5 987,77   sobe: alguem chegou
+    entrega   B5 987,77 + E5 659,25   desce: fechou
+
+  As duas usam as MESMAS duas notas, em ordem trocada. A sala aprende um par de
+  sons, nao quatro, e a direcao carrega o significado.
+
+  Duracao total entre 250 ms e 1 s: menos que isso nao registra com barulho de
+  fundo, mais que isso ainda esta tocando quando a professora ja olhou.
+*/
+const ABERTURA = [
+  [659.25, 0, 0.32],
+  [987.77, 0.14, 0.42],
+]
+
+const ENTREGA = [
+  [987.77, 0, 0.2],
+  [659.25, 0.1, 0.3],
+]
+
+/** Duas notas subindo. Alguem chegou no portao. */
 function tocarAbertura() {
-  tocar([
-    [587.33, 0, 0.34, 0.16],
-    [880.0, 0.15, 0.46, 0.13],
-  ])
+  tocar(ABERTURA.map(([f, a, d]) => [f, a, d, volumeDe(0.16)]))
 }
 
-/** Toque seco e curto. O ciclo fechou. */
+/** As mesmas duas notas, descendo. O ciclo fechou. */
 function tocarEntrega() {
-  tocar([[392.0, 0, 0.16, 0.11]])
+  tocar(ENTREGA.map(([f, a, d]) => [f, a, d, volumeDe(0.12)]))
 }
 
 /* ===== web/demo/index.html ===== */
