@@ -16,6 +16,7 @@ import {
   impressaoDe,
   sessaoDe,
   tokenDemoDe,
+  iguaisEmTempoConstante,
   type Dispositivo,
   type Sessao as Autorizacao,
 } from './sessao.ts'
@@ -252,7 +253,11 @@ export class Portaria {
         instancia mal configurada nao aceita aparelho novo, em vez de aceitar
         qualquer um.
       */
-      if (!chaveConfigurada || chaveDada !== chaveConfigurada) {
+      if (
+        !chaveConfigurada ||
+        !chaveDada ||
+        !iguaisEmTempoConstante(chaveDada, chaveConfigurada)
+      ) {
         await descartar(pedido)
         return new Response('chave de administracao invalida', { status: 401 })
       }
@@ -477,7 +482,20 @@ export class Portaria {
       if (quem.papel === 'sala' && aluno.turma !== quem.turma) {
         return new Response('a sala so le a propria turma', { status: 403 })
       }
-      return Response.json(this.livro.responsaveisDe(alunoId))
+      /*
+        O TELEFONE so vai para a portaria.
+
+        Quem liga para o responsavel e quem esta no portao. A sala precisa saber
+        QUEM esta autorizado — para reconhecer o nome quando alguem bate na
+        porta — e nao precisa do contato de ninguem.
+
+        Onze salas guardando o telefone de centenas de adultos em cada tablet e
+        exatamente a minimizacao ao contrario que o `docs/lgpd.md` ja registra
+        para `/alunos`. Aqui da para nao repetir o erro, entao nao se repete.
+      */
+      const podem = this.livro.responsaveisDe(alunoId)
+      if (quem.papel === 'portaria') return Response.json(podem)
+      return Response.json(podem.map(({ telefone: _telefone, ...resto }) => resto))
     }
 
     /*

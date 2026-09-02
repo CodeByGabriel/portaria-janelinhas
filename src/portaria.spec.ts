@@ -1493,3 +1493,75 @@ describe('responsaveis — a trilha passa a dizer A QUEM', () => {
     expect(r.status).toBe(403)
   })
 })
+
+
+describe('red team da fase 2', () => {
+  const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+
+  beforeEach(async () => {
+    await reset()
+  })
+
+  it('REGRESSAO: o telefone do responsavel NAO vai para a sala', async () => {
+    /*
+      Quem liga para o responsavel e quem esta no portao. A sala precisa saber
+      QUEM esta autorizado — para reconhecer o nome quando alguem bate na porta
+      — e nao precisa do contato de ninguem.
+
+      Onze salas guardando o telefone de centenas de adultos em cada tablet e a
+      mesma minimizacao ao contrario que `docs/lgpd.md` ja registra para
+      `/alunos`. Aqui deu para nao repetir o erro.
+    */
+    const alunos = await (await pedir('/alunos')).json<{ id: string; nome: string; turma: string }[]>()
+    const alice = alunos.find((a) => a.nome === 'Alice Fernandes')!
+
+    const daPortaria = await (
+      await pedir(`/responsaveis?alunoId=${alice.id}`)
+    ).json<{ telefone?: string }[]>()
+    expect(daPortaria.some((r) => (r.telefone ?? '').length > 0)).toBe(true)
+
+    const corpoDaSala = await (
+      await pedir(`/responsaveis?alunoId=${alice.id}`, { token: TOKEN.sala(alice.turma) })
+    ).text()
+    expect(corpoDaSala).not.toContain('telefone')
+    expect(corpoDaSala).not.toContain('90000')
+    // Mas ela continua sabendo quem pode levar, que e o que ela precisa.
+    expect(corpoDaSala).toContain('Marta Fernandes')
+  })
+
+  it('a chave de administracao e comparada em tempo constante', async () => {
+    /*
+      `a !== b` para em cima do primeiro caractere diferente, e quem mede o
+      tempo das respostas descobre o segredo caractere a caractere em vez de
+      precisar adivinha-lo inteiro.
+
+      Nao da para medir tempo de forma confiavel num teste. Da para garantir o
+      COMPORTAMENTO: prefixo correto, tamanho errado e tamanho certo com um
+      caractere trocado sao todos recusados igual.
+    */
+    const quase = [
+      '',
+      CHAVE.slice(0, -1),
+      CHAVE + 'x',
+      CHAVE.slice(0, -1) + 'X',
+      CHAVE.toUpperCase(),
+    ]
+    for (const chave of quase) {
+      const r = await pedir('/dispositivos', {
+        token: null,
+        method: 'POST',
+        headers: { 'X-Chave-Admin': chave },
+        body: JSON.stringify({ papel: 'portaria', apelido: 'x' }),
+      })
+      expect(r.status).toBe(401)
+    }
+
+    const certa = await pedir('/dispositivos', {
+      token: null,
+      method: 'POST',
+      headers: { 'X-Chave-Admin': CHAVE },
+      body: JSON.stringify({ papel: 'portaria', apelido: 'x' }),
+    })
+    expect(certa.status).toBe(200)
+  })
+})

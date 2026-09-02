@@ -155,6 +155,24 @@ export function ehSeguro(pedido: Request): boolean {
   concluia que ninguem tinha chegado. Agora turma que nao existe recusa a
   conexao, com erro visivel, do mesmo jeito que papel.
 */
+/*
+  Comparacao de tempo constante, para o segredo de administracao.
+
+  `a !== b` para em cima do primeiro caractere diferente. Quem mede o tempo das
+  respostas descobre o segredo caractere a caractere, em vez de precisar
+  adivinha-lo inteiro — e um Worker responde rapido o bastante para o sinal
+  existir.
+
+  E hipotese remota num app de escola. Tambem sao seis linhas, e a alternativa e
+  deixar escrito no codigo que a gente sabia e achou improvavel.
+*/
+export function iguaisEmTempoConstante(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diferenca = 0
+  for (let i = 0; i < a.length; i++) diferenca |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diferenca === 0
+}
+
 export function sessaoDe(dispositivo: Dispositivo | null): Sessao | null {
   if (!dispositivo) return null
   if (dispositivo.revogadoEm !== null) return null

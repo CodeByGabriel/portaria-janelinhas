@@ -628,6 +628,45 @@ máquina, e está registrado aqui em vez de disfarçado.
 
 ---
 
+### Fim da Fase 2 — red team e blue team
+
+Dois achados, ambos de higiene e ambos baratos — o que é em si um resultado: as duas
+tarefas grandes desta fase foram desenhadas contra ataque desde o começo, e a passagem não
+achou buraco de mecanismo.
+
+**F2-R1 — o telefone do responsável ia para a sala.** Quem liga para o responsável é quem
+está no portão. A sala precisa saber *quem* está autorizado, para reconhecer o nome quando
+alguém bate na porta, e não precisa do contato de ninguém. Onze salas guardando o telefone
+de centenas de adultos em cada tablet é a mesma minimização ao contrário que o
+`docs/lgpd.md` já registra para `/alunos` — só que aqui deu para não repetir o erro.
+
+**F2-R2 — a chave de administração era comparada com `!==`.** Isso para em cima do
+primeiro caractere diferente, e quem mede o tempo das respostas descobre o segredo
+caractere a caractere em vez de precisar adivinhá-lo inteiro. Hipótese remota num app de
+escola; também são seis linhas, e a alternativa era deixar escrito no código que a gente
+sabia e achou improvável.
+
+**O que ficou registrado como limite, e não consertado:** `/entrar` não tem limitador de
+tentativas. Com 32 bytes de entropia por token, força bruta é inviável — mas um Durable
+Object é de fila única, então marteladas no endpoint atrasam todo o resto. É risco de
+disponibilidade, não de acesso, e o conserto certo é um limitador de verdade, não um
+contador improvisado.
+
+### Definição de pronto da Fase 2 — conferida
+
+| Critério | Estado |
+|---|---|
+| Papel e turma vindos da sessão, nunca da query string | ✅ 2.2 |
+| "Entregar" exigindo o responsável | ✅ 2.1, condicional a haver cadastro |
+| A trilha gravando o adulto | ✅ id e nome |
+| Irmãos por "mesmo responsável" (1.4) | ✅ saiu junto com 2.1, como o plano previa |
+| Restrição nomeada por cima do alerta da 1.9 | ✅ impedido não entrega, e reconhecer não libera |
+
+Portões: `npm test` **183 + 74**, `typecheck`, `fim-a-fim` (**66**), `telas` (**99**) e
+`peso` (**70,6 / 120 KB**), todos com código de saída 0.
+
+---
+
 ## 7. Fase 3 — Ecossistema (esboço de interfaces apenas)
 
 Cadastro por API substituindo a planilha; exportação da trilha no formato `LogAuditoria`; delegação "hoje a avó busca" via portal de pais; push só com fallback e só quando o portal existir.
