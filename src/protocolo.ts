@@ -49,6 +49,15 @@ export interface Comando {
    * arbitrario numa tabela sem UPDATE nem DELETE por linha.
    */
   razao?: string
+  /**
+   * Quem esta levando a crianca. So faz sentido em `entregar`, e la e
+   * OBRIGATORIO.
+   *
+   * E a metade da promessa que faltava: ate a 2.1 a trilha dizia que a crianca
+   * saiu e nao dizia com quem. Um registro de saida que nao responde "a quem"
+   * nao serve no dia em que a familia pergunta.
+   */
+  responsavelId?: string
 }
 
 export interface Recusa {
@@ -69,6 +78,9 @@ export interface Instantaneo {
   chamadas: Chamada[]
   trilha: EventoAuditoria[]
   versaoCadastro: number
+  /** Quem pode levar cada crianca. Ausente em bancos anteriores a 2.1. */
+  responsaveis?: import('./responsaveis.ts').Responsavel[]
+  vinculos?: import('./responsaveis.ts').Vinculo[]
 }
 
 export interface EventoAuditoria {
@@ -89,4 +101,14 @@ export interface EventoAuditoria {
    * passado, e a trilha nao tem caminho de correcao.
    */
   razao: string
+  /**
+   * Quem recebeu a crianca. Preenchido so em `entregar`.
+   *
+   * Grava id E nome. O id porque e a chave; o NOME porque a trilha e um
+   * registro historico e precisa continuar legivel depois que a planilha de
+   * responsaveis for substituida — do mesmo jeito que ela ja guarda o nome do
+   * aluno em vez de so o id.
+   */
+  responsavelId: string
+  responsavelNome: string
 }

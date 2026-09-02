@@ -144,6 +144,7 @@
     import { criarLinha, etiquetaDe, etiquetaDoEstado } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
     import { exigirAparelho } from '../comum/porta.js'
+    import { escolherResponsavel } from '../comum/entrega.js'
     import { podeSeguir } from '../comum/alerta.js'
 
     const rede = document.getElementById('rede')
@@ -276,8 +277,36 @@
           conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId }))
       }
       if (acao === 'entregar') {
-        return botao('Entregar', true, () =>
-          conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId }))
+        return botao('Entregar', true, async () => {
+          /*
+            A pergunta que faltava. Sem responsável cadastrado a caixa nem
+            aparece e o comando segue como antes — a escola pode ainda não ter
+            subido a segunda planilha, e travar a saída por isso seria parar a
+            escola no meio do turno por pendência administrativa.
+          */
+          const escolha = await escolherResponsavel({ alunoId: c.alunoId, nome: c.nome })
+          if (!escolha) return
+          if (escolha.erro) {
+            mostrarAviso(escolha.erro)
+            return
+          }
+
+          conexao.enviar({
+            tipo: 'entregar',
+            alunoId: c.alunoId,
+            responsavelId: escolha.responsavelId ?? undefined,
+          })
+
+          /*
+            Os irmãos escolhidos entram na fila de saída — chamados, não
+            entregues. Entregar sem a sala liberar seria pular a confirmação da
+            professora, que é o único evento que este sistema existe para
+            proteger.
+          */
+          for (const irmaoId of escolha.tambem ?? []) {
+            conexao.enviar({ tipo: 'chamar', alunoId: irmaoId })
+          }
+        })
       }
       if (acao === 'rechamar') {
         /*

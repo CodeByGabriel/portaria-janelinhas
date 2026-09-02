@@ -96,12 +96,12 @@ function contarFora(linha: string, alvo: string): number {
   return n
 }
 
-function separadorDo(cabecalho: string): string {
+export function separadorDo(cabecalho: string): string {
   return contarFora(cabecalho, ';') > contarFora(cabecalho, ',') ? ';' : ','
 }
 
 /** Quebra o CSV inteiro em linhas de campos, respeitando aspas. */
-function analisarCsv(texto: string, separador: string): string[][] {
+export function analisarCsv(texto: string, separador: string): string[][] {
   const linhas: string[][] = []
   let campos: string[] = []
   let campo = ''

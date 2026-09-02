@@ -84,6 +84,40 @@ errada, ou que deixou de valer porque a decisão judicial mudou, sai com a reimp
 > pode decidir, só pode garantir que quem decide leu. A verificação de verdade ("não
 > entregar a X") depende do modelo de responsáveis, que é Fase 2. `TODO(fase2)`
 
+### `responsaveis` e `vinculos` — quem pode levar cada criança
+
+Entraram na 2.1, e são **dado pessoal de adulto**, que o sistema não tratava até aqui.
+
+| Tabela | Campos |
+|---|---|
+| `responsaveis` | `id` (derivado do nome), `nome`, `vinculo` (mãe, pai, avó…), `telefone` |
+| `vinculos` | `alunoId`, `responsavelId`, `impedido` |
+
+**O telefone é opcional e a escola decide se o preenche.** A planilha funciona sem ele; a
+coluna existe porque a portaria às vezes precisa ligar para confirmar. Não há foto, não há
+documento, não há endereço.
+
+**O impedimento vive no par, não na pessoa.** "O pai não busca" é uma frase sobre uma
+dupla: o mesmo adulto pode estar impedido de levar um filho e autorizado a levar outro, e
+é exatamente assim que decisão judicial costuma ser escrita. Guardar no adulto obrigaria a
+duplicar a pessoa, e a duplicata sairia de sincronia.
+
+**Substituição, nunca mesclagem.** A planilha é a verdade da escola. Um vínculo que sumiu
+dela sumiu porque alguém o tirou — mesclar deixaria autorizações antigas vivas para
+sempre, e revogar dependeria de lembrar de fazer isso em outro lugar.
+
+**Poda automática de órfãos.** Toda importação de alunos recalcula os ids a partir de
+nome + turma, e os vínculos da criança que mudou de turma passam a apontar para ninguém. O
+sistema poda e **diz quantos** — porque sem o aviso a escola perderia a exigência de
+"a quem" no dia da virada de bimestre, sem nenhum sinal na tela. Responsável que ficou sem
+nenhuma criança também sai: guardar nome e telefone de um adulto que não busca ninguém é
+guardar dado pessoal sem finalidade.
+
+> ⚠️ **A trilha passou a gravar o nome do adulto que recebeu a criança**, e ele herda os 90
+> dias de retenção. É o registro que responde "a quem", que é metade da razão de o sistema
+> existir — mas é também um histórico de quem foi ao portão, e isso precisa constar do
+> aviso de privacidade dado às famílias. `TODO(juridico)`
+
 ### `chamadas` — quem está saindo agora
 `alunoId`, `nome`, `turma`, `estado`, `desde`, `em`. Some quando o ciclo fecha.
 

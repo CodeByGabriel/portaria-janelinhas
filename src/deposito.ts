@@ -1,5 +1,11 @@
-import { semear, alertasDaSemente, type Aluno } from './semente.ts'
+import {
+  semear,
+  alertasDaSemente,
+  responsaveisDaSemente,
+  type Aluno,
+} from './semente.ts'
 import type { Dispositivo } from './sessao.ts'
+import type { Responsavel, Vinculo } from './responsaveis.ts'
 import type { Chamada, EventoAuditoria, Instantaneo } from './protocolo.ts'
 
 /*
@@ -63,6 +69,29 @@ CREATE TABLE IF NOT EXISTS trilha (
 );
 
 CREATE INDEX IF NOT EXISTS trilha_por_tempo ON trilha (em);
+
+CREATE TABLE IF NOT EXISTS responsaveis (
+  id       TEXT PRIMARY KEY,
+  nome     TEXT NOT NULL,
+  vinculo  TEXT NOT NULL DEFAULT '',
+  telefone TEXT NOT NULL DEFAULT ''
+);
+
+/*
+  O vinculo e a tabela, e nao uma coluna no aluno.
+
+  Uma crianca tem mae, pai, avo, as vezes a vizinha autorizada; um adulto busca
+  dois ou tres filhos. Um "responsavel principal" seria ficcao, e no dia em que
+  o outro aparece no portao o sistema estaria errado por desenho.
+*/
+CREATE TABLE IF NOT EXISTS vinculos (
+  alunoId       TEXT NOT NULL,
+  responsavelId TEXT NOT NULL,
+  impedido      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (alunoId, responsavelId)
+);
+
+CREATE INDEX IF NOT EXISTS vinculos_por_responsavel ON vinculos (responsavelId);
 
 CREATE TABLE IF NOT EXISTS dispositivos (
   impressao  TEXT PRIMARY KEY,
@@ -131,6 +160,17 @@ export class Deposito {
     if (!this.temColuna('cadastro', 'alerta')) {
       this.sql.exec(`ALTER TABLE cadastro ADD COLUMN alerta TEXT NOT NULL DEFAULT ''`)
     }
+    /*
+      A trilha passou a gravar QUEM recebeu a crianca. Bancos anteriores a 2.1
+      tem eventos sem esses campos — e eles precisam continuar legiveis, com o
+      responsavel vazio, em vez de sumir ou virar `undefined`.
+    */
+    if (!this.temColuna('trilha', 'responsavelId')) {
+      this.sql.exec(`ALTER TABLE trilha ADD COLUMN responsavelId TEXT NOT NULL DEFAULT ''`)
+    }
+    if (!this.temColuna('trilha', 'responsavelNome')) {
+      this.sql.exec(`ALTER TABLE trilha ADD COLUMN responsavelNome TEXT NOT NULL DEFAULT ''`)
+    }
   }
 
   private temColuna(tabela: string, coluna: string): boolean {
@@ -161,6 +201,8 @@ export class Deposito {
   carregar(): Instantaneo {
     if (this.meta('semeado') === null) {
       this.trocarCadastro(semear(), 1, alertasDaSemente())
+      const familias = responsaveisDaSemente()
+      this.trocarResponsaveis(familias.responsaveis, familias.vinculos)
       this.gravarMeta('semeado', 'sim')
     }
 
@@ -198,15 +240,30 @@ export class Deposito {
           objeto viver, e evapora na primeira hibernacao. Registro plausivelmente
           incompleto e o pior defeito possivel numa trilha de entrega de crianca.
         */
-        'SELECT alunoId, nome, turma, acao, papel, origem, de, para, em, razao' +
-          ' FROM trilha ORDER BY seq',
+        'SELECT alunoId, nome, turma, acao, papel, origem, de, para, em, razao,' +
+          ' responsavelId, responsavelNome FROM trilha ORDER BY seq',
       )
       .toArray() as unknown as EventoAuditoria[]
+
+    const responsaveis = this.sql
+      .exec('SELECT id, nome, vinculo, telefone FROM responsaveis ORDER BY nome')
+      .toArray() as unknown as Responsavel[]
+
+    const vinculos = this.sql
+      .exec('SELECT alunoId, responsavelId, impedido FROM vinculos')
+      .toArray()
+      .map((l) => ({
+        alunoId: String(l.alunoId),
+        responsavelId: String(l.responsavelId),
+        impedido: Number(l.impedido) === 1,
+      }))
 
     return {
       alunos,
       chamadas,
       trilha,
+      responsaveis,
+      vinculos,
       versaoCadastro: Number(this.meta('versaoCadastro') ?? '1'),
     }
   }
@@ -214,8 +271,10 @@ export class Deposito {
   /** Append-only. Nao existe atualizacao nem remocao individual de evento. */
   registrar(evento: EventoAuditoria): void {
     this.sql.exec(
-      `INSERT INTO trilha (alunoId, nome, turma, acao, papel, origem, de, para, em, razao)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO trilha
+         (alunoId, nome, turma, acao, papel, origem, de, para, em, razao,
+          responsavelId, responsavelNome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       evento.alunoId,
       evento.nome,
       evento.turma,
@@ -226,6 +285,8 @@ export class Deposito {
       evento.para,
       evento.em,
       evento.razao,
+      evento.responsavelId,
+      evento.responsavelNome,
     )
   }
 
@@ -265,6 +326,62 @@ export class Deposito {
       )
     }
     this.gravarMeta('versaoCadastro', String(versao))
+  }
+
+  /*
+    Vinculos que apontam para criancas que nao existem mais.
+
+    Toda importacao de alunos RECALCULA os ids a partir de nome+turma. Uma
+    crianca que mudou de turma, ou que saiu da escola, ganha id novo ou some — e
+    os vinculos dela ficam apontando para ninguem.
+
+    Isso e grave e e silencioso: `responsaveisDe` passa a devolver lista vazia,
+    e `entregar` volta a funcionar SEM exigir responsavel. A escola perde a
+    protecao inteira da 2.1 no dia em que reimporta a lista do bimestre, sem
+    nenhum sinal — o app parece continuar funcionando, e funciona mesmo, so que
+    sem a trava.
+
+    Entao a poda e obrigatoria E o numero volta para a tela: nao dá para
+    consertar sozinho (so a escola tem a segunda planilha), mas dá para dizer.
+  */
+  podarVinculosOrfaos(): number {
+    const antes = this.contarVinculos()
+    this.sql.exec(
+      'DELETE FROM vinculos WHERE alunoId NOT IN (SELECT id FROM cadastro)',
+    )
+    // Responsavel sem nenhuma crianca deixa de ter razao de existir: guardar
+    // nome e telefone de um adulto que nao busca ninguem e guardar dado
+    // pessoal sem finalidade.
+    this.sql.exec(
+      'DELETE FROM responsaveis WHERE id NOT IN (SELECT responsavelId FROM vinculos)',
+    )
+    return antes - this.contarVinculos()
+  }
+
+  /**
+   * So os responsaveis e vinculos, sem hidratar o resto.
+   *
+   * `carregar()` monta o instantaneo inteiro e semeia na primeira vez — chamar
+   * aquilo no meio de uma importacao seria pagar o preco de tudo e correr o
+   * risco de acionar um caminho que nao tem nada a ver com o que se quer aqui.
+   */
+  responsaveisEVinculos(): { responsaveis: Responsavel[]; vinculos: Vinculo[] } {
+    const responsaveis = this.sql
+      .exec('SELECT id, nome, vinculo, telefone FROM responsaveis ORDER BY nome')
+      .toArray() as unknown as Responsavel[]
+    const vinculos = this.sql
+      .exec('SELECT alunoId, responsavelId, impedido FROM vinculos')
+      .toArray()
+      .map((l) => ({
+        alunoId: String(l.alunoId),
+        responsavelId: String(l.responsavelId),
+        impedido: Number(l.impedido) === 1,
+      }))
+    return { responsaveis, vinculos }
+  }
+
+  contarVinculos(): number {
+    return Number(this.sql.exec('SELECT COUNT(*) AS n FROM vinculos').one().n)
   }
 
   /*
@@ -324,6 +441,36 @@ export class Deposito {
 
   contarDispositivos(): number {
     return Number(this.sql.exec('SELECT COUNT(*) AS n FROM dispositivos').one().n)
+  }
+
+  /*
+    Substitui responsaveis e vinculos inteiros, como o cadastro.
+
+    Substituicao, e nao mesclagem: a planilha e a verdade da escola, e um
+    vinculo que sumiu dela sumiu porque alguem o tirou. Mesclar deixaria
+    autorizacoes antigas vivas para sempre, e a unica forma de revogar seria
+    lembrar de fazer isso em outro lugar.
+  */
+  trocarResponsaveis(responsaveis: Responsavel[], vinculos: Vinculo[]): void {
+    this.sql.exec('DELETE FROM vinculos')
+    this.sql.exec('DELETE FROM responsaveis')
+    for (const r of responsaveis) {
+      this.sql.exec(
+        'INSERT INTO responsaveis (id, nome, vinculo, telefone) VALUES (?, ?, ?, ?)',
+        r.id,
+        r.nome,
+        r.vinculo,
+        r.telefone,
+      )
+    }
+    for (const v of vinculos) {
+      this.sql.exec(
+        'INSERT INTO vinculos (alunoId, responsavelId, impedido) VALUES (?, ?, ?)',
+        v.alunoId,
+        v.responsavelId,
+        v.impedido ? 1 : 0,
+      )
+    }
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   type Acao,
 } from './estados.ts'
 import { semear, type Aluno, type Turma } from './semente.ts'
+import type { Responsavel, Vinculo } from './responsaveis.ts'
 import type { Chamada, Retrato, Comando, EventoAuditoria, Instantaneo } from './protocolo.ts'
 
 /*
@@ -35,6 +36,9 @@ export class Livro {
   private readonly cadastro = new Map<string, Aluno>()
   private readonly chamadas = new Map<string, Chamada>()
   private readonly trilha: EventoAuditoria[] = []
+  /* Quem pode levar cada crianca. Ver `responsaveis.ts`. */
+  private readonly responsaveis = new Map<string, Responsavel>()
+  private readonly vinculos = new Map<string, Vinculo[]>()
   /** Sobe a cada troca de cadastro. O cliente usa para saber que a lista dele venceu. */
   private versaoCadastro = 1
 
@@ -55,6 +59,12 @@ export class Livro {
     for (const aluno of dados.alunos) this.cadastro.set(aluno.id, aluno)
     for (const chamada of dados.chamadas) this.chamadas.set(chamada.alunoId, chamada)
     this.trilha.push(...dados.trilha)
+    for (const r of dados.responsaveis ?? []) this.responsaveis.set(r.id, r)
+    for (const v of dados.vinculos ?? []) {
+      const lista = this.vinculos.get(v.alunoId) ?? []
+      lista.push(v)
+      this.vinculos.set(v.alunoId, lista)
+    }
     this.versaoCadastro = dados.versaoCadastro
   }
 
@@ -115,6 +125,48 @@ export class Livro {
       guarda transformaria qualquer comando num canal de texto livre para dentro
       de uma tabela que nao tem UPDATE nem DELETE por linha.
     */
+    /*
+      Entregar exige DIZER A QUEM.
+
+      E a metade da promessa que faltava: ate aqui a trilha registrava que a
+      crianca saiu e nao registrava com quem. Um registro de saida que nao
+      responde "a quem" nao serve no dia em que a familia pergunta.
+
+      A exigencia so vale quando a escola cadastrou responsaveis para aquela
+      crianca. Sem cadastro, entregar continua funcionando como antes — senao a
+      2.1 travaria a saida de toda escola que ainda nao tivesse subido a
+      segunda planilha, no meio do turno, sem aviso.
+    */
+    let responsavelId = ''
+    let responsavelNome = ''
+    if (comando.tipo === 'entregar') {
+      const podem = this.responsaveisDe(comando.alunoId)
+      if (podem.length > 0) {
+        const escolhido = podem.find((r) => r.id === comando.responsavelId)
+        if (!escolhido) {
+          throw new Error(
+            'diga quem esta levando a crianca: escolha um responsavel cadastrado',
+          )
+        }
+        /*
+          IMPEDIDO NAO ENTREGA. Aqui a restricao deixa de ser alerta e vira
+          barreira: na 1.9 o sistema so podia garantir que alguem LEU a
+          anotacao, porque nao sabia quem estava no portao. Agora sabe, e
+          "nao entregar ao pai" e uma regra que ele pode cumprir sozinho.
+
+          Reconhecer nao libera. Nao ha "li e vou continuar" para isto — a
+          escola muda a planilha, ou a crianca nao sai com essa pessoa.
+        */
+        if (escolhido.impedido) {
+          throw new Error(
+            `${escolhido.nome} esta impedido de levar esta crianca; procure a secretaria`,
+          )
+        }
+        responsavelId = escolhido.id
+        responsavelNome = escolhido.nome
+      }
+    }
+
     let razao = ''
     if (comando.tipo === 'retornar') {
       if (!ehRazaoRetorno(comando.razao)) {
@@ -163,6 +215,8 @@ export class Livro {
       para,
       em: agora,
       razao,
+      responsavelId,
+      responsavelNome,
     }
     this.trilha.push(evento)
     return evento
@@ -181,6 +235,60 @@ export class Livro {
     const chamadas =
       papel === 'sala' ? (turma ? todas.filter((c) => c.turma === turma) : []) : todas
     return { tipo: 'retrato', chamadas, em: agora, cadastro: this.versaoCadastro }
+  }
+
+  /**
+   * Quem pode levar esta crianca, com o impedido incluido e MARCADO.
+   *
+   * O impedido volta na lista de proposito. Some-lo faria a tela da portaria
+   * mostrar uma lista curta e silenciosa, e a porteira concluiria que aquele
+   * adulto simplesmente nao foi cadastrado — quando o que existe e uma decisao
+   * de que ele nao pode levar. A diferenca entre "nao consta" e "nao pode" e a
+   * unica coisa que importa quando ele esta parado na frente dela.
+   */
+  responsaveisDe(alunoId: string): (Responsavel & { impedido: boolean })[] {
+    return (this.vinculos.get(alunoId) ?? [])
+      .map((v) => {
+        const r = this.responsaveis.get(v.responsavelId)
+        return r ? { ...r, impedido: v.impedido } : null
+      })
+      .filter((r): r is Responsavel & { impedido: boolean } => r !== null)
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }
+
+  /**
+   * As outras criancas que este adulto tambem pode levar hoje.
+   *
+   * E o vinculo de irmaos que a 1.4 esperava: "mesmo responsavel", e nao um
+   * campo "familia" — que seria um segundo modelo de identidade competindo com
+   * este. Irmao por sobrenome erra com familia recomposta; irmao por
+   * responsavel acerta por construcao.
+   *
+   * O impedido nao entra: nao faz sentido oferecer chamar o irmao para quem
+   * nao pode levar nenhum dos dois.
+   */
+  irmaosPara(responsavelId: string, exceto: string): Aluno[] {
+    const achados: Aluno[] = []
+    for (const [alunoId, lista] of this.vinculos) {
+      if (alunoId === exceto) continue
+      const v = lista.find((x) => x.responsavelId === responsavelId)
+      if (!v || v.impedido) continue
+      const aluno = this.cadastro.get(alunoId)
+      if (aluno) achados.push(aluno)
+    }
+    return achados.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }
+
+  /** Substitui responsaveis e vinculos inteiros, como o cadastro. */
+  substituirResponsaveis(responsaveis: Responsavel[], vinculos: Vinculo[]): void {
+    this.responsaveis.clear()
+    this.vinculos.clear()
+    for (const r of responsaveis) this.responsaveis.set(r.id, r)
+    for (const v of vinculos) {
+      const lista = this.vinculos.get(v.alunoId) ?? []
+      lista.push(v)
+      this.vinculos.set(v.alunoId, lista)
+    }
   }
 
   registro(): EventoAuditoria[] {
@@ -251,6 +359,8 @@ export class Livro {
         para: 'aguardando',
         em: agora,
         razao: '',
+        responsavelId: '',
+        responsavelNome: '',
       }
       this.trilha.push(evento)
       eventos.push(evento)

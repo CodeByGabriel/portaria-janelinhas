@@ -2,6 +2,8 @@ import { Livro } from './livro.ts'
 import { ehPapel, ehAcao, AcaoNaoPermitida, TransicaoInvalida, type Papel } from './estados.ts'
 import { TURMAS, type Turma } from './semente.ts'
 import { analisar, decodificar } from './importar.ts'
+import { analisarResponsaveis } from './responsaveis.ts'
+import { analisarCsv, separadorDo } from './importar.ts'
 import { Deposito } from './deposito.ts'
 import type { Comando, EventoAuditoria } from './protocolo.ts'
 import {
@@ -454,6 +456,118 @@ export class Portaria {
       return Response.json(this.livro.registro())
     }
 
+    /*
+      Quem pode levar ESTA crianca.
+
+      Uma crianca por vez, pelo mesmo motivo do `/alerta`: a lista completa de
+      responsaveis da escola e nome e telefone de centenas de adultos, e o
+      tablet da portaria nao precisa carregar isso em repouso para entregar uma
+      crianca.
+
+      A sala tambem le — ela precisa saber quem esta autorizado quando alguem
+      bate na porta — mas so da propria turma, como todo o resto.
+    */
+    if (url.pathname === '/responsaveis') {
+      const alunoId = url.searchParams.get('alunoId') ?? ''
+      if (alunoId.length === 0 || alunoId.length > 64) {
+        return new Response('alunoId invalido', { status: 400 })
+      }
+      const aluno = this.livro.alunos().find((a) => a.id === alunoId)
+      if (!aluno) return new Response('aluno desconhecido', { status: 404 })
+      if (quem.papel === 'sala' && aluno.turma !== quem.turma) {
+        return new Response('a sala so le a propria turma', { status: 403 })
+      }
+      return Response.json(this.livro.responsaveisDe(alunoId))
+    }
+
+    /*
+      Os irmaos que este adulto tambem pode levar.
+
+      E a 1.4, que o plano adiou justamente ate existir este modelo: "mesmo
+      responsavel", e nao um campo "familia". Irmao por sobrenome erra com
+      familia recomposta; irmao por responsavel acerta por construcao.
+    */
+    if (url.pathname === '/irmaos') {
+      if (quem.papel !== 'portaria') {
+        return new Response('so a portaria chama irmaos', { status: 403 })
+      }
+      const responsavelId = url.searchParams.get('responsavelId') ?? ''
+      const exceto = url.searchParams.get('exceto') ?? ''
+      if (responsavelId.length === 0 || responsavelId.length > 64) {
+        return new Response('responsavelId invalido', { status: 400 })
+      }
+      return Response.json(this.livro.irmaosPara(responsavelId, exceto))
+    }
+
+    /*
+      A segunda planilha: uma linha por par crianca-adulto.
+
+      Separada da primeira porque uma crianca tem N responsaveis, e enfiar isso
+      na planilha de alunos exigiria uma coluna com nomes separados por ponto e
+      virgula — que quebra no primeiro sobrenome composto.
+    */
+    if (url.pathname === '/importar-responsaveis') {
+      if (pedido.method !== 'POST') {
+        await descartar(pedido)
+        return new Response('use POST', { status: 405 })
+      }
+      if (papel !== 'portaria') {
+        await descartar(pedido)
+        return new Response('so a portaria importa', { status: 403 })
+      }
+
+      const bytes = await pedido.arrayBuffer()
+      if (bytes.byteLength > LIMITE_CORPO) {
+        return Response.json(
+          {
+            responsaveis: 0,
+            vinculos: 0,
+            erros: [{ linha: 0, motivo: 'planilha grande demais' }],
+            errosTotal: 1,
+            trocado: false,
+          },
+          { status: 413 },
+        )
+      }
+
+      const csv = decodificar(bytes)
+      const primeira = csv.split(/\r?\n/, 1)[0] ?? ''
+      const resultado = analisarResponsaveis(
+        analisarCsv(csv, separadorDo(primeira)),
+        this.livro.alunos(),
+      )
+
+      /*
+        Nenhum vinculo lido significa planilha errada, e trocar por vazio
+        apagaria TODAS as autorizacoes da escola de uma vez — no meio do turno,
+        sem ninguem notar ate a primeira entrega travar.
+      */
+      if (resultado.vinculos.length === 0) {
+        return Response.json(
+          {
+            responsaveis: 0,
+            vinculos: 0,
+            erros: resultado.erros,
+            errosTotal: resultado.errosTotal,
+            trocado: false,
+          },
+          { status: 422 },
+        )
+      }
+
+      this.livro.substituirResponsaveis(resultado.responsaveis, resultado.vinculos)
+      this.deposito.trocarResponsaveis(resultado.responsaveis, resultado.vinculos)
+      this.transmitir()
+
+      return Response.json({
+        responsaveis: resultado.responsaveis.length,
+        vinculos: resultado.vinculos.length,
+        erros: resultado.erros,
+        errosTotal: resultado.errosTotal,
+        trocado: true,
+      })
+    }
+
     if (url.pathname === '/importar') {
       /*
         Todo retorno antecipado precisa descartar o corpo antes de responder.
@@ -513,6 +627,7 @@ export class Portaria {
         )
       }
 
+      let orfaos = 0
       try {
         this.livro.substituirCadastro(resultado.alunos)
         this.deposito.trocarCadastro(
@@ -520,6 +635,20 @@ export class Portaria {
           this.livro.versao(),
           resultado.alertas,
         )
+
+        /*
+          Trocar a lista de alunos ORFANA os vinculos: os ids sao recalculados
+          de nome+turma, e uma crianca que mudou de turma ganha id novo. Sem a
+          poda, `responsaveisDe` passaria a devolver vazio e `entregar` voltaria
+          a funcionar SEM exigir responsavel — a escola perderia a protecao
+          inteira da 2.1 sem nenhum sinal.
+
+          Nao da para consertar sozinho: so a escola tem a segunda planilha. Da
+          para DIZER, e e o que o numero abaixo faz.
+        */
+        orfaos = this.deposito.podarVinculosOrfaos()
+        const restantes = this.deposito.responsaveisEVinculos()
+        this.livro.substituirResponsaveis(restantes.responsaveis, restantes.vinculos)
       } catch (erro) {
         // Ha crianca em saida agora. Trocar o cadastro sumiria com ela de
         // todas as telas e deixaria a trilha com um liberar sem entregar.
@@ -542,6 +671,15 @@ export class Portaria {
         erros: resultado.erros,
         errosTotal: resultado.errosTotal,
         trocado: true,
+        /*
+          Quantas autorizacoes ficaram orfas nesta troca.
+
+          Zero na maioria das vezes. Diferente de zero significa "reimporte a
+          planilha de responsaveis, ou as entregas vao parar de exigir quem
+          esta levando" — e e o unico aviso que a escola vai receber, porque
+          depois disso o app volta a parecer perfeitamente normal.
+        */
+        vinculosPerdidos: orfaos,
       })
     }
 
@@ -606,8 +744,23 @@ export class Portaria {
           if (comando.razao.length > 64) throw new Error('razao longa demais')
         }
 
+        // Forma, nao regra: quem pode levar quem e decidido no Livro.
+        if (comando.responsavelId !== undefined) {
+          if (typeof comando.responsavelId !== 'string') {
+            throw new Error('responsavelId precisa ser texto')
+          }
+          if (comando.responsavelId.length > 64) {
+            throw new Error('responsavelId longo demais')
+          }
+        }
+
         const transicao = this.livro.aplicar(
-          { tipo: comando.tipo, alunoId, razao: comando.razao },
+          {
+            tipo: comando.tipo,
+            alunoId,
+            razao: comando.razao,
+            responsavelId: comando.responsavelId,
+          },
           Date.now(),
           sessao.papel,
           sessao.turma,
@@ -670,8 +823,20 @@ function motivoDe(erro: unknown): string {
     a recusa vira muda. "razao invalida" nasceria como "comando recusado", e a
     professora ficaria sem saber que faltou escolher o motivo.
   */
-  const permitido =
-    /desconhecid|precisa ser|em saida|outra turma|declarar a turma|longo demais|raz[aã]o/
+  const permitido = new RegExp(
+    [
+      'desconhecid',
+      'precisa ser',
+      'em saida',
+      'outra turma',
+      'declarar a turma',
+      'longo demais',
+      'raz[aã]o',
+      // 2.1: quem esta levando a crianca, e quem NAO pode leva-la.
+      'escolha um respons',
+      'impedido de levar',
+    ].join('|'),
+  )
   if (erro instanceof AcaoNaoPermitida) return erro.message.slice(0, 120)
   if (erro instanceof TransicaoInvalida) return erro.message.slice(0, 120)
   if (erro instanceof Error && permitido.test(erro.message)) {

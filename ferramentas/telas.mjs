@@ -127,6 +127,30 @@ function abrirWs(token) {
   Se `src/semente.ts` mudar o texto, a unica coisa que quebra e a comparacao de
   substring logo abaixo — visivel, e nao silenciosa.
 */
+/*
+  As familias da semente, repetidas aqui — pelo mesmo motivo da restricao logo
+  abaixo, e com um agravante.
+
+  Reimportar a lista de ALUNOS recalcula os ids a partir de nome+turma, e os
+  vinculos antigos ficam apontando para ninguem. O servidor poda os orfaos (e
+  avisa quantos), entao depois de qualquer reimportacao a escola — e este
+  arquivo — precisa subir a segunda planilha de novo.
+
+  Sem isto, uma execucao apaga as autorizacoes e a execucao SEGUINTE falha na
+  secao de entrega, tres secoes longe da causa. Ja aconteceu quatro vezes nesta
+  refatoracao com formas diferentes do mesmo erro: teste que mexe em estado
+  compartilhado e teste que envenena os outros.
+*/
+const FAMILIAS_DA_SEMENTE = [
+  ['Alice Fernandes', 'Pré 1', 'Marta Fernandes', 'mãe', '(11) 90000-0001', ''],
+  ['Maria Eduarda Nogueira', '1º ano', 'Marta Fernandes', 'mãe', '(11) 90000-0001', ''],
+  ['Maria Eduarda Nogueira', '6º ano', 'Marta Fernandes', 'mãe', '(11) 90000-0001', ''],
+  ['Alice Fernandes', 'Pré 1', 'Ricardo Fernandes', 'pai', '(11) 90000-0002', 'sim'],
+  ['Maria Eduarda Nogueira', '1º ano', 'Ricardo Fernandes', 'pai', '(11) 90000-0002', ''],
+  ['Maria Eduarda Nogueira', '6º ano', 'Ricardo Fernandes', 'pai', '(11) 90000-0002', ''],
+  ['Ravi Bacelar', 'Pré 2', 'Zuleide Bacelar', 'avó', '(11) 90000-0003', ''],
+]
+
 const RESTRICAO_DA_SEMENTE =
   'Guarda compartilhada. Entregar somente à mãe ou à avó materna, ' +
   'conforme decisão judicial de 2026 (ficção da semente).'
@@ -1400,6 +1424,174 @@ async function principal() {
       conferindo.some((a) => a.nome === CRIANCA_COM_RESTRICAO && a.temAlerta === true),
     'status ' + devolvido.status,
   )
+
+  /*
+    E devolve as autorizacoes, que a reimportacao acima acabou de orfanar.
+
+    O servidor avisa quantas se perderam — e o aviso e para a escola reimportar
+    a segunda planilha. Aqui a "escola" e este bloco.
+  */
+  const linhasFamilia = ['Aluno,Turma,Responsavel,Vinculo,Telefone,Impedido']
+  for (const f of FAMILIAS_DA_SEMENTE) linhasFamilia.push(f.join(','))
+
+  const familiasDevolvidas = await fetch(BASE + '/importar-responsaveis', {
+    method: 'POST',
+    ...comoAparelho(TOKEN.portaria),
+    body: linhasFamilia.join(String.fromCharCode(10)),
+  })
+  const corpoFamilias = familiasDevolvidas.ok
+    ? await familiasDevolvidas.json()
+    : { vinculos: 0 }
+  conferir(
+    'e as autorizacoes voltam, senao a proxima execucao entrega sem perguntar a quem',
+    familiasDevolvidas.status === 200 && corpoFamilias.vinculos >= 7,
+    JSON.stringify(corpoFamilias),
+  )
+
+  console.log('\n== a quem entregar: a caixa que pergunta ==')
+
+  /*
+    Ate a 2.1 a portaria tocava em "Entregar" e o ciclo fechava. A trilha
+    registrava que a crianca saiu e nao registrava com quem.
+  */
+  conferir('o quadro comeca vazio para a entrega', await esvaziarQuadro(outra))
+  await esperar(500)
+
+  const todosAlunos = await fetch(BASE + '/alunos', comoAparelho(TOKEN.portaria)).then((r) =>
+    r.json(),
+  )
+  const aliceDoTeste = todosAlunos.find((a) => a.nome === 'Alice Fernandes')
+
+  const salaDaAlice = await ligarWs(TOKEN.sala(aliceDoTeste.turma))
+  await esperar(400)
+  outra.send(JSON.stringify({ tipo: 'chamar', alunoId: aliceDoTeste.id }))
+  await esperar(500)
+  salaDaAlice.send(JSON.stringify({ tipo: 'liberar', alunoId: aliceDoTeste.id }))
+  await esperar(700)
+
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+
+  const acharBotaoEntregar = `
+    (() => {
+      const alvo = [...document.querySelectorAll('#ativas .linha')].find(
+        (li) => li.dataset.estado === 'liberado',
+      )
+      const b = [...(alvo?.querySelectorAll('button') ?? [])].find(
+        (x) => x.textContent.trim() === 'Entregar',
+      )
+      if (b) b.click()
+      return !!b
+    })()
+  `
+
+  const tocou = await cdp.avaliar(acharBotaoEntregar)
+  conferir('a linha liberada oferece Entregar', tocou === true)
+  await esperar(900)
+
+  const caixaEntrega = await cdp.avaliar(`
+    (() => {
+      const d = document.querySelector('dialog.entrega')
+      if (!d) return { existe: false }
+      const linhas = [...d.querySelectorAll('.responsavel')]
+      return {
+        existe: true,
+        aberta: d.open,
+        quem: d.querySelector('.quem')?.textContent ?? '',
+        quantos: linhas.length,
+        impedidos: linhas.filter((l) => l.classList.contains('impedido')).length,
+        impedidoDesabilitado: linhas
+          .filter((l) => l.classList.contains('impedido'))
+          .every((l) => l.disabled),
+        textoDoImpedido:
+          linhas.find((l) => l.classList.contains('impedido'))?.textContent ?? '',
+        emSaida: document.querySelectorAll('#ativas .linha').length,
+      }
+    })()
+  `)
+
+  conferir('tocar em Entregar abre a caixa de quem esta levando',
+    caixaEntrega.existe === true && caixaEntrega.aberta === true,
+    JSON.stringify(caixaEntrega))
+  conferir('a caixa diz de qual crianca se trata',
+    caixaEntrega.quem.includes('Alice'), JSON.stringify(caixaEntrega.quem))
+  conferir('ela lista quem pode levar', caixaEntrega.quantos >= 2,
+    JSON.stringify(caixaEntrega))
+  conferir('o IMPEDIDO aparece na lista, e nao some',
+    caixaEntrega.impedidos === 1, JSON.stringify(caixaEntrega))
+  conferir('mas nao da para toca-lo', caixaEntrega.impedidoDesabilitado === true,
+    JSON.stringify(caixaEntrega))
+  conferir('e a linha dele DIZ que ele nao pode, em texto',
+    /N[ÃA]O PODE LEVAR/.test(caixaEntrega.textoDoImpedido),
+    JSON.stringify(caixaEntrega.textoDoImpedido))
+  conferir('e NADA aconteceu ainda: a crianca continua no quadro',
+    caixaEntrega.emSaida >= 1, JSON.stringify(caixaEntrega.emSaida))
+
+  /*
+    Escolher o autorizado leva a caixa dos irmaos — que existem porque o MESMO
+    adulto pode levar outra crianca. E a 1.4, que o plano adiou ate existir
+    este modelo.
+  */
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `
+      [...document.querySelectorAll('dialog.entrega .responsavel')]
+        .find((l) => !l.classList.contains('impedido'))
+        .click()
+    `,
+    userGesture: true,
+  })
+  await esperar(1200)
+
+  const comIrmaos = await cdp.avaliar(`
+    (() => {
+      const d = document.querySelector('dialog.entrega')
+      if (!d) return { caixaFechou: true }
+      return {
+        caixaFechou: false,
+        irmaosVisiveis: d.querySelector('.irmaos')?.hidden === false,
+        quantos: d.querySelectorAll('.irmao').length,
+        texto: d.querySelector('.irmaos p')?.textContent ?? '',
+      }
+    })()
+  `)
+  conferir('escolher o adulto oferece os irmaos que ele tambem pode levar',
+    comIrmaos.caixaFechou === false && comIrmaos.irmaosVisiveis === true &&
+      comIrmaos.quantos >= 1,
+    JSON.stringify(comIrmaos))
+  conferir('e o texto explica de quem sao', /tamb[eé]m pode levar/.test(comIrmaos.texto),
+    JSON.stringify(comIrmaos.texto))
+
+  // Confirma sem marcar irmao nenhum: entrega so a crianca.
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `
+      [...document.querySelectorAll('dialog.entrega button')]
+        .find((b) => b.textContent.trim() === 'Entregar')
+        .click()
+    `,
+    userGesture: true,
+  })
+  await esperar(1200)
+
+  const depoisDaEntrega = await cdp.avaliar(`
+    (() => ({
+      caixa: !!document.querySelector('dialog.entrega'),
+      emSaida: document.querySelectorAll('#ativas .linha').length,
+    }))()
+  `)
+  conferir('a caixa fecha e a crianca sai do quadro',
+    depoisDaEntrega.caixa === false && depoisDaEntrega.emSaida === 0,
+    JSON.stringify(depoisDaEntrega))
+
+  const trilhaDaTela = await fetch(BASE + '/registro', comoAparelho(TOKEN.portaria)).then((r) =>
+    r.json(),
+  )
+  const ultimaEntrega = trilhaDaTela.filter((e) => e.acao === 'entregar').at(-1)
+  conferir('e a trilha guarda o nome de quem recebeu',
+    (ultimaEntrega?.responsavelNome ?? '').length > 0,
+    JSON.stringify(ultimaEntrega?.responsavelNome))
+
+  salaDaAlice.close()
+  await esperar(300)
 
   wsCdp.close()
   chrome.kill()

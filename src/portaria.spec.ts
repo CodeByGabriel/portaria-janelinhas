@@ -432,7 +432,20 @@ describe('persistencia — sobrevive ao reinicio do Durable Object', () => {
     await proximoRetrato(portariaWs)
     sala.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a01' }))
     await proximoRetrato(sala)
-    portariaWs.send(JSON.stringify({ tipo: 'entregar', alunoId: 'a01' }))
+    /*
+      Desde a 2.1, entregar exige DIZER A QUEM quando a crianca tem
+      responsaveis cadastrados — e a semente cadastra os da Alice. Sem o
+      responsavel, o comando e recusado e a crianca fica no quadro, que e
+      exatamente o que este teste passou a pegar quando a 2.1 entrou.
+    */
+    const podem = await (
+      await pedir('/responsaveis?alunoId=a01')
+    ).json<{ id: string; impedido: boolean }[]>()
+    const autorizado = podem.find((r) => !r.impedido)!
+
+    portariaWs.send(
+      JSON.stringify({ tipo: 'entregar', alunoId: 'a01', responsavelId: autorizado.id }),
+    )
     await proximoRetrato(portariaWs)
     portariaWs.close()
     sala.close()
@@ -1172,5 +1185,311 @@ describe('autenticacao por aparelho — o papel deixa de vir da URL', () => {
     // Sistema com token previsivel que nao diz isso na tela e armadilha.
     const r = await cru('/modo')
     expect((await r.json<{ demonstracao: boolean }>()).demonstracao).toBe(true)
+  })
+})
+
+
+describe('responsaveis — a trilha passa a dizer A QUEM', () => {
+  beforeEach(async () => {
+    await reset()
+  })
+
+  const idDe = async (nome: string) => {
+    const alunos = await (
+      await pedir('/alunos')
+    ).json<{ id: string; nome: string; turma: string }[]>()
+    const a = alunos.find((x) => x.nome === nome)
+    if (!a) throw new Error(`nao achei ${nome}`)
+    return a
+  }
+
+  const responsaveisDe = async (alunoId: string) =>
+    (await pedir(`/responsaveis?alunoId=${alunoId}`)).json<
+      { id: string; nome: string; impedido: boolean }[]
+    >()
+
+  async function ateEntregar(alunoId: string, responsavelId?: string) {
+    const portariaWs = await ligar(TOKEN.portaria)
+    const alunos = await (await pedir('/alunos')).json<{ id: string; turma: string }[]>()
+    const turma = alunos.find((a) => a.id === alunoId)!.turma
+    const sala = await ligar(TOKEN.sala(turma))
+    await retratoInicial(portariaWs)
+    await retratoInicial(sala)
+
+    const recusas: { motivo: string }[] = []
+    portariaWs.addEventListener('message', (e: MessageEvent) => {
+      const m = JSON.parse(String(e.data))
+      if (m.tipo === 'recusa') recusas.push(m)
+    })
+
+    portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId }))
+    await ateQue(sala, (r) => r.chamadas.some((c) => c.alunoId === alunoId))
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId }))
+    await ateQue(portariaWs, (r) =>
+      r.chamadas.some((c) => c.alunoId === alunoId && c.estado === 'liberado'),
+    )
+
+    portariaWs.send(JSON.stringify({ tipo: 'entregar', alunoId, responsavelId }))
+    await new Promise((r) => setTimeout(r, 400))
+
+    const retrato = portariaWs.__retratos.at(-1)
+    portariaWs.close()
+    sala.close()
+    return { recusas, aindaNoQuadro: retrato!.chamadas.some((c) => c.alunoId === alunoId) }
+  }
+
+  it('a semente traz familias, senao nada disto poderia ser exercitado', async () => {
+    /*
+      Ate a 2.1 a semente tinha 44 criancas e nenhum adulto. Foi o mesmo buraco
+      dos homonimos e da restricao — e a licao ja custou tres vezes: semente sem
+      o caso dificil empurra o caso dificil para dentro do teste, onde ele vira
+      efeito colateral.
+    */
+    const alice = await idDe('Alice Fernandes')
+    const podem = await responsaveisDe(alice.id)
+    expect(podem.length).toBe(2)
+    expect(podem.map((r) => r.nome)).toContain('Marta Fernandes')
+  })
+
+  it('entregar SEM dizer a quem e recusado', async () => {
+    // A metade da promessa que faltava: um registro de saida que nao responde
+    // "a quem" nao serve no dia em que a familia pergunta.
+    const alice = await idDe('Alice Fernandes')
+    const r = await ateEntregar(alice.id)
+    expect(r.recusas.length).toBe(1)
+    expect(r.recusas[0].motivo).toMatch(/escolha um respons/)
+    expect(r.aindaNoQuadro).toBe(true)
+  })
+
+  it('entregar ao responsavel certo grava id E nome na trilha', async () => {
+    const alice = await idDe('Alice Fernandes')
+    const marta = (await responsaveisDe(alice.id)).find((r) => r.nome === 'Marta Fernandes')!
+
+    const r = await ateEntregar(alice.id, marta.id)
+    expect(r.recusas.length).toBe(0)
+    expect(r.aindaNoQuadro).toBe(false)
+
+    const trilha = await (
+      await pedir('/registro')
+    ).json<{ acao: string; responsavelId: string; responsavelNome: string }[]>()
+    const entrega = trilha.find((e) => e.acao === 'entregar')!
+    expect(entrega.responsavelId).toBe(marta.id)
+    /*
+      O NOME tambem, e nao so o id: a trilha e registro historico e precisa
+      continuar legivel depois que a planilha de responsaveis for substituida —
+      do mesmo jeito que ela ja guarda o nome do aluno.
+    */
+    expect(entrega.responsavelNome).toBe('Marta Fernandes')
+
+    // E as outras acoes continuam com o campo vazio, nunca ausente.
+    expect(trilha.filter((e) => e.acao !== 'entregar').every((e) => e.responsavelId === '')).toBe(
+      true,
+    )
+  })
+
+  it('IMPEDIDO nao entrega, e reconhecer nao libera', async () => {
+    /*
+      Aqui a restricao deixa de ser alerta e vira barreira. Na 1.9 o sistema so
+      podia garantir que alguem LEU a anotacao, porque nao sabia quem estava no
+      portao. Agora sabe, e "nao entregar ao pai" e uma regra que ele cumpre
+      sozinho — sem "li e vou continuar".
+    */
+    const alice = await idDe('Alice Fernandes')
+    const ricardo = (await responsaveisDe(alice.id)).find(
+      (r) => r.nome === 'Ricardo Fernandes',
+    )!
+    expect(ricardo.impedido).toBe(true)
+
+    const r = await ateEntregar(alice.id, ricardo.id)
+    expect(r.recusas.length).toBe(1)
+    expect(r.recusas[0].motivo).toMatch(/impedido de levar/)
+    expect(r.aindaNoQuadro).toBe(true)
+  })
+
+  it('o impedimento vive no PAR: o mesmo adulto leva o outro filho', async () => {
+    const outra = await idDe('Maria Eduarda Nogueira')
+    const ricardo = (await responsaveisDe(outra.id)).find(
+      (r) => r.nome === 'Ricardo Fernandes',
+    )!
+    expect(ricardo.impedido).toBe(false)
+
+    const r = await ateEntregar(outra.id, ricardo.id)
+    expect(r.recusas.length).toBe(0)
+    expect(r.aindaNoQuadro).toBe(false)
+  })
+
+  it('o impedido APARECE na lista, marcado', async () => {
+    /*
+      Some-lo faria a portaria ver uma lista curta e silenciosa, e concluir que
+      aquele adulto nao foi cadastrado — quando o que existe e uma decisao de
+      que ele nao pode levar. A diferenca entre "nao consta" e "nao pode" e a
+      unica coisa que importa quando ele esta parado na frente dela.
+    */
+    const alice = await idDe('Alice Fernandes')
+    const podem = await responsaveisDe(alice.id)
+    expect(podem.some((r) => r.impedido)).toBe(true)
+  })
+
+  it('irmaos vem de MESMO RESPONSAVEL, nao de sobrenome', async () => {
+    /*
+      Irmao por sobrenome erra com familia recomposta; irmao por responsavel
+      acerta por construcao. E era a 1.4, que o plano adiou ate existir este
+      modelo.
+    */
+    const alice = await idDe('Alice Fernandes')
+    const marta = (await responsaveisDe(alice.id)).find((r) => r.nome === 'Marta Fernandes')!
+
+    const irmaos = await (
+      await pedir(`/irmaos?responsavelId=${marta.id}&exceto=${alice.id}`)
+    ).json<{ nome: string }[]>()
+
+    expect(irmaos.length).toBeGreaterThan(0)
+    expect(irmaos.every((i) => i.nome === 'Maria Eduarda Nogueira')).toBe(true)
+  })
+
+  it('o impedido NAO aparece na lista de irmaos', async () => {
+    // Nao faz sentido oferecer chamar o irmao a quem nao pode levar nenhum.
+    const alice = await idDe('Alice Fernandes')
+    const ricardo = (await responsaveisDe(alice.id)).find(
+      (r) => r.nome === 'Ricardo Fernandes',
+    )!
+    const irmaos = await (
+      await pedir(`/irmaos?responsavelId=${ricardo.id}&exceto=x`)
+    ).json<{ id: string }[]>()
+    expect(irmaos.some((i) => i.id === alice.id)).toBe(false)
+  })
+
+  it('a sala le os responsaveis da propria turma, e so dela', async () => {
+    const alice = await idDe('Alice Fernandes')
+    const ravi = await idDe('Ravi Bacelar')
+
+    const propria = await pedir(`/responsaveis?alunoId=${alice.id}`, {
+      token: TOKEN.sala(alice.turma),
+    })
+    expect(propria.status).toBe(200)
+
+    const alheia = await pedir(`/responsaveis?alunoId=${ravi.id}`, {
+      token: TOKEN.sala(alice.turma),
+    })
+    expect(alheia.status).toBe(403)
+  })
+
+  it('so a portaria pergunta por irmaos', async () => {
+    const alice = await idDe('Alice Fernandes')
+    const r = await pedir(`/irmaos?responsavelId=x&exceto=${alice.id}`, {
+      token: TOKEN.sala(alice.turma),
+    })
+    expect(r.status).toBe(403)
+  })
+
+  it('importar planilha VAZIA nao apaga as autorizacoes da escola', async () => {
+    /*
+      Trocar por vazio apagaria TODAS as autorizacoes de uma vez, no meio do
+      turno, sem ninguem notar ate a primeira entrega travar. Planilha que nao
+      produz vinculo nenhum e planilha errada.
+    */
+    const r = await pedir('/importar-responsaveis', {
+      method: 'POST',
+      body: ['Aluno,Turma,Responsavel', 'Fulano de Tal,Pré 1,Alguem'].join(String.fromCharCode(10)),
+    })
+    expect(r.status).toBe(422)
+    expect((await r.json<{ trocado: boolean }>()).trocado).toBe(false)
+
+    const alice = await idDe('Alice Fernandes')
+    expect((await responsaveisDe(alice.id)).length).toBe(2)
+  })
+
+  it('a importacao substitui, e sobrevive ao reinicio', async () => {
+    const r = await pedir('/importar-responsaveis', {
+      method: 'POST',
+      body: [
+        'Aluno,Turma,Responsavel,Vinculo,Telefone',
+        'Alice Fernandes,Pré 1,Solange Prado,tia,(11) 90000-9999',
+      ].join('\n'),
+    })
+    expect(r.status).toBe(200)
+
+    const alice = await idDe('Alice Fernandes')
+    expect((await responsaveisDe(alice.id)).map((x) => x.nome)).toEqual(['Solange Prado'])
+
+    await derrubarInstancia()
+    const depois = await responsaveisDe(alice.id)
+    expect(depois.map((x) => x.nome)).toEqual(['Solange Prado'])
+  })
+
+  it('REGRESSAO: trocar a lista de alunos nao deixa autorizacao orfa em silencio', async () => {
+    /*
+      O defeito mais silencioso da 2.1, e o unico que piora sozinho.
+
+      Toda importacao de alunos RECALCULA os ids a partir de nome+turma. Uma
+      crianca que mudou de turma ganha id novo; uma que saiu, some. Os vinculos
+      dela ficam apontando para ninguem — e `responsaveisDe` passa a devolver
+      lista vazia, o que faz `entregar` voltar a funcionar SEM exigir
+      responsavel.
+
+      Repare no formato: o app continua funcionando. Nao ha erro, nao ha tela
+      vermelha, a saida corre normal. A escola so perde a protecao inteira da
+      2.1, no dia em que reimporta a lista do bimestre, e ninguem descobre ate
+      alguem perguntar para quem a crianca foi.
+
+      Nao da para consertar sozinho — so a escola tem a segunda planilha. Da
+      para podar o que ficou pendurado e DIZER quantos eram.
+    */
+    const antes = await (await pedir('/alunos')).json<{ id: string; nome: string }[]>()
+    const alice = antes.find((a) => a.nome === 'Alice Fernandes')!
+    expect(
+      (await (await pedir(`/responsaveis?alunoId=${alice.id}`)).json<unknown[]>()).length,
+    ).toBe(2)
+
+    // A mesma crianca, em OUTRA turma: id novo, vinculo velho apontando para
+    // ninguem. E o caso mais comum de todos — virada de ano letivo.
+    const r = await pedir('/importar', {
+      method: 'POST',
+      body: ['Nome,Turma', 'Alice Fernandes,2º ano'].join(String.fromCharCode(10)),
+    })
+    expect(r.status).toBe(200)
+
+    const corpo = await r.json<{ vinculosPerdidos: number }>()
+    expect(corpo.vinculosPerdidos).toBeGreaterThan(0)
+
+    // E o que sobrou esta limpo: nada apontando para crianca que nao existe.
+    const depois = await (await pedir('/alunos')).json<{ id: string }[]>()
+    expect(
+      (await (await pedir(`/responsaveis?alunoId=${depois[0].id}`)).json<unknown[]>()).length,
+    ).toBe(0)
+  })
+
+  it('responsavel que ficou sem nenhuma crianca tambem sai', async () => {
+    // Guardar nome e telefone de um adulto que nao busca ninguem e guardar dado
+    // pessoal sem finalidade — e a finalidade e a unica coisa que justifica o
+    // dado estar ali.
+    await pedir('/importar', {
+      method: 'POST',
+      body: ['Nome,Turma', 'Alguem Novo,2º ano'].join(String.fromCharCode(10)),
+    })
+    const alunos = await (await pedir('/alunos')).json<{ id: string }[]>()
+    expect(
+      (await (await pedir(`/responsaveis?alunoId=${alunos[0].id}`)).json<unknown[]>()).length,
+    ).toBe(0)
+
+    // A prova de que a tabela esvaziou: reimportar responsaveis para o aluno
+    // novo funciona, e traz so ele.
+    const r = await pedir('/importar-responsaveis', {
+      method: 'POST',
+      body: ['Aluno,Turma,Responsavel', 'Alguem Novo,2º ano,Tutor Novo'].join(
+        String.fromCharCode(10),
+      ),
+    })
+    expect(r.status).toBe(200)
+    expect((await r.json<{ responsaveis: number }>()).responsaveis).toBe(1)
+  })
+
+  it('so a portaria importa responsaveis', async () => {
+    const r = await pedir('/importar-responsaveis', {
+      token: TOKEN.sala('Pré 1'),
+      method: 'POST',
+      body: ['Aluno,Turma,Responsavel', 'Alice Fernandes,Pré 1,Alguem'].join(String.fromCharCode(10)),
+    })
+    expect(r.status).toBe(403)
   })
 })

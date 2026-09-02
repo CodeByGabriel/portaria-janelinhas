@@ -495,6 +495,93 @@ body {
   font-size: var(--t-nome);
 }
 
+/* ---------- caixa de entrega ---------- */
+
+/*
+  Escolher a quem entregar e uma LISTA DE PESSOAS, nao um seletor.
+
+  Um `select` esconde as opcoes atras de um toque e mostra uma de cada vez —
+  e a porteira precisa comparar o que le com quem esta na frente dela. Aqui
+  cada adulto e uma linha grande, com nome, vinculo e telefone visiveis ao
+  mesmo tempo.
+*/
+.entrega {
+  border: 0;
+  border-radius: var(--canto);
+  padding: 1.2rem 1.2rem 1rem;
+  max-width: 30rem;
+  width: calc(100vw - 2rem);
+  background: var(--superficie);
+  border-top: 6px solid var(--marca);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.28);
+  color: var(--tinta);
+}
+
+.entrega::backdrop { background: rgb(20 16 14 / 0.55); }
+
+.entrega h2 {
+  margin: 0 0 0.15rem;
+  font-size: var(--t-titulo);
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+}
+
+.entrega .quem {
+  margin: 0 0 1rem;
+  font-size: var(--t-nome);
+  font-weight: 600;
+  color: var(--tinta-media);
+}
+
+.quem-pode { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.responsavel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+}
+
+.responsavel .nome { font-weight: 600; font-size: var(--t-nome); }
+.responsavel .detalhe { font-size: var(--t-detalhe); color: var(--tinta-fraca); }
+
+/*
+  O impedido aparece, e aparece DIFERENTE.
+
+  Ele nao pode ser tocado, mas precisa ser visto: some-lo faria a porteira
+  concluir que aquele adulto nao foi cadastrado, quando o que existe e uma
+  decisao de que ele nao pode levar. "Nao consta" e "nao pode" pedem condutas
+  opostas.
+*/
+.responsavel.impedido {
+  background: var(--alerta-fundo);
+  border-color: var(--alerta);
+  color: var(--alerta);
+}
+.responsavel.impedido .detalhe { color: var(--alerta); font-weight: 700; }
+
+.irmaos { display: flex; flex-direction: column; gap: 0.5rem; }
+.irmaos p { margin: 0 0 0.2rem; font-size: var(--t-detalhe); color: var(--tinta-media); }
+
+.irmao {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--canto);
+  min-height: var(--toque-min);
+  font-size: var(--t-detalhe);
+}
+
+.irmao input { width: 1.15rem; height: 1.15rem; min-height: 0; margin: 0; }
+
+.entrega .botoes { display: flex; gap: 0.6rem; margin-top: 0.9rem; }
+.entrega .botoes button { flex: 1; }
+
 /* ---------- porta de entrada do aparelho ---------- */
 
 /*
@@ -569,10 +656,16 @@ body {
   com producao. Ela nao se fecha.
 */
 .tarja-demo {
-  position: fixed;
+  /*
+    `sticky`, e nao `fixed`.
+
+    Fixa, ela saia do fluxo e era preciso compensar com margem em cada tela —
+    e a compensacao errava assim que o texto quebrava em duas linhas, cortando
+    o nome da escola no cabecalho. Sticky ocupa o espaco que usa, seja qual for
+    a altura, e continua visivel ao rolar.
+  */
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 30;
   margin: 0;
   padding: 0.4rem 0.9rem;
@@ -584,10 +677,7 @@ body {
   text-align: center;
 }
 
-/* Empurra o conteudo para baixo da tarja, quando ela existe. */
-body:has(.tarja-demo) .cabecalho,
-body:has(.tarja-demo) .porta,
-body:has(.tarja-demo) .entrada { margin-top: 1.9rem; }
+
 
 /* ---------- cartao do aluno ---------- */
 

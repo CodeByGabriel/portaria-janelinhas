@@ -63,6 +63,10 @@ const TELAS = [
     altura: 620,
     espera: 1600,
     antes: async (cdp) => {
+      // `Network.enable` antes de mexer em cookie: sem o dominio ligado, o
+      // comando responde sem fazer nada, e o print sai com a tela ja
+      // autorizada — mostrando exatamente o que ele nao deveria mostrar.
+      await cdp.chamar('Network.enable')
       await cdp.chamar('Network.clearBrowserCookies')
     },
     roteiro: null,
@@ -92,6 +96,33 @@ const TELAS = [
       campo.dispatchEvent(new Event('input'))
     `,
     pronto: `document.querySelectorAll('#resultados .linha').length >= 3`,
+  },
+  {
+    /*
+      A caixa que pergunta a quem a crianca esta sendo entregue.
+
+      E a tela que fecha a promessa do app: ate a 2.1 ele registrava que a
+      crianca saiu e nao registrava com quem. E mostra o impedido — presente,
+      marcado e intocavel, porque "nao consta" e "nao pode" pedem condutas
+      opostas.
+    */
+    arquivo: 'portaria-entrega.png',
+    url: `${BASE}/portaria/`,
+    largura: 430,
+    altura: 820,
+    espera: 1800,
+    roteiro: `
+      (async () => {
+        const alvo = [...document.querySelectorAll('#ativas .linha')].find(
+          (li) => li.dataset.estado === 'liberado',
+        )
+        const b = [...(alvo?.querySelectorAll('button') ?? [])].find(
+          (x) => x.textContent.trim() === 'Entregar',
+        )
+        if (b) b.click()
+      })()
+    `,
+    pronto: `document.querySelector('dialog.entrega')?.open === true`,
   },
   {
     /*
@@ -283,13 +314,34 @@ async function semear() {
   }
   await esperar(300)
 
-  for (const id of ['a17', 'a18', 'a19']) {
-    portaria.send(JSON.stringify({ tipo: 'chamar', alunoId: id }))
+  /*
+    Os ids vem da LISTA, nao escritos a mao.
+
+    `a17`, `a18`, `a19` era o esquema posicional da semente — e toda importacao
+    recalcula os ids a partir de nome+turma. Depois de uma unica rodada de
+    testes que reimporta a planilha, esses ids apontam para ninguem, e a
+    semeadura falha em SILENCIO: os comandos sao recusados, o print sai com o
+    quadro vazio, e nada no console diz que o produto nao foi retratado.
+
+    Mesmo conserto que o fim-a-fim recebeu na 2.2.
+  */
+  const doTerceiro = (
+    await fetch(`${BASE}/alunos`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
+  )
+    .filter((a) => a.turma === '3º ano')
+    .slice(0, 3)
+
+  if (doTerceiro.length < 3) {
+    throw new Error(`o 3º ano tem ${doTerceiro.length} criancas; o print precisa de 3`)
+  }
+
+  for (const a of doTerceiro) {
+    portaria.send(JSON.stringify({ tipo: 'chamar', alunoId: a.id }))
     await esperar(200)
   }
   await esperar(400)
-  for (const id of ['a17', 'a18']) {
-    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: id }))
+  for (const a of doTerceiro.slice(0, 2)) {
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: a.id }))
     await esperar(250)
   }
   await esperar(300)
@@ -301,9 +353,32 @@ async function semear() {
     caso na tela: a crianca que foi liberada e voltou para a sala. Sem isto, o
     print continuaria mostrando um app que nao e mais este.
   */
-  sala.send(JSON.stringify({
-    tipo: 'retornar', alunoId: 'a17', razao: 'nao-saiu-com-o-responsavel',
-  }))
+  sala.send(
+    JSON.stringify({
+      tipo: 'retornar',
+      alunoId: doTerceiro[0].id,
+      razao: 'nao-saiu-com-o-responsavel',
+    }),
+  )
+
+  /*
+    E a Alice liberada, que tem responsaveis na semente — inclusive um
+    impedido. Sem ela, o print da caixa de entrega mostraria uma crianca sem
+    ninguem cadastrado, que e justamente o caso em que a caixa nem aparece.
+  */
+  const alunos = await fetch(`${BASE}/alunos`, comoAparelho(TOKEN.portaria)).then((r) =>
+    r.json(),
+  )
+  const alice = alunos.find((a) => a.nome === 'Alice Fernandes')
+  if (alice) {
+    const salaDaAlice = await ligarWs(TOKEN.sala(alice.turma))
+    await esperar(400)
+    portaria.send(JSON.stringify({ tipo: 'chamar', alunoId: alice.id }))
+    await esperar(400)
+    salaDaAlice.send(JSON.stringify({ tipo: 'liberar', alunoId: alice.id }))
+    await esperar(600)
+    salaDaAlice.close()
+  }
   await esperar(600)
 
   console.log('  estado: 3 no 3º ano — 1 chamado, 1 liberado, 1 de volta na sala')
@@ -415,7 +490,23 @@ async function principal() {
         ok = r.result?.value === true
         if (!ok) await esperar(300)
       }
-      if (!ok) console.log(`  AVISO: ${tela.arquivo} capturado sem a condicao satisfeita`)
+      /*
+        Condicao nao satisfeita e FALHA, nao aviso.
+
+        Antes isto so escrevia uma linha no console e seguia gravando o PNG. O
+        servidor caiu no meio de uma rodada e o resultado foi um print da tela
+        de erro do Chrome — "nao e possivel acessar esse site" — salvo com o
+        nome de portaria.png, e a ferramenta terminando com codigo 0.
+
+        Print que mostra outra coisa e pior do que print que falta: o que falta
+        alguem percebe.
+      */
+      if (!ok) {
+        throw new Error(
+          `${tela.arquivo}: a condicao de pronto nao foi satisfeita. ` +
+            'O servidor esta de pe? A pagina carregou?',
+        )
+      }
       await esperar(500)
     }
 

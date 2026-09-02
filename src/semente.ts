@@ -1,3 +1,5 @@
+import { idDeResponsavel } from './responsaveis.ts'
+
 /*
   A escola vai do Pré 1 ao 9º ano: Educacao Infantil, Fundamental I e
   Fundamental II. Sao 11 turmas, e isso muda a interface — uma tela de sala
@@ -148,6 +150,93 @@ const POR_TURMA = 4
 const RESTRICOES: Readonly<Record<string, string>> = {
   'Ravi Bacelar':
     'Guarda compartilhada. Entregar somente à mãe ou à avó materna, conforme decisão judicial de 2026 (ficção da semente).',
+}
+
+/*
+  Responsaveis da semente, e por que eles existem.
+
+  Ate a 2.1 a semente tinha 44 criancas e nenhum adulto, entao nada que
+  dependesse de "quem pode levar" podia ser exercitado — nem pelo teste, nem
+  pelos prints, nem pela demonstracao na frente da escola. Foi o mesmo buraco
+  dos homonimos e da restricao, e a licao ja custou tres vezes: semente sem o
+  caso dificil empurra o caso dificil para dentro do teste, onde ele vira
+  efeito colateral.
+
+  Tres situacoes que a escola tem de verdade:
+
+    Marta Fernandes  busca DOIS filhos, em turmas diferentes — e o par de
+                     irmaos que a chamada agrupada precisa para existir.
+    Ricardo Fernandes  IMPEDIDO de levar um dos dois e autorizado no outro. E
+                     assim que decisao judicial costuma ser escrita, e por isso
+                     o impedimento vive no par, nunca na pessoa.
+    Zuleide Bacelar  unica responsavel do Ravi, que ja carrega a restricao em
+                     texto da 1.9 — as duas formas coexistem de proposito.
+
+  Ficcao declarada, como todo o resto. Nenhum dado real entra neste repositorio.
+*/
+const FAMILIAS: readonly {
+  responsavel: string
+  vinculo: string
+  telefone: string
+  filhos: { nome: string; impedido?: boolean }[]
+}[] = [
+  {
+    responsavel: 'Marta Fernandes',
+    vinculo: 'mãe',
+    telefone: '(11) 90000-0001',
+    filhos: [{ nome: 'Alice Fernandes' }, { nome: 'Maria Eduarda Nogueira' }],
+  },
+  {
+    responsavel: 'Ricardo Fernandes',
+    vinculo: 'pai',
+    telefone: '(11) 90000-0002',
+    filhos: [
+      { nome: 'Alice Fernandes', impedido: true },
+      { nome: 'Maria Eduarda Nogueira' },
+    ],
+  },
+  {
+    responsavel: 'Zuleide Bacelar',
+    vinculo: 'avó',
+    telefone: '(11) 90000-0003',
+    filhos: [{ nome: 'Ravi Bacelar' }],
+  },
+]
+
+/** Os responsaveis da semente, prontos para o deposito guardar. */
+export function responsaveisDaSemente(): {
+  responsaveis: { id: string; nome: string; vinculo: string; telefone: string }[]
+  vinculos: { alunoId: string; responsavelId: string; impedido: boolean }[]
+} {
+  const alunos = semear()
+  const responsaveis = []
+  const vinculos = []
+
+  for (const f of FAMILIAS) {
+    const id = idDeResponsavel(f.responsavel)
+    responsaveis.push({
+      id,
+      nome: f.responsavel,
+      vinculo: f.vinculo,
+      telefone: f.telefone,
+    })
+    for (const filho of f.filhos) {
+      /*
+        `filter`, e nao `find`: "Maria Eduarda Nogueira" e homonima de
+        proposito nesta semente, e a mae busca as duas. Um `find` pegaria a
+        primeira e deixaria a outra sem responsavel — silenciosamente.
+      */
+      for (const aluno of alunos.filter((a) => a.nome === filho.nome)) {
+        vinculos.push({
+          alunoId: aluno.id,
+          responsavelId: id,
+          impedido: filho.impedido === true,
+        })
+      }
+    }
+  }
+
+  return { responsaveis, vinculos }
 }
 
 /** As restricoes da semente, prontas para o deposito guardar. */

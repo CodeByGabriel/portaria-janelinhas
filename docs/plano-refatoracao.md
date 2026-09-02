@@ -570,6 +570,64 @@ A escola emite um token por aparelho carregando papel e turma; o app deixa de ac
 
 ---
 
+#### 2.1 — o que a entrega passou a exigir
+
+**"Entregar" pergunta a quem.** Era a metade da promessa que faltava: até aqui a trilha
+registrava que a criança saiu e não registrava com quem. Ela grava **id e nome** — o nome
+porque a trilha é registro histórico e precisa continuar legível depois que a planilha de
+responsáveis for substituída, do mesmo jeito que ela já guarda o nome do aluno.
+
+**A exigência é condicional, de propósito.** Criança sem responsável cadastrado continua
+sendo entregue como antes. A alternativa travaria a saída de toda escola que ainda não
+tivesse subido a segunda planilha — no meio do turno, por uma pendência administrativa.
+
+**A restrição da 1.9 virou barreira.** Lá o sistema só podia garantir que alguém *leu* a
+anotação, porque não sabia quem estava no portão. Agora sabe, e "não entregar ao pai" é
+uma regra que ele cumpre sozinho — sem "li e vou continuar". Mas o impedido **aparece na
+lista, marcado e intocável**: sumir com ele faria a porteira concluir que aquele adulto não
+foi cadastrado, quando o que existe é uma decisão de que ele não pode levar. "Não consta" e
+"não pode" pedem condutas opostas.
+
+**Irmãos (1.4) saíram de graça, e por isso o plano os adiou até aqui.** "Mesmo
+responsável", nunca "mesmo sobrenome" — sobrenome erra com família recomposta; responsável
+acerta por construção. Os irmãos só aparecem *depois* da escolha do adulto, porque antes
+dela não há por quem perguntar. E entram na fila como **chamados**, não entregues: entregar
+sem a sala liberar pularia a confirmação da professora.
+
+#### 2.1 — o defeito silencioso, e o único que piora sozinho
+
+Toda importação de alunos recalcula os ids a partir de nome + turma. A criança que mudou de
+turma ganha id novo, e **os vínculos dela ficam apontando para ninguém**. `responsaveisDe`
+passa a devolver lista vazia, e `entregar` volta a funcionar sem exigir responsável.
+
+Repare no formato: o app continua funcionando. Não há erro, não há tela vermelha, a saída
+corre normal. A escola só perde a proteção inteira da 2.1, no dia em que reimporta a lista
+do bimestre, e ninguém descobre até alguém perguntar para quem a criança foi.
+
+Não dá para consertar sozinho — só a escola tem a segunda planilha. Dá para podar o que
+ficou pendurado e **dizer quantos eram**, e é o que a resposta da importação faz agora.
+
+#### 2.1 — a semente ganhou famílias
+
+Pela quarta vez nesta refatoração: **semente sem o caso difícil empurra o caso difícil para
+dentro do teste, onde ele vira efeito colateral.** Antes eram os homônimos, depois a
+restrição, depois os aparelhos. Agora as famílias — uma mãe que busca dois filhos em turmas
+diferentes (que é o par de irmãos), um pai impedido num filho e autorizado no outro (que é
+como decisão judicial se escreve), e uma avó única responsável.
+
+### Estado dos portões ao fim da 2.1
+
+`npm test` **183 + 72** e `typecheck` verdes. `fim-a-fim` verde com **66 verificações** na
+última execução completa. `telas` verde com **99 verificações** em duas execuções
+consecutivas logo após a seção de entrega ficar pronta.
+
+As execuções finais de `telas` e `peso` não completaram: o `wrangler dev` passou a cair sob
+carga nesta máquina — 2,4 GB em compressão de memória e ~1 GB de disco livre, com arquivos
+estáticos de 5 KB levando **dez segundos** para serem servidos. Não é o código; é a
+máquina, e está registrado aqui em vez de disfarçado.
+
+---
+
 ## 7. Fase 3 — Ecossistema (esboço de interfaces apenas)
 
 Cadastro por API substituindo a planilha; exportação da trilha no formato `LogAuditoria`; delegação "hoje a avó busca" via portal de pais; push só com fallback e só quando o portal existir.

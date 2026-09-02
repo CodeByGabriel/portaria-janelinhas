@@ -48,6 +48,26 @@ function ligar(token) {
   })
 }
 
+/*
+  Quem pode levar esta crianca — e o primeiro que PODE.
+
+  Desde a 2.1 entregar exige dizer a quem, quando a crianca tem responsavel
+  cadastrado. A semente cadastra alguns, entao este arquivo precisa descobrir o
+  responsavel em vez de escreve-lo: os ids saem de nome normalizado, e fixa-los
+  aqui repetiria o erro dos `a01` que a 2.2 acabou de tirar.
+
+  Devolve `undefined` para crianca sem responsavel cadastrado — e ai o comando
+  segue como antes, que e o caminho da escola que ainda nao subiu a segunda
+  planilha.
+*/
+async function quemPodeLevar(alunoId) {
+  const podem = await fetch(
+    `${HTTP}/responsaveis?alunoId=${encodeURIComponent(alunoId)}`,
+    comoAparelho(TOKEN.portaria),
+  ).then((r) => (r.ok ? r.json() : []))
+  return podem.find((r) => !r.impedido)?.id
+}
+
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms))
 const ultimo = (c) => c.recebidos.filter((m) => m.tipo === 'retrato').at(-1)
 const recusas = (c) => c.recebidos.filter((m) => m.tipo === 'recusa')
@@ -81,7 +101,10 @@ async function limparMesa(portaria) {
     for (const c of chamadas) {
       const tipo = FECHA[c.estado]
       if (!tipo) continue
-      portaria.ws.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
+      // Entregar exige dizer a quem, desde a 2.1.
+      const responsavelId =
+        tipo === 'entregar' ? await quemPodeLevar(c.alunoId) : undefined
+      portaria.ws.send(JSON.stringify({ tipo, alunoId: c.alunoId, responsavelId }))
     }
     await esperar(300)
   }
@@ -175,7 +198,13 @@ async function principal() {
   conferir('liberar propaga para a portaria',
     ultimo(portaria)?.chamadas[0]?.estado === 'liberado')
 
-  portaria.ws.send(JSON.stringify({ tipo: 'entregar', alunoId: ID.a01 }))
+  portaria.ws.send(
+    JSON.stringify({
+      tipo: 'entregar',
+      alunoId: ID.a01,
+      responsavelId: await quemPodeLevar(ID.a01),
+    }),
+  )
   await esperar(400)
   conferir('S1: entregar TIRA a crianca do retrato, nao acumula',
     ultimo(portaria)?.chamadas.length === 0,
@@ -295,6 +324,115 @@ async function principal() {
     !trilhaRetorno.some((e) => e.razao === 'inventado por mim'))
   conferir('as outras acoes tem razao vazia, nunca ausente',
     trilhaRetorno.filter((e) => e.acao !== 'retornar').every((e) => e.razao === ''))
+
+  console.log('\n== a quem a crianca foi entregue ==')
+
+  /*
+    A metade da promessa que faltava. Ate a 2.1 a trilha dizia que a crianca
+    saiu e nao dizia com quem — e um registro de saida que nao responde "a
+    quem" nao serve no dia em que a familia pergunta.
+  */
+  const alunosParaEntrega = await fetch(
+    `${HTTP}/alunos`,
+    comoAparelho(TOKEN.portaria),
+  ).then((r) => r.json())
+  const alice = alunosParaEntrega.find((a) => a.nome === 'Alice Fernandes')
+
+  const podemLevar = await fetch(
+    `${HTTP}/responsaveis?alunoId=${alice.id}`,
+    comoAparelho(TOKEN.portaria),
+  ).then((r) => r.json())
+
+  conferir('a semente traz responsaveis, senao nada disto seria exercitavel',
+    podemLevar.length >= 2, JSON.stringify(podemLevar.map((r) => r.nome)))
+  conferir('o impedido APARECE na lista, marcado — "nao consta" e "nao pode" sao diferentes',
+    podemLevar.some((r) => r.impedido === true),
+    JSON.stringify(podemLevar.map((r) => [r.nome, r.impedido])))
+
+  const autorizado = podemLevar.find((r) => !r.impedido)
+  const impedido = podemLevar.find((r) => r.impedido)
+
+  const salaDaAlice = await ligar(TOKEN.sala(alice.turma))
+  await esperar(300)
+
+  portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: alice.id }))
+  await esperar(400)
+  salaDaAlice.ws.send(JSON.stringify({ tipo: 'liberar', alunoId: alice.id }))
+  await esperar(400)
+
+  // Sem dizer a quem: recusado.
+  portaria.ws.send(JSON.stringify({ tipo: 'entregar', alunoId: alice.id }))
+  await esperar(400)
+  conferir('entregar SEM dizer a quem e recusado',
+    ultimo(portaria)?.chamadas.some((c) => c.alunoId === alice.id))
+  conferir('e a recusa diz o que falta',
+    /escolha um respons/.test(recusas(portaria).at(-1)?.motivo ?? ''),
+    recusas(portaria).at(-1)?.motivo)
+
+  /*
+    IMPEDIDO NAO ENTREGA, e reconhecer nao libera.
+
+    Aqui a restricao deixa de ser alerta e vira barreira. Na 1.9 o sistema so
+    podia garantir que alguem LEU a anotacao, porque nao sabia quem estava no
+    portao. Agora sabe.
+  */
+  portaria.ws.send(
+    JSON.stringify({ tipo: 'entregar', alunoId: alice.id, responsavelId: impedido.id }),
+  )
+  await esperar(400)
+  conferir('o IMPEDIDO nao leva a crianca',
+    ultimo(portaria)?.chamadas.some((c) => c.alunoId === alice.id))
+  conferir('e a recusa nomeia o impedimento',
+    /impedido de levar/.test(recusas(portaria).at(-1)?.motivo ?? ''),
+    recusas(portaria).at(-1)?.motivo)
+
+  portaria.ws.send(
+    JSON.stringify({ tipo: 'entregar', alunoId: alice.id, responsavelId: autorizado.id }),
+  )
+  await esperar(500)
+  conferir('o autorizado leva, e a crianca sai do quadro',
+    !ultimo(portaria)?.chamadas.some((c) => c.alunoId === alice.id))
+
+  const trilhaEntrega = await trilhaDesta()
+  const entrega = trilhaEntrega.find((e) => e.acao === 'entregar' && e.alunoId === alice.id)
+  conferir('a trilha grava o id de quem recebeu',
+    entrega?.responsavelId === autorizado.id, JSON.stringify(entrega?.responsavelId))
+  conferir('e grava o NOME, para continuar legivel depois que a planilha mudar',
+    entrega?.responsavelNome === autorizado.nome, JSON.stringify(entrega?.responsavelNome))
+  conferir('as outras acoes tem responsavel vazio, nunca ausente',
+    trilhaEntrega.filter((e) => e.acao !== 'entregar').every((e) => e.responsavelId === ''))
+
+  /*
+    IRMAOS vem de MESMO RESPONSAVEL, e nao de sobrenome. Sobrenome erra com
+    familia recomposta; responsavel acerta por construcao.
+  */
+  const irmaos = await fetch(
+    `${HTTP}/irmaos?responsavelId=${autorizado.id}&exceto=${alice.id}`,
+    comoAparelho(TOKEN.portaria),
+  ).then((r) => r.json())
+  conferir('o mesmo responsavel revela os irmaos', irmaos.length > 0,
+    JSON.stringify(irmaos.map((i) => i.nome)))
+  conferir('e nenhum deles e a propria crianca',
+    !irmaos.some((i) => i.id === alice.id))
+
+  const irmaosDoImpedido = await fetch(
+    `${HTTP}/irmaos?responsavelId=${impedido.id}&exceto=zzz`,
+    comoAparelho(TOKEN.portaria),
+  ).then((r) => r.json())
+  conferir('quem esta impedido de levar uma crianca nao a ve como irma',
+    !irmaosDoImpedido.some((i) => i.id === alice.id),
+    JSON.stringify(irmaosDoImpedido.map((i) => i.nome)))
+
+  // a sala nao pergunta por irmaos, e nao le responsavel de outra turma
+  const irmaosPelaSala = await fetch(
+    `${HTTP}/irmaos?responsavelId=${autorizado.id}&exceto=x`,
+    comoAparelho(TOKEN.sala(alice.turma)),
+  )
+  conferir('so a portaria pergunta por irmaos', irmaosPelaSala.status === 403,
+    `status ${irmaosPelaSala.status}`)
+
+  salaDaAlice.ws.close()
+  await esperar(300)
 
   console.log('\n== ataques do red team ==')
 

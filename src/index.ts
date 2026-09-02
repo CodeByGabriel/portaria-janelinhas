@@ -11,6 +11,9 @@ const DO_PORTARIA = new Set([
   '/dispositivos',
   '/modo',
   '/eu',
+  '/responsaveis',
+  '/irmaos',
+  '/importar-responsaveis',
 ])
 
 export default {
