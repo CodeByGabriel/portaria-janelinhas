@@ -13,7 +13,7 @@
  */
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -21,6 +21,25 @@ const SAIDA = process.env.SAIDA ? join(RAIZ, process.env.SAIDA) : join(RAIZ, 'pr
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const PORTA = 9222
 const BASE = process.env.BASE ?? 'http://127.0.0.1:8787'
+
+/*
+  Simulacao de daltonismo pelo proprio Chrome.
+
+  `VISAO=deuteranopia node ferramentas/prints.mjs` captura as mesmas telas com
+  o filtro que o DevTools usa no painel de renderizacao. Nao e aproximacao
+  nossa: e o mesmo caminho de cor do navegador, aplicado depois da composicao,
+  entao pega tambem sombra, borda e antialiasing — coisas que uma matriz
+  rodando so sobre os tokens nao alcanca.
+
+  Vale para conferir o quarto canal: se dois estados so se distinguem pela
+  matiz, e aqui que eles se encostam.
+*/
+const VISAO = process.env.VISAO ?? 'none'
+const VISOES = ['none', 'achromatopsia', 'deuteranopia', 'protanopia', 'tritanopia']
+if (!VISOES.includes(VISAO)) {
+  console.error(`VISAO invalida: ${VISAO}. Use uma de ${VISOES.join(', ')}.`)
+  process.exit(1)
+}
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -205,6 +224,10 @@ async function principal() {
   const cdp = new Cdp(ws)
   await cdp.chamar('Page.enable')
   await cdp.chamar('Runtime.enable')
+  if (VISAO !== 'none') {
+    await cdp.chamar('Emulation.setEmulatedVisionDeficiency', { type: VISAO })
+    console.log(`  visao emulada: ${VISAO}`)
+  }
 
   for (const tela of TELAS) {
     await cdp.chamar('Emulation.setDeviceMetricsOverride', {
@@ -265,9 +288,23 @@ async function principal() {
   ws.close()
   chrome.kill()
   await esperar(600)
-  rmSync(join(SAIDA, '.perfil'), { recursive: true, force: true })
+  /*
+    O Chrome solta os arquivos do perfil um pouco depois do kill, e no Windows
+    o CrashpadMetrics fica travado por alguns instantes. Sem esta tolerancia a
+    ferramenta terminava com erro DEPOIS de ja ter gravado os sete prints —
+    o que faz um portao verde parecer vermelho.
+  */
+  for (let i = 0; i < 5; i++) {
+    try {
+      rmSync(join(SAIDA, '.perfil'), { recursive: true, force: true })
+      break
+    } catch {
+      await esperar(400)
+    }
+  }
   await desligar()
-  console.log(`\n${TELAS.length} prints em prints/`)
+  const pasta = relative(RAIZ, SAIDA).replace(/\\/g, '/')
+  console.log(`\n${TELAS.length} prints em ${pasta}/`)
   process.exit(0)
 }
 

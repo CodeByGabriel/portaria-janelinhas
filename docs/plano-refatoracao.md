@@ -181,6 +181,41 @@ Retomar como tarefa própria, não dentro de outra.
 | **Risco/rollback** | Baixo. Visual, reversível |
 | **Depende de** | — |
 
+#### 0.5 — o que a captura desmentiu
+
+Fechada em 01/09/2026, com três correções que só apareceram **depois** do teste
+automático ficar verde. Ficam registradas porque cada uma mostra um limite do
+portão que a antecedeu.
+
+**A faixa lateral não era um quarto canal.** O plano dizia que ela daria "posição e
+espessura" a quem não distingue matiz, e o CSS afirmava a mesma coisa num comentário.
+Era falso: as cinco faixas tinham posição e espessura idênticas, e só a cor mudava.
+`docs/prints/fase-0-deuteranopia/sala.png` mostra o resultado — a faixa verde de
+`liberado` e a terracota de `chamado`, lado a lado, viram o mesmo oliva. Não era um
+canal a mais; era o primeiro canal desenhado maior. Agora cada estado tem um traço
+próprio (`aguardando` 3px pontilhado, `chamado` 6px sólido, `liberado` 6px duplo,
+`entregue` 6px tracejado, `retorno` 6px pontilhado), com teste exigindo que o par
+(estilo, espessura) seja único.
+
+A simulação passou a ser produzida pelo próprio Chrome, via
+`Emulation.setEmulatedVisionDeficiency` — `VISAO=deuteranopia node ferramentas/prints.mjs`.
+Aplicada depois da composição, ela pega sombra, borda e antialiasing, coisas que uma
+matriz rodando sobre os tokens não alcança.
+
+**O botão desabilitado continuou verde na tela com o teste verde.** `button:disabled`
+e `button.principal` têm a mesma especificidade; o bloco do desabilitado estava antes
+e perdia por ordem. Os tokens estavam certos, `contraste.test.ts` passava inteiro, e o
+"Aguardando no portão" seguia verde-cheio. Um teste de cor mede o que foi declarado,
+não o que vence a cascata — quem pegou foi olhar o print. Há regressão de ordem agora,
+mas a lição maior é que o print é parte do portão, não ilustração dele.
+
+**O fim-a-fim parou de exigir mesa limpa.** Com a persistência da 0.2, uma rodada do
+`prints.mjs` deixa três chamados no quadro, e quatro verificações passaram a falhar sem
+haver bug. O cabeçalho já pedia `rm -rf .wrangler/state` na mão desde antes; ritual
+manual antes de um portão é portão que para de rodar. O arquivo agora esvazia a mesa
+pelo caminho legítimo — cancelar o chamado, entregar o liberado — sem apagar nada, e a
+trilha registra a limpeza como registraria qualquer ação da portaria.
+
 ### 0.6 — Áudio deixa de falhar calado (P) — **acrescentado por mim**
 
 | | |
@@ -268,6 +303,16 @@ Cadastro por API substituindo a planilha; exportação da trilha no formato `Log
 **Branch:** `refatoracao-v2`, a partir de `portaria-janelinhas`. Primeiro commit = este plano em `docs/plano-refatoracao.md` + a pesquisa em `docs/pesquisa-refatoracao.md`.
 
 **Um commit por tarefa.** Antes de cada commit, os três portões rodados **crus**, com código de saída conferido explicitamente — nunca canalizados para `head` ou `grep`, que foi como o typecheck passou meses quebrado sem ninguém ver.
+
+**Ferramenta que reescreve arquivo tem que preservar o fim de linha.** O repositório
+é misto — `src/` e `web/portaria/` em CRLF, `web/comum/` e a maior parte de
+`ferramentas/` em LF — e um script Python com `io.open` padrão normaliza o arquivo
+inteiro ao gravar. Na 0.5 isso transformou uma mudança de 176 linhas no `tokens.css`
+num diff de 510, e três arquivos vizinhos viraram diff integral sem uma linha de
+conteúdo alterada. Revisão de diff é o único filtro humano que resta depois dos
+portões automáticos; inflá-lo é desligá-lo. Ao gravar por script, usar `newline=''`.
+E o critério de que está limpo é `git diff --numstat` bater com
+`git diff --ignore-all-space --numstat`, não a impressão de que ficou bom.
 
 **Parada obrigatória ao fim de cada fase** para sua aprovação. Ao fim de cada fase: red team (só acha) + blue team (conserta com um teste de regressão por achado).
 

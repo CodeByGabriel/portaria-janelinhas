@@ -336,9 +336,18 @@ async function principal() {
   await esperar(600)
   rmSync(PERFIL, { recursive: true, force: true })
 
+  /*
+    O "antes" e imutavel: e a referencia contra a qual as fases sao medidas.
+    Remedicoes vao para outro arquivo — senao a primeira reexecucao apaga
+    justamente o numero que se queria comparar. Foi o que aconteceu na 0.5,
+    e so nao virou perda porque o arquivo estava versionado.
+
+    SAIDA=baseline.json  sobrescreve, de proposito, quando for o caso.
+  */
+  const destino = process.env.SAIDA ?? 'medicao.json'
   mkdirSync(join(RAIZ, 'docs'), { recursive: true })
-  writeFileSync(join(RAIZ, 'docs', 'baseline.json'), JSON.stringify(rel, null, 2))
-  console.log('\ndocs/baseline.json escrito')
+  writeFileSync(join(RAIZ, 'docs', destino), JSON.stringify(rel, null, 2))
+  console.log(`\ndocs/${destino} escrito`)
   process.exit(0)
 }
 

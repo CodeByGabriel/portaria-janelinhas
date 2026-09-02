@@ -30,22 +30,61 @@
   /* texto */
   --tinta: #16211c;
   --tinta-media: #4a5852;
-  --tinta-fraca: #78857f;
+  /*
+    Era #78857f: 3,54 sobre o fundo e 3,85 sobre o cartao — reprovava o
+    minimo de 4,5 do WCAG 1.4.3. Carrega a turma no cartao, o detalhe na
+    linha e o aviso de truncamento da busca, entao nao e texto decorativo.
+  */
+  --tinta-fraca: #5f6b66;
   --tinta-clara: #ffffff;
 
-  /* estados da saida */
-  --chamado-fundo: #fdf1de;
-  --chamado-borda: #f0d4a3;
-  --chamado-tinta: #8a5209;
-  --liberado-fundo: var(--marca-clara);
-  --liberado-borda: var(--marca-borda);
-  --liberado-tinta: var(--marca-escura);
+  /*
+    ESTADOS.
+
+    Regra de uso: nenhum destes tokens aparece sozinho. Cada estado se
+    apresenta por quatro canais ao mesmo tempo — cor, icone, rotulo textual e
+    faixa lateral. O componente monta o conjunto (web/comum/cartao.js); a tela
+    nao escolhe.
+
+    Todos os pares foram medidos: cada cor passa 4,5 como texto sobre o fundo
+    e sobre o cartao, e passa 3,0 como faixa. src/contraste.test.ts trava isso.
+  */
+  --estado-aguardando: #736c67;
+  --estado-chamado: #c2410c;
+  --estado-liberado: #15803d;
+  --estado-entregue: #1d4ed8;
+  --estado-retorno: #86198f;
+
+  --estado-aguardando-fundo: #f7f6f5;
+  --estado-chamado-fundo: #fef6e9;
+  --estado-liberado-fundo: #f2f9f5;
+  --estado-entregue-fundo: #e7edfc;
+  --estado-retorno-fundo: #f8e9f8;
+
   --alerta: #a4302a;
   --alerta-fundo: #fbeceb;
+
+  /* Botao desabilitado: par proprio, nunca opacity. Ver a regra la embaixo. */
+  --apagado-fundo: #dfe4e1;
+  --apagado-tinta: #3f4b45;
+
+  /* nomes antigos, mantidos para nao quebrar telas que ainda os usam */
+  --chamado-fundo: var(--estado-chamado-fundo);
+  --chamado-borda: #f0d4a3;
+  --chamado-tinta: var(--estado-chamado);
+  --liberado-fundo: var(--estado-liberado-fundo);
+  --liberado-borda: var(--marca-borda);
+  --liberado-tinta: var(--estado-liberado);
 
   /* medidas */
   --canto: 8px;
   --canto-g: 12px;
+  /*
+    Alvo de toque. 44px e o nivel AAA (WCAG 2.5.5), acima do minimo AA de 24.
+    A baseline mediu 6 de 9 acoes primarias em 40,1px, e o summary da
+    importacao em 18,7 — abaixo ate do minimo AA.
+  */
+  --toque-min: 44px;
   --transicao: 180ms cubic-bezier(0.2, 0, 0.2, 1);
   --sombra: 0 1px 2px rgba(22, 33, 28, 0.06), 0 1px 3px rgba(22, 33, 28, 0.04);
   --sombra-alta: 0 2px 4px rgba(22, 33, 28, 0.08), 0 4px 12px rgba(22, 33, 28, 0.06);
@@ -161,9 +200,6 @@ body {
   transition: box-shadow var(--transicao), border-color var(--transicao);
 }
 
-.cartao[data-estado='chamado'] { border-color: var(--chamado-borda); }
-.cartao[data-estado='liberado'] { border-color: var(--liberado-borda); }
-
 .cartao .foto {
   width: 96px;
   height: 96px;
@@ -228,7 +264,74 @@ body {
   color: var(--tinta-fraca);
 }
 
+
+/* ---------- faixa lateral de estado ---------- */
+
+/*
+  O quarto canal, junto de cor, icone e rotulo.
+
+  A primeira versao deste bloco so trocava a COR da faixa, e o comentario
+  afirmava que quem nao distingue matiz ainda leria a posicao e a espessura.
+  Era falso: as cinco faixas tinham a mesma posicao e a mesma espessura. A
+  captura em `docs/prints/fase-0/deuteranopia/sala.png` mostra o resultado —
+  a faixa verde de `liberado` e a terracota de `chamado` viram o mesmo oliva,
+  lado a lado, e a faixa nao separa nada. Nao era um quarto canal; era o
+  primeiro canal desenhado maior.
+
+  Agora cada estado tem um DESENHO proprio de traco, que sobrevive a qualquer
+  simulacao porque nao depende de cor nenhuma:
+
+    aguardando  3px pontilhado  — traco fino e interrompido, o estado quieto
+    chamado     6px solido      — a barra cheia, o unico que pede acao agora
+    liberado    6px duplo       — duas barras, "passou por duas maos"
+    entregue    6px tracejado   — traco largo e interrompido, ciclo fechado
+    retorno     6px pontilhado  — pontilhado grosso, distinto do aguardando
+                                  pela espessura
+
+  A cor continua ali por cima, e continua util para quem a enxerga: a faixa
+  usa a cor cheia do estado, que passa 3:1 como nao-texto, contra 1,43 da
+  borda de 1px que existia antes.
+
+  Fica DEPOIS de .cartao e .linha de proposito: as duas declaram `border` no
+  atalho, e o atalho reescreve border-left-width. Colocado antes, este bloco
+  era silenciosamente anulado.
+*/
+.cartao,
+.linha {
+  border-left-width: 6px;
+  border-left-style: solid;
+  border-left-color: var(--borda);
+}
+
+.cartao[data-estado='aguardando'],
+.linha[data-estado='aguardando'] {
+  border-left-color: var(--estado-aguardando);
+  border-left-style: dotted;
+  border-left-width: 3px;
+}
+.cartao[data-estado='chamado'],
+.linha[data-estado='chamado'] {
+  border-left-color: var(--estado-chamado);
+  border-left-style: solid;
+}
+.cartao[data-estado='liberado'],
+.linha[data-estado='liberado'] {
+  border-left-color: var(--estado-liberado);
+  border-left-style: double;
+}
+.cartao[data-estado='entregue'],
+.linha[data-estado='entregue'] {
+  border-left-color: var(--estado-entregue);
+  border-left-style: dashed;
+}
+.cartao[data-estado='retorno'],
+.linha[data-estado='retorno'] {
+  border-left-color: var(--estado-retorno);
+  border-left-style: dotted;
+}
+
 /* ---------- etiqueta de estado ---------- */
+
 
 .etiqueta {
   display: inline-block;
@@ -243,16 +346,47 @@ body {
   white-space: nowrap;
 }
 
+.etiqueta[data-estado='aguardando'] {
+  background: var(--estado-aguardando-fundo);
+  color: var(--estado-aguardando);
+  border-color: var(--estado-aguardando);
+}
+
 .etiqueta[data-estado='chamado'] {
-  background: var(--chamado-fundo);
-  color: var(--chamado-tinta);
-  border-color: var(--chamado-borda);
+  background: var(--estado-chamado-fundo);
+  color: var(--estado-chamado);
+  border-color: var(--estado-chamado);
 }
 
 .etiqueta[data-estado='liberado'] {
-  background: var(--liberado-fundo);
-  color: var(--liberado-tinta);
-  border-color: var(--liberado-borda);
+  background: var(--estado-liberado-fundo);
+  color: var(--estado-liberado);
+  border-color: var(--estado-liberado);
+}
+
+.etiqueta[data-estado='entregue'] {
+  background: var(--estado-entregue-fundo);
+  color: var(--estado-entregue);
+  border-color: var(--estado-entregue);
+}
+
+.etiqueta[data-estado='retorno'] {
+  background: var(--estado-retorno-fundo);
+  color: var(--estado-retorno);
+  border-color: var(--estado-retorno);
+}
+
+/* O icone vive dentro da etiqueta e herda a cor do estado. */
+.etiqueta svg {
+  width: 0.95em;
+  height: 0.95em;
+  vertical-align: -0.15em;
+  margin-right: 0.3em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- controles ---------- */
@@ -261,6 +395,7 @@ button {
   font: inherit;
   font-size: 0.92rem;
   font-weight: 500;
+  min-height: var(--toque-min);
   padding: 0.5rem 0.9rem;
   border-radius: var(--canto);
   border: 1px solid var(--borda-forte);
@@ -272,7 +407,6 @@ button {
 
 button:hover:not(:disabled) { background: var(--superficie-2); }
 button:active:not(:disabled) { transform: translateY(1px); }
-button:disabled { opacity: 0.45; cursor: default; }
 
 button.principal {
   background: var(--marca);
@@ -291,6 +425,30 @@ button.fantasma {
 }
 
 button.fantasma:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+
+/*
+  Desabilitado com par proprio, NUNCA com opacity.
+
+  A versao anterior usava opacity: 0.45 no elemento inteiro, o que compunha
+  texto E fundo contra a pagina e derrubava o contraste para 2,12 — menos da
+  metade do minimo. E era justamente o estado "Aguardando no portao", o que
+  confirma a professora que ela ja fez a parte dela.
+
+  Fica DEPOIS de .principal e .fantasma de proposito. Colocado antes, tinha a
+  mesma especificidade que elas e perdia por ordem: o botao desabilitado
+  continuava verde-cheio na tela, e o teste de tokens nao pegava porque ele
+  mede as cores declaradas, nao qual regra vence a cascata. Quem pegou foi
+  olhar o print.
+*/
+button:disabled,
+button.principal:disabled,
+button.fantasma:disabled,
+button.larga:disabled {
+  background: var(--apagado-fundo);
+  color: var(--apagado-tinta);
+  border-color: var(--borda-forte);
+  cursor: default;
+}
 
 input[type='text'],
 input:not([type]),

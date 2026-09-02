@@ -18,9 +18,14 @@
       margin-top: 2rem; border: 1px solid var(--borda);
       border-radius: var(--canto); background: var(--superficie); padding: 0.9rem 1rem;
     }
+    /*
+      A baseline mediu este summary em 18,7px de altura — abaixo ate do minimo
+      de 24px do WCAG 2.5.8 nivel AA, e era o pior alvo de toque do app.
+    */
     summary {
       cursor: pointer; font-size: 0.78rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.07em; color: var(--tinta-fraca);
+      min-height: var(--toque-min); display: flex; align-items: center;
     }
     .lgpd {
       background: var(--chamado-fundo); border: 1px solid var(--chamado-borda);

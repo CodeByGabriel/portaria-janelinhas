@@ -7,11 +7,11 @@
  * A segunda metade sao os ataques que o red team reproduziu ao vivo. Eles
  * ficam aqui para sempre: um furo consertado sem teste volta.
  *
- * EXIGE SERVIDOR LIMPO. As contagens sao absolutas ("a portaria ve 1
- * chamada"), entao chamada deixada por outra sessao faz falhar sem haver
- * bug. Se der falha estranha, reinicie:
- *
- *   taskkill //F //IM workerd.exe && rm -rf .wrangler/state && npm run dev
+ * As contagens sao absolutas ("a portaria ve 1 chamada"), entao o arquivo
+ * comeca esvaziando a mesa (`limparMesa`). Antes da trilha passar a persistir
+ * isso nao era preciso: o quadro morria junto com o servidor. Agora ele
+ * sobrevive, e uma rodada do `prints.mjs` — que semeia tres chamados — fazia
+ * quatro verificacoes falharem sem haver bug nenhum.
  */
 const BASE = process.env.BASE ?? 'ws://127.0.0.1:8787'
 const HTTP = BASE.replace(/^ws/, 'http')
@@ -43,6 +43,30 @@ const esperar = (ms) => new Promise((r) => setTimeout(r, ms))
 const ultimo = (c) => c.recebidos.filter((m) => m.tipo === 'retrato').at(-1)
 const recusas = (c) => c.recebidos.filter((m) => m.tipo === 'recusa')
 
+/**
+ * Deixa a mesa vazia antes das contagens absolutas comecarem.
+ *
+ * Fecha cada ciclo pelo caminho LEGITIMO — cancelar o que esta chamado,
+ * entregar o que esta liberado — e nunca apagando: a trilha continua
+ * append-only e guarda que a limpeza aconteceu, como guardaria qualquer
+ * outra acao da portaria.
+ *
+ * O cabecalho deste arquivo pedia um `rm -rf .wrangler/state` na mao. Ritual
+ * manual antes de um portao e portao que para de rodar.
+ */
+async function limparMesa(portaria) {
+  for (let volta = 0; volta < 10; volta++) {
+    const chamadas = ultimo(portaria)?.chamadas ?? []
+    if (chamadas.length === 0) return true
+    for (const c of chamadas) {
+      const tipo = c.estado === 'liberado' ? 'entregar' : 'cancelar'
+      portaria.ws.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
+    }
+    await esperar(300)
+  }
+  return (ultimo(portaria)?.chamadas ?? []).length === 0
+}
+
 async function principal() {
   console.log('\n== ciclo normal ==')
 
@@ -53,6 +77,9 @@ async function principal() {
 
   conferir('as tres conexoes recebem retrato inicial',
     [portaria, maternal, jardim].every((c) => ultimo(c)))
+
+  conferir('a mesa comeca vazia', await limparMesa(portaria),
+    `sobraram ${ultimo(portaria)?.chamadas.length}`)
 
   portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
   await esperar(400)
