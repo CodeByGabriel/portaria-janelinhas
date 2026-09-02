@@ -10,15 +10,15 @@
     .coluna { padding: 1.15rem; }
     .coluna + .coluna { border-left: 1px solid var(--borda); background: #fafbfa; }
     .rotulo {
-      font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.07em; color: var(--tinta-fraca); margin: 0 0 0.15rem;
     }
-    .explica { font-size: 0.85rem; color: var(--tinta-media); margin: 0 0 1rem; }
+    .explica { font-size: var(--t-detalhe); color: var(--tinta-media); margin: 0 0 1rem; }
     ul { list-style: none; padding: 0; margin: 0; }
     .grade { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
     .cartao button { width: 100%; }
     .selo {
-      position: fixed; bottom: 0.9rem; right: 1rem; font-size: 0.75rem;
+      position: fixed; bottom: 0.9rem; right: 1rem; font-size: var(--t-etiqueta);
       color: var(--tinta-fraca); background: var(--superficie);
       border: 1px solid var(--borda); border-radius: 999px; padding: 0.2rem 0.7rem;
     }

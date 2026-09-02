@@ -117,7 +117,10 @@ const TELAS = [
     arquivo: 'sala.png',
     url: `${BASE}/sala/?turma=3%C2%BA%20ano`,
     largura: 1100,
-    altura: 700,
+    // A variante Painel deixou o cartao mais alto: 700px cortava o botao
+    // "voltou para a sala" no print, e print que corta acao mostra um
+    // produto que nao existe.
+    altura: 980,
     espera: 1500,
     roteiro: `document.getElementById('entrar').click()`,
     pronto: `document.querySelectorAll('.cartao').length >= 3

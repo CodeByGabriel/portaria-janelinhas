@@ -391,6 +391,49 @@ Coluna "Família" seria um segundo modelo de identidade competindo com o de resp
 ### 1.5 Direção visual "Pátio", tipografia e variante "Painel" (G)
 Tokens de estado já vieram em 0.5. Aqui entram: escala tipográfica real (hoje há **15 tamanhos distintos**, cinco deles dentro de 1,6px uns dos outros), Fraunces + a sans escolhida, **self-hosted em woff2 subset latin** com só os pesos usados (invariante 12), e a variante "Painel" para a sala com os mesmos tokens semânticos. Checklist anti-slop aplicado.
 
+#### 1.5 — o que a escala trocou, e o que as fontes custaram
+
+**Dezoito tamanhos viraram sete degraus com papel.** Cinco deles estavam a menos de meio
+pixel um do outro — `0.78rem`, `0.8rem` e `0.82rem` são a mesma coisa para qualquer olho,
+e existiam porque cada tela foi escrita num dia diferente. Diferença que ninguém percebe
+não comunica nada; só impede que a próxima pessoa saiba qual usar. Cada degrau novo está
+a pelo menos 12% do vizinho e tem nome de trabalho (`--t-etiqueta`, `--t-nome`,
+`--t-painel`), não de tamanho.
+
+**As fontes são self-hosted, e o Fraunces foi recortado ao cabeçalho.** 35 KB para
+desenhar uma frase que nunca muda seria a maior linha do orçamento e a menos útil;
+`ferramentas/subsetar-fontes.mjs` o reduz aos 44 caracteres que o cabeçalho escreve, e
+ele passa a custar 10 KB.
+
+O Instrument Sans **não** é recortado por amostra, e a distinção importa: ele desenha nome
+de criança, e nome de criança vem de planilha. Recortar pelos glifos que a semente usa
+daria um retângulo vazio no lugar do "Ø" de alguém no dia em que a escola importasse a
+lista de verdade. Fonte de corpo se recorta por **intervalo**; o subset "latin" do Google
+já cobre o português inteiro, inclusive o `º` de "1º ano".
+
+Instrument Sans em vez de Inter Tight pelo motivo que o plano já dava: Inter é a fonte que
+virou marca do visual genérico de interface gerada por IA, e esta escola precisa parecer
+uma escola.
+
+**A variante "Painel" usa os mesmos tokens.** A sala não é um app de celular — o aparelho
+fica apoiado na mesa ou preso na parede, e a professora olha do meio da sala com vinte
+crianças em pé. Muda só a escala. Uma segunda paleta seria duas verdades sobre a mesma
+criança, e a hora em que elas divergissem seria a hora errada.
+
+**O orçamento virou portão.** `npm run peso` mede a primeira carga da portaria e reprova
+acima de 120 KB — verificado baixando o teto de propósito antes de confiar nele. Hoje:
+**106,6 KB, 13,4 KB de folga**, sendo 40 KB de fonte. O script segue os imports em
+**cadeia**, e não só os da página: `cartao.js` importa `avatar.js`, que a página nunca
+menciona, e é exatamente por aí que uma biblioteca pesada entraria sem ninguém ver.
+
+A pesquisa sugerira 250 KB. O app pesava 25 KB quando ela foi escrita, então esse teto
+autorizaria uma regressão de dez vezes sem nenhum alarme — teto que só dispara depois do
+estrago não é teto, é permissão.
+
+Dois ajustes que só o print mostrou: o cartão passava **por baixo** do rodapé fixo (o
+botão sumia, alcançável só rolando às cegas), e o seletor de razão cortava a última letra
+no estado fechado com a fonte maior do Painel.
+
 ### 1.6 Wake lock (P)
 Screen Wake Lock com reaquisição em `visibilitychange`. Não existe nada hoje.
 

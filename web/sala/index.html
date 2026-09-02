@@ -7,29 +7,36 @@
   <link rel="stylesheet" href="../comum/tokens.css">
   <style>
     .entrada { max-width: 420px; margin: 3.5rem auto; padding: 0 1.15rem; }
-    .entrada h2 { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.3rem; }
-    .entrada p { color: var(--tinta-media); margin: 0 0 1.4rem; font-size: 0.92rem; }
+    .entrada h2 { font-size: var(--t-titulo); font-weight: 600; margin: 0 0 0.3rem; }
+    .entrada p { color: var(--tinta-media); margin: 0 0 1.4rem; font-size: var(--t-corpo); }
     .entrada label {
-      display: block; font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      display: block; font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.07em; color: var(--tinta-fraca); margin-bottom: 0.4rem;
     }
     .entrada select { margin-bottom: 1rem; }
     /* A turma lembrada é um palpite anunciado, não uma decisão tomada. */
     .lembrada {
       margin: -0.5rem 0 1rem;
-      font-size: 0.85rem;
+      font-size: var(--t-detalhe);
       color: var(--estado-chamado);
       font-weight: 500;
     }
-    .palco { padding: 1.15rem; max-width: 900px; margin: 0 auto; }
+    /*
+      O rodapé é fixo, então o palco precisa terminar acima dele.
+
+      Sem isto o último cartão passava POR BAIXO do rodapé — e com a variante
+      Painel, que deixou os cartões mais altos, o que sumia era o botão: ficava
+      invisível e alcançável só rolando às cegas.
+    */
+    .palco { padding: 1.15rem 1.15rem 5rem; max-width: 900px; margin: 0 auto; }
     .cartao button { width: 100%; }
     .rodape {
       position: fixed; bottom: 0; left: 0; right: 0;
       padding: 0.5rem 1.15rem; background: var(--superficie);
       border-top: 1px solid var(--borda); display: flex; gap: 1rem; align-items: center;
     }
-    .contagem { font-size: 0.82rem; color: var(--tinta-media); margin-left: auto; }
-    .tela-apaga { font-size: 0.82rem; color: var(--estado-chamado); font-weight: 500; }
+    .contagem { font-size: var(--t-detalhe); color: var(--tinta-media); margin-left: auto; }
+    .tela-apaga { font-size: var(--t-detalhe); color: var(--estado-chamado); font-weight: 500; }
     /* Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`. */
     /*
       Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`.
@@ -41,7 +48,7 @@
       background: rgba(255, 255, 255, 0.14);
       color: var(--tinta-clara);
       border-color: rgba(255, 255, 255, 0.45);
-      font-size: 0.85rem;
+      font-size: var(--t-detalhe);
     }
     .volume option { color: var(--tinta); }
     .recusa {
@@ -56,11 +63,16 @@
       width: auto;
       margin: 0.5rem auto 0;
       display: block;
-      font-size: 0.85rem;
+      font-size: var(--t-detalhe);
     }
     .razoes { margin-top: 0.75rem; border-top: 1px solid var(--borda); padding-top: 0.7rem; }
     /* Nome de razão é longo; sem isto o `select` corta no meio da palavra. */
-    .razoes select { margin: 0 0 0.45rem; width: 100%; font-size: 0.9rem; }
+    /* Padding menor: no Painel o rótulo mais longo cortava a última letra no
+       estado fechado. A altura continua nos 44px, que é o que importa. */
+    .razoes select {
+      margin: 0 0 0.45rem; width: 100%;
+      font-size: var(--t-detalhe); padding-left: 0.55rem; padding-right: 0.4rem;
+    }
   </style>
 </head>
 <body>
@@ -80,7 +92,13 @@
     <button class="principal larga" id="entrar">Entrar na sala</button>
   </div>
 
-  <div id="app" hidden>
+  <!--
+    `painel`: a sala é lida do meio da sala, não da mão.
+
+    O aparelho fica apoiado na mesa ou preso na parede, com vinte crianças em
+    pé na frente. Os tokens são os mesmos da portaria; muda só a escala.
+  -->
+  <div id="app" class="painel" hidden>
     <header class="cabecalho">
       <span class="marca-glifo" aria-hidden="true"></span>
       <div>

@@ -17,7 +17,9 @@
     "test:puro": "node --experimental-strip-types --test \"src/*.test.ts\"",
     "test:worker": "vitest run",
     "telas": "node ferramentas/telas.mjs",
-    "baseline": "node ferramentas/baseline.mjs"
+    "baseline": "node ferramentas/baseline.mjs",
+    "peso": "node ferramentas/peso.mjs",
+    "fontes": "node ferramentas/subsetar-fontes.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.1.3",

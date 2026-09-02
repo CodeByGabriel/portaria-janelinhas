@@ -11,9 +11,9 @@
     .aviso {
       color: var(--alerta); background: var(--alerta-fundo);
       border: 1px solid #f0cdcb; border-radius: var(--canto);
-      font-size: 0.85rem; padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
+      font-size: var(--t-detalhe); padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
     }
-    .corte { font-size: 0.82rem; color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
+    .corte { font-size: var(--t-detalhe); color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
     /*
       A turma de um homônimo deixa de ser detalhe: é a única coisa que separa
       duas crianças com o mesmo nome, e chamar a errada avisa a sala errada.
@@ -38,7 +38,7 @@
     */
     .grupo {
       list-style: none;
-      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+      font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.07em; color: var(--tinta-fraca);
       padding: 0.7rem 0.2rem 0.25rem;
       display: flex; align-items: baseline; gap: 0.4rem;
@@ -55,33 +55,33 @@
       de 24px do WCAG 2.5.8 nivel AA, e era o pior alvo de toque do app.
     */
     summary {
-      cursor: pointer; font-size: 0.78rem; font-weight: 600;
+      cursor: pointer; font-size: var(--t-etiqueta); font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.07em; color: var(--tinta-fraca);
       min-height: var(--toque-min); display: flex; align-items: center;
     }
     .lgpd {
       background: var(--chamado-fundo); border: 1px solid var(--chamado-borda);
       border-radius: var(--canto); color: var(--chamado-tinta);
-      padding: 0.65rem 0.8rem; font-size: 0.85rem; margin: 0.9rem 0 0.7rem;
+      padding: 0.65rem 0.8rem; font-size: var(--t-detalhe); margin: 0.9rem 0 0.7rem;
     }
-    .dica { font-size: 0.82rem; color: var(--tinta-fraca); margin: 0 0 0.6rem; }
+    .dica { font-size: var(--t-detalhe); color: var(--tinta-fraca); margin: 0 0 0.6rem; }
     code {
       background: var(--superficie-2); padding: 0.05rem 0.3rem;
-      border-radius: 4px; font-size: 0.9em;
+      border-radius: 4px; font-size: var(--t-detalhe);
     }
-    textarea { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 0.82rem; }
+    textarea { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: var(--t-detalhe); }
     .placar { display: flex; gap: 0.6rem; margin: 0.9rem 0 0; }
     .placar div {
       flex: 1; text-align: center; background: var(--superficie-2);
       border-radius: var(--canto); padding: 0.6rem 0.3rem;
     }
-    .placar .valor { font-size: 1.45rem; font-weight: 600; line-height: 1.15; }
+    .placar .valor { font-size: var(--t-numero); font-weight: 600; line-height: 1.15; }
     .placar .rotulo {
-      font-size: 0.7rem; text-transform: uppercase;
+      font-size: var(--t-etiqueta); text-transform: uppercase;
       letter-spacing: 0.06em; color: var(--tinta-fraca);
     }
     .placar .ruim .valor { color: var(--alerta); }
-    .listaErros { font-size: 0.82rem; color: var(--alerta); margin: 0.7rem 0 0; padding-left: 1.1rem; }
+    .listaErros { font-size: var(--t-detalhe); color: var(--alerta); margin: 0.7rem 0 0; padding-left: 1.1rem; }
     .listaErros li { list-style: disc; }
     .rodape {
       position: fixed; bottom: 0; left: 0; right: 0;

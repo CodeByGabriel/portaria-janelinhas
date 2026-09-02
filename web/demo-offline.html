@@ -20,8 +20,86 @@
   nao conhecemos: conteudo/institucional/ e todo TODO(visita).
 */
 
+/*
+  Tipografia da direcao "Patio".
+
+  Duas fontes, self-hosted, servidas pelo proprio Worker. Nao ha CDN em runtime
+  nem em desenvolvimento: o wifi de uma escola cai, e um app de saida que
+  depende de fonts.googleapis.com para desenhar o nome de uma crianca e um app
+  que escolhe o pior momento para falhar.
+
+  FRAUNCES 600 escreve exclusivamente o cabecalho e os titulos. E uma serifada
+  com contraste alto, que da a um app de portaria o peso de uma placa de escola
+  em vez de um painel de aeroporto — e a escola vai do Pré 1 ao 9º ano, entao a
+  identidade nao pode parecer infantil.
+
+  Ela vem SUBSETADA aos 44 caracteres que o cabecalho escreve
+  (`ferramentas/subsetar-fontes.mjs`): 35 KB viraram 10 KB. Trinta e cinco
+  quilobytes para desenhar uma frase que nunca muda seria a maior linha do
+  orcamento de peso, e a menos util.
+
+  INSTRUMENT SANS escreve todo o resto, e NAO e subsetada por amostra: ela
+  desenha nome de crianca, e nome de crianca vem de planilha. Recortar pelos
+  glifos que a semente usa daria um retangulo vazio no lugar do "Ø" de alguem
+  no dia em que a escola importasse a lista de verdade. Fonte de corpo se
+  recorta por INTERVALO, e o subset "latin" ja cobre o portugues inteiro,
+  inclusive o "º" de "1º ano".
+
+  Foi escolhida em vez do Inter Tight por um motivo especifico: Inter e a fonte
+  que virou marca do visual generico de interface gerada por IA, e esta escola
+  precisa parecer uma escola.
+
+  `font-display: swap` em ambas: o texto aparece na fonte de sistema e troca
+  quando a fonte chega. Numa tela onde alguem espera o nome de uma crianca,
+  texto invisivel por 3 segundos e pior que texto na fonte errada por 300 ms.
+*/
+@font-face {
+  font-family: 'Fraunces';
+  src: url('./fontes/fraunces-600-cabecalho.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('./fontes/instrument-sans-var-latin.woff2') format('woff2-variations');
+  /* Variavel: um arquivo serve 400 e 600, e o navegador interpola o resto. */
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  /* marca */
+  /*
+    Escala tipografica, por PAPEL e nao por tamanho.
+
+    Antes havia dezoito tamanhos distintos espalhados pelos arquivos, cinco
+    deles a menos de meio pixel um do outro — 0,78rem, 0,8rem e 0,82rem sao a
+    mesma coisa para qualquer olho, e existiam so porque cada tela foi escrita
+    num dia diferente. Diferenca que ninguem percebe nao comunica nada; so
+    impede que a proxima pessoa saiba qual usar.
+
+    Sete degraus, cada um a pelo menos 12% do vizinho, e cada um com um
+    trabalho. O nome diz o trabalho, entao a proxima pessoa escolhe pelo que
+    esta escrevendo e nao pelo que parece bonito.
+  */
+  --t-etiqueta: 0.79rem;   /* caixa alta, contagem, rodape */
+  --t-detalhe: 0.888rem;   /* turma, dica, corte da busca */
+  --t-corpo: 1rem;         /* o padrao */
+  --t-nome: 1.125rem;      /* nome na linha, texto da restricao */
+  --t-titulo: 1.266rem;    /* titulo de tela e de caixa */
+  --t-numero: 1.424rem;    /* o valor no placar da importacao */
+  --t-painel: 2rem;        /* variante Painel: lido do fundo da sala */
+
+  /* Entrelinha: apertada em titulo, folgada em texto corrido. */
+  --linha-titulo: 1.2;
+  --linha-corpo: 1.5;
+
+  /* Caixa alta precisa de respiro entre letras; caixa baixa nao. */
+  --tracking-etiqueta: 0.07em;
+
+    /* marca */
   --marca: #0e6b45;
   --marca-escura: #0a5436;
   --marca-clara: #e4f1ea;
@@ -108,7 +186,12 @@ body {
   min-height: 100vh;
   background: var(--fundo);
   color: var(--tinta);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /*
+    A pilha SEMPRE termina numa fonte de sistema. Se o woff2 nao chegar — rede
+    da escola, cache limpo, arquivo movido — o app continua legivel em vez de
+    cair para um serifado de navegador que ninguem escolheu.
+  */
+  font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -199,7 +282,7 @@ body {
 }
 
 .cabecalho .titulo {
-  font-size: 1rem;
+  font-size: var(--t-corpo);
   font-weight: 600;
   letter-spacing: 0.01em;
   margin: 0;
@@ -207,7 +290,7 @@ body {
 }
 
 .cabecalho .subtitulo {
-  font-size: 0.8rem;
+  font-size: var(--t-detalhe);
   opacity: 0.82;
   margin: 0;
   line-height: 1.3;
@@ -227,7 +310,7 @@ body {
   border-bottom: 1px solid var(--chamado-borda);
   color: var(--chamado-tinta);
   padding: 0.7rem 1.15rem;
-  font-size: 0.95rem;
+  font-size: var(--t-corpo);
   font-weight: 500;
 }
 
@@ -255,7 +338,7 @@ body {
   border-radius: 0;
   background: var(--tinta);
   color: var(--tinta-clara);
-  font-size: 0.95rem;
+  font-size: var(--t-corpo);
   font-weight: 600;
   padding: 0.7rem 1.15rem;
   cursor: pointer;
@@ -287,20 +370,20 @@ body {
 
 .restricao h2 {
   margin: 0 0 0.35rem;
-  font-size: 1.05rem;
+  font-size: var(--t-nome);
   font-weight: 700;
   color: var(--alerta);
 }
 
 .restricao .quem {
   margin: 0 0 0.9rem;
-  font-size: 0.85rem;
+  font-size: var(--t-detalhe);
   color: var(--tinta-media);
 }
 
 .restricao .texto {
   margin: 0 0 1.3rem;
-  font-size: 1.1rem;
+  font-size: var(--t-nome);
   line-height: 1.45;
   font-weight: 500;
 }
@@ -325,6 +408,99 @@ body {
 }
 /* O ponto separa da turma; sem ele a marca colava ("Pré 2! restrição"). */
 .marca-restricao::before { content: " · ! "; }
+
+/* ---------- tipografia aplicada ---------- */
+
+/*
+  O Fraunces aparece SO aqui.
+
+  Titulo de tela, nome da escola e titulo de caixa. Em qualquer outro lugar ele
+  seria decoracao — e ele nao tem os glifos: a fonte foi recortada aos 44
+  caracteres que estas frases escrevem.
+*/
+.titulo,
+.entrada h2,
+.restricao h2 {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  line-height: var(--linha-titulo);
+  letter-spacing: -0.01em;
+}
+
+/*
+  Etiqueta de secao: caixa alta, e por isso precisa de respiro entre letras.
+
+  Caixa alta sem tracking le pior que caixa baixa — as maiusculas tem largura
+  parecida e o olho perde a fronteira das palavras. Meio ponto percentual
+  resolve, e so vale para maiusculas.
+*/
+.secao,
+.grupo,
+.entrada label {
+  font-size: var(--t-etiqueta);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-etiqueta);
+}
+
+/*
+  Numeros em colunas alinham por baixo.
+
+  Contagem, cronometro e placar mudam sozinhos na tela. Com largura variavel de
+  digito, "9" e "11" empurram o texto ao lado a cada tique — movimento que
+  ninguem pediu, na tela onde alguem espera uma crianca.
+*/
+.contagem,
+.contagem-secao,
+.espera,
+.placar .valor,
+.grupo .quantos {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- variante Painel ---------- */
+
+/*
+  A sala nao e um app de celular: e um painel.
+
+  A professora nao esta com o aparelho na mao. Ele fica apoiado na mesa ou preso
+  na parede, e ela olha do meio da sala, com vinte criancas em pe. O que importa
+  ali e o nome ser lido a tres metros — nao caber mais cartoes na tela.
+
+  Os TOKENS sao os mesmos; muda so a escala. Uma segunda paleta ou um segundo
+  conjunto de estados seria duas verdades sobre a mesma crianca, e a hora em que
+  elas divergissem seria a hora errada.
+*/
+.painel .cartao .nome {
+  font-size: var(--t-painel);
+  line-height: var(--linha-titulo);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.painel .cartao .turma {
+  font-size: var(--t-nome);
+}
+
+.painel .cartao .etiqueta {
+  font-size: var(--t-nome);
+  padding: 0.4rem 0.85rem;
+}
+
+.painel .cartao .etiqueta svg {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.painel .cartao button {
+  font-size: var(--t-nome);
+  min-height: 3.5rem;
+}
+
+/* A faixa de aviso tambem e lida de longe. */
+.painel .faixa {
+  font-size: var(--t-nome);
+}
 
 /* ---------- cartao do aluno ---------- */
 
@@ -355,14 +531,14 @@ body {
 .cartao .foto svg { width: 100%; height: 100%; display: block; }
 
 .cartao .nome {
-  font-size: 1.02rem;
+  font-size: var(--t-nome);
   font-weight: 600;
   line-height: 1.25;
   margin: 0;
 }
 
 .cartao .turma {
-  font-size: 0.85rem;
+  font-size: var(--t-detalhe);
   color: var(--tinta-fraca);
   margin: 0;
 }
@@ -432,7 +608,7 @@ body {
 
 .linha .detalhe {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--t-detalhe);
   font-weight: 400;
   color: var(--tinta-fraca);
 }
@@ -515,7 +691,7 @@ body {
   display: inline-block;
   padding: 0.13rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--t-etiqueta);
   font-weight: 500;
   letter-spacing: 0.01em;
   background: var(--superficie-2);
@@ -571,7 +747,7 @@ body {
 
 button {
   font: inherit;
-  font-size: 0.92rem;
+  font-size: var(--t-corpo);
   font-weight: 500;
   min-height: var(--toque-min);
   padding: 0.5rem 0.9rem;
@@ -594,7 +770,7 @@ button.principal {
 
 button.principal:hover:not(:disabled) { background: var(--marca-escura); }
 
-button.larga { width: 100%; padding: 0.7rem; font-size: 1rem; }
+button.larga { width: 100%; padding: 0.7rem; font-size: var(--t-corpo); }
 
 button.fantasma {
   background: transparent;
@@ -663,7 +839,7 @@ textarea:focus {
 .conteudo { padding: 1.15rem; max-width: 560px; margin: 0 auto; }
 
 .secao {
-  font-size: 0.78rem;
+  font-size: var(--t-etiqueta);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -675,7 +851,7 @@ textarea:focus {
 
 .vazio {
   color: var(--tinta-fraca);
-  font-size: 0.92rem;
+  font-size: var(--t-corpo);
   padding: 0.8rem 0;
 }
 
@@ -686,7 +862,7 @@ textarea:focus {
 }
 
 .rede {
-  font-size: 0.78rem;
+  font-size: var(--t-etiqueta);
   color: var(--tinta-fraca);
 }
 
@@ -701,15 +877,15 @@ textarea:focus {
     .coluna { padding: 1.15rem; }
     .coluna + .coluna { border-left: 1px solid var(--borda); background: #fafbfa; }
     .rotulo {
-      font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.07em; color: var(--tinta-fraca); margin: 0 0 0.15rem;
     }
-    .explica { font-size: 0.85rem; color: var(--tinta-media); margin: 0 0 1rem; }
+    .explica { font-size: var(--t-detalhe); color: var(--tinta-media); margin: 0 0 1rem; }
     ul { list-style: none; padding: 0; margin: 0; }
     .grade { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
     .cartao button { width: 100%; }
     .selo {
-      position: fixed; bottom: 0.9rem; right: 1rem; font-size: 0.75rem;
+      position: fixed; bottom: 0.9rem; right: 1rem; font-size: var(--t-etiqueta);
       color: var(--tinta-fraca); background: var(--superficie);
       border: 1px solid var(--borda); border-radius: 999px; padding: 0.2rem 0.7rem;
     }
