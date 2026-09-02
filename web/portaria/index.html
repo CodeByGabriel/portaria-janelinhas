@@ -143,6 +143,7 @@
     import { buscar } from '../comum/busca.js'
     import { criarLinha, etiquetaDe, etiquetaDoEstado } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
+    import { podeSeguir } from '../comum/alerta.js'
 
     const rede = document.getElementById('rede')
     const aviso = document.getElementById('aviso')
@@ -366,6 +367,18 @@
           esse o caso em que ninguém desconfia.
         */
         const li = linhasResultado.get(aluno.id)
+
+        /*
+          A marca aparece ANTES do toque, para a pessoa saber que a caixa vem —
+          não para substituí-la. O texto continua no servidor.
+        */
+        if (aluno.temAlerta && !li.querySelector('.marca-restricao')) {
+          const marca = document.createElement('span')
+          marca.className = 'marca-restricao'
+          marca.textContent = 'restrição registrada'
+          li.querySelector('.detalhe')?.append(marca)
+        }
+
         const repetido = repetidos.has(aluno.id)
         if (li.dataset.homonimo !== String(repetido)) {
           li.dataset.homonimo = String(repetido)
@@ -409,7 +422,23 @@
           li,
           jaSaindo
             ? etiquetaDe('já em saída')
-            : botao('Chamar', true, () => {
+            : botao('Chamar', true, async () => {
+                /*
+                  A restrição é consultada AQUI, no toque, e não junto da lista.
+
+                  Também é o único momento em que ela pode estar certa: a
+                  planilha pode ter sido reimportada entre a busca e o toque, e
+                  uma anotação lida cedo demais é uma anotação que pode ter
+                  deixado de valer — ou que acabou de passar a valer.
+                */
+                const aluno = alunos.find((a) => a.id === id)
+                const seguir = await podeSeguir({
+                  alunoId: id,
+                  nome: aluno?.nome ?? '',
+                  papel: 'portaria',
+                  acao: 'chamar para a saída',
+                })
+                if (!seguir) return
                 conexao.enviar({ tipo: 'chamar', alunoId: id })
                 campo.value = ''
                 campo.oninput()

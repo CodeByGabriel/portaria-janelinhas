@@ -1,4 +1,4 @@
-import { semear, type Aluno } from './semente.ts'
+import { semear, alertasDaSemente, type Aluno } from './semente.ts'
 import type { Chamada, EventoAuditoria, Instantaneo } from './protocolo.ts'
 
 /*
@@ -32,9 +32,10 @@ import type { Chamada, EventoAuditoria, Instantaneo } from './protocolo.ts'
 
 const ESQUEMA = `
 CREATE TABLE IF NOT EXISTS cadastro (
-  id    TEXT PRIMARY KEY,
-  nome  TEXT NOT NULL,
-  turma TEXT NOT NULL
+  id     TEXT PRIMARY KEY,
+  nome   TEXT NOT NULL,
+  turma  TEXT NOT NULL,
+  alerta TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS chamadas (
@@ -104,6 +105,9 @@ export class Deposito {
     if (!this.temColuna('trilha', 'razao')) {
       this.sql.exec(`ALTER TABLE trilha ADD COLUMN razao TEXT NOT NULL DEFAULT ''`)
     }
+    if (!this.temColuna('cadastro', 'alerta')) {
+      this.sql.exec(`ALTER TABLE cadastro ADD COLUMN alerta TEXT NOT NULL DEFAULT ''`)
+    }
   }
 
   private temColuna(tabela: string, coluna: string): boolean {
@@ -133,13 +137,29 @@ export class Deposito {
    */
   carregar(): Instantaneo {
     if (this.meta('semeado') === null) {
-      this.trocarCadastro(semear(), 1)
+      this.trocarCadastro(semear(), 1, alertasDaSemente())
       this.gravarMeta('semeado', 'sim')
     }
 
+    /*
+      O texto do alerta NAO entra no instantaneo do cadastro.
+
+      Ele sai daqui por `alertaDe`, uma crianca por vez, quando alguem esta
+      prestes a agir. O que o cadastro carrega e o booleano — e assim `/alunos`,
+      que despeja o cadastro inteiro no navegador, fica incapaz de vazar a
+      situacao familiar de ninguem.
+    */
     const alunos = this.sql
-      .exec('SELECT id, nome, turma FROM cadastro ORDER BY id')
-      .toArray() as unknown as Aluno[]
+      .exec(
+        "SELECT id, nome, turma, alerta <> '' AS temAlerta FROM cadastro ORDER BY id",
+      )
+      .toArray()
+      .map((l) => ({
+        id: String(l.id),
+        nome: String(l.nome),
+        turma: String(l.turma),
+        temAlerta: Number(l.temAlerta) === 1,
+      })) as unknown as Aluno[]
 
     const chamadas = this.sql
       .exec('SELECT alunoId, nome, turma, estado, desde, em FROM chamadas ORDER BY desde')
@@ -205,17 +225,36 @@ export class Deposito {
     this.sql.exec('DELETE FROM chamadas WHERE alunoId = ?', alunoId)
   }
 
-  trocarCadastro(alunos: Aluno[], versao: number): void {
+  trocarCadastro(
+    alunos: Aluno[],
+    versao: number,
+    alertas: { id: string; texto: string }[] = [],
+  ): void {
+    const texto = new Map(alertas.map((a) => [a.id, a.texto]))
     this.sql.exec('DELETE FROM cadastro')
     for (const a of alunos) {
       this.sql.exec(
-        'INSERT INTO cadastro (id, nome, turma) VALUES (?, ?, ?)',
+        'INSERT INTO cadastro (id, nome, turma, alerta) VALUES (?, ?, ?, ?)',
         a.id,
         a.nome,
         a.turma,
+        texto.get(a.id) ?? '',
       )
     }
     this.gravarMeta('versaoCadastro', String(versao))
+  }
+
+  /**
+   * O texto da restricao de UMA crianca.
+   *
+   * Uma consulta por crianca, e nao um despejo: quem esta prestes a chamar ou
+   * liberar pede a daquela crianca, e nada mais sai do servidor.
+   */
+  alertaDe(alunoId: string): string {
+    const linhas = this.sql
+      .exec('SELECT alerta FROM cadastro WHERE id = ?', alunoId)
+      .toArray()
+    return linhas.length > 0 ? String(linhas[0].alerta) : ''
   }
 
   /**

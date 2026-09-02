@@ -153,6 +153,7 @@
       definirVolume,
     } from '../comum/som.js'
     import { manterTelaAcesa, aoMudarTelaAcesa } from '../comum/tela-acesa.js'
+    import { podeSeguir } from '../comum/alerta.js'
 
     const TURMA_LEMBRADA = 'janelinhas:turma'
 
@@ -384,8 +385,22 @@
           const botao = document.createElement('button')
           botao.className = 'principal'
           botao.textContent = 'Liberar saída'
-          botao.onclick = () =>
-            conexao.enviar({ tipo: 'liberar', alunoId: chamada.alunoId })
+          botao.onclick = async () => {
+            /*
+              Liberar é a confirmação da professora — o único evento que este
+              sistema existe para proteger. Se há restrição registrada, ela
+              precisa aparecer aqui, e não só na portaria: quem conhece a
+              criança e a família é quem está na sala.
+            */
+            const seguir = await podeSeguir({
+              alunoId: chamada.alunoId,
+              nome: chamada.nome,
+              papel: 'sala',
+              turma,
+              acao: 'liberar a saída',
+            })
+            if (seguir) conexao.enviar({ tipo: 'liberar', alunoId: chamada.alunoId })
+          }
           cartao.acrescentar(botao)
 
           /*

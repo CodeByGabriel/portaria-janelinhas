@@ -70,6 +70,30 @@ const TELAS = [
     pronto: `document.querySelectorAll('#resultados .linha').length >= 3`,
   },
   {
+    /*
+      A caixa de restricao, aberta.
+
+      E a tela mais consequente que o app tem: e nela que alguem decide se uma
+      crianca com anotacao de guarda sai ou nao. Um print do produto sem esta
+      tela mostraria o caminho facil e esconderia justamente o dificil.
+    */
+    arquivo: 'portaria-restricao.png',
+    url: `${BASE}/portaria/`,
+    largura: 430,
+    altura: 760,
+    espera: 1800,
+    roteiro: `
+      (async () => {
+        const campo = document.getElementById('consulta')
+        campo.value = 'ravi'
+        campo.dispatchEvent(new Event('input'))
+        await new Promise((r) => setTimeout(r, 500))
+        document.querySelector('#resultados .linha button').click()
+      })()
+    `,
+    pronto: `document.querySelector('dialog.restricao')?.open === true`,
+  },
+  {
     arquivo: 'portaria-importar.png',
     url: `${BASE}/portaria/`,
     largura: 430,
@@ -155,19 +179,61 @@ class Cdp {
   encerra o processo. Por isso: uma conexao so, fechamento explicito no fim,
   e uma pausa antes de sair.
 */
+/*
+  Liga, e guarda todo retrato desde a conexao.
+
+  O coletor entra ANTES do `open` de proposito: o servidor manda o retrato no
+  instante do accept, e um ouvinte registrado depois disso perde o unico
+  retrato que existe quando nada mais vai mudar. A limpeza do quadro lia isso
+  como "quadro vazio" e nao limpava nada — foi assim que o print da caixa de
+  restricao saiu sem a caixa, com a crianca ja em saida e sem botao para tocar.
+*/
 function ligarWs(query) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${BASE.replace(/^http/, 'ws')}/ws?${query}`)
+    ws.__retratos = []
+    ws.addEventListener('message', (e) => {
+      const m = JSON.parse(e.data)
+      if (m.tipo === 'retrato') ws.__retratos.push(m)
+    })
     ws.addEventListener('open', () => resolve(ws))
     ws.addEventListener('error', () => reject(new Error(`nao ligou: ${query}`)))
     setTimeout(() => reject(new Error(`timeout: ${query}`)), 15000)
   })
 }
 
+/* Como a portaria fecha cada estado. Igual ao fim-a-fim e ao telas. */
+const FECHA_ESTADO = {
+  chamado: 'cancelar',
+  liberado: 'entregar',
+  retorno: 'encerrar',
+}
+
 async function semear() {
   const portaria = await ligarWs('papel=portaria')
   const sala = await ligarWs('papel=sala&turma=3%C2%BA%20ano')
-  await esperar(400)
+
+  /*
+    Comeca de quadro conhecido.
+
+    O quadro persiste, entao o print herdava o que a ultima execucao de teste
+    tivesse deixado — e a captura da caixa de restricao saiu errada por isso: a
+    crianca ja estava "em saida", nao havia botao "Chamar" para tocar, e o print
+    mostrou a tela sem a caixa. Print que herda estado nao mostra o produto,
+    mostra o ultimo acidente.
+  */
+  await esperar(600)
+  for (let volta = 0; volta < 6; volta++) {
+    const chamadas = portaria.__retratos.at(-1)?.chamadas ?? []
+    if (chamadas.length === 0) break
+    for (const c of chamadas) {
+      const tipo = FECHA_ESTADO[c.estado]
+      if (tipo) portaria.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
+      await esperar(180)
+    }
+    await esperar(400)
+  }
+  await esperar(300)
 
   for (const id of ['a17', 'a18', 'a19']) {
     portaria.send(JSON.stringify({ tipo: 'chamar', alunoId: id }))

@@ -12,6 +12,16 @@ export interface Resultado {
   /** No maximo LIMITE_ERROS itens. Use `errosTotal` para saber quantos houve. */
   erros: Erro[]
   errosTotal: number
+  /**
+   * Restricoes por aluno, SEPARADAS da lista de alunos.
+   *
+   * Ficam fora de `Aluno` de proposito: `/alunos` entrega o cadastro inteiro
+   * ao navegador, e se o texto morasse dentro do aluno cada tablet da portaria
+   * carregaria, em repouso, a situacao familiar da escola inteira. Estando
+   * fora do tipo, nao ha o que esquecer de remover — `/alunos` fica
+   * incapaz de vazar isto.
+   */
+  alertas: { id: string; texto: string }[]
 }
 
 /**
@@ -172,8 +182,15 @@ const MARCACAO = /[<>]/
 const MARCACAO_TODAS = /[<>]/g
 const LIMITE_NOME = 80
 
+/*
+  Teto da restricao. Cabe "guarda compartilhada; nao entregar ao pai sem
+  autorizacao judicial" com folga, e nao cabe um documento colado na celula.
+*/
+const LIMITE_ALERTA = 300
+
 export function analisar(csv: string): Resultado {
   const alunos: Aluno[] = []
+  const alertas: { id: string; texto: string }[] = []
   const erros: Erro[] = []
   const vistos = new Set<string>()
   let duplicados = 0
@@ -185,10 +202,24 @@ export function analisar(csv: string): Resultado {
   const cabecalho = (linhas[0] ?? []).map((c) => normalizar(c))
   const iNome = cabecalho.indexOf('nome')
   const iTurma = cabecalho.indexOf('turma')
+  /*
+    Coluna OPCIONAL de restricao.
+
+    Varios nomes porque a secretaria escreve o que faz sentido para ela, e uma
+    planilha recusada por causa do titulo da coluna e uma escola que desiste do
+    campo — justamente o campo que existe para impedir a entrega errada.
+
+    Ausente, o cadastro inteiro fica sem alerta, que e o comportamento de
+    sempre. Nao ha como esta coluna quebrar uma importacao que ja funcionava.
+  */
+  const iAlerta = ['restricao', 'observacao', 'alerta', 'guarda']
+    .map((titulo) => cabecalho.indexOf(titulo))
+    .find((i) => i !== -1) ?? -1
 
   if (iNome === -1 || iTurma === -1) {
     return {
       alunos,
+      alertas,
       duplicados,
       erros: [{ linha: 1, motivo: 'a planilha precisa das colunas Nome e Turma' }],
       errosTotal: 1,
@@ -201,6 +232,7 @@ export function analisar(csv: string): Resultado {
 
     const nome = campos[iNome] ?? ''
     const turmaBruta = campos[iTurma] ?? ''
+    const alerta = iAlerta === -1 ? '' : (campos[iAlerta] ?? '').trim()
 
     if (nome === '') {
       erros.push({ linha: i + 1, motivo: 'nome vazio' })
@@ -235,8 +267,28 @@ export function analisar(csv: string): Resultado {
     }
     vistos.add(id)
 
-    alunos.push({ id, nome, turma: turma as Turma })
+    /*
+      A restricao passa pelo mesmo filtro e pelo mesmo teto do nome.
+
+      Ela vai para a TELA de quem opera, entao marcacao vinda da planilha seria
+      codigo executando na portaria — o mesmo caminho que `nome` ja fecha. E o
+      teto existe porque o campo e livre: nada impede alguem de colar um
+      documento inteiro na celula.
+    */
+    const restricao = alerta
+      .replace(MARCACAO_TODAS, '')
+      .slice(0, LIMITE_ALERTA)
+      .trim()
+
+    alunos.push({ id, nome, turma: turma as Turma, temAlerta: restricao !== '' })
+    if (restricao !== '') alertas.push({ id, texto: restricao })
   }
 
-  return { alunos, duplicados, erros: erros.slice(0, LIMITE_ERROS), errosTotal: erros.length }
+  return {
+    alunos,
+    alertas,
+    duplicados,
+    erros: erros.slice(0, LIMITE_ERROS),
+    errosTotal: erros.length,
+  }
 }

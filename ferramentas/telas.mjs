@@ -115,50 +115,52 @@ const FECHA_ESTADO = {
   retorno: 'encerrar',
 }
 
-async function esvaziarQuadro() {
+async function esvaziarQuadro(ws) {
   /*
-    Cada volta abre uma conexao NOVA de proposito.
+    Le o ULTIMO retrato conhecido da conexao, e nao "o proximo que chegar".
 
-    O servidor manda o retrato no instante do accept, entao uma conexao nova e a
-    unica forma de perguntar "como esta o quadro agora?" sem depender de alguem
-    mudar alguma coisa. Esperar um retrato numa conexao ja aberta trava quando
-    nada acontece — que e exatamente o caso quando o quadro ja esta vazio.
+    Quadro vazio nao gera evento nenhum, entao esperar por um e confundir
+    "nada mudou" com "nao ha nada" — foi exatamente esse engano que fez esta
+    funcao declarar sucesso com duas criancas no quadro, e a secao seguinte
+    falhar contando o que a anterior deixou.
+
+    Um socket so, ja aberto: o wrangler ainda cai com desconexao abrupta de
+    WebSocket, e uma conexao nova por volta era mais uma chance de derrubar o
+    servidor no meio da suite.
   */
   for (let volta = 0; volta < 10; volta++) {
-    const ws = await ligarWs('papel=portaria')
-    const retrato = await new Promise((resolve) => {
-      const ouvir = (e) => {
-        const m = JSON.parse(e.data)
-        if (m.tipo === 'retrato') {
-          ws.removeEventListener('message', ouvir)
-          resolve(m)
-        }
-      }
-      ws.addEventListener('message', ouvir)
-      setTimeout(() => resolve(null), 3000)
-    })
+    const chamadas = ws.__retratos.at(-1)?.chamadas ?? []
+    if (chamadas.length === 0) return true
 
-    const chamadas = retrato?.chamadas ?? []
-    if (chamadas.length === 0) {
-      ws.close()
-      await esperar(200)
-      return true
-    }
     for (const c of chamadas) {
       const tipo = FECHA_ESTADO[c.estado]
       if (tipo) ws.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
-      await esperar(180)
+      await esperar(200)
     }
-    ws.close()
-    await esperar(300)
+    await esperar(500)
   }
-  return false
+  return (ws.__retratos.at(-1)?.chamadas ?? []).length === 0
 }
 
+/*
+  Liga, e guarda TODO retrato que chegar desde a conexao.
+
+  O coletor existe porque a ausencia de retrato nao e informacao: uma conexao
+  parada nao significa quadro vazio, significa que nada mudou. `esvaziarQuadro`
+  lia justamente isso ao contrario — esperava um retrato por tres segundos e,
+  nao vindo nenhum, dava o quadro por vazio e seguia. A secao seguinte entao
+  contava criancas que a anterior deixou, e falhava sem haver bug nenhum.
+*/
 async function ligarWs(query, tentativas = 4) {
   for (let i = 1; i <= tentativas; i++) {
     try {
-      return await abrirWs(query)
+      const ws = await abrirWs(query)
+      ws.__retratos = []
+      ws.addEventListener('message', (e) => {
+        const m = JSON.parse(e.data)
+        if (m.tipo === 'retrato') ws.__retratos.push(m)
+      })
+      return ws
     } catch (erro) {
       if (i === tentativas) throw erro
       await esperar(800 * i)
@@ -314,7 +316,7 @@ async function principal() {
     `desde` existia desde sempre sem nunca ter sido desenhado.
   */
   // Ponto de partida conhecido: contagem absoluta exige quadro vazio.
-  conferir('o quadro comeca vazio para contar', await esvaziarQuadro())
+  conferir('o quadro comeca vazio para contar', await esvaziarQuadro(outra))
   await esperar(600)
 
   const salaDoForasteiro = await ligarWs(
@@ -1114,6 +1116,145 @@ async function principal() {
     porSobrenome.marcadas === 2, JSON.stringify(porSobrenome))
 
   await buscarPor('')
+
+  console.log('\n== restricao: a caixa que interrompe ==')
+
+  /*
+    Uma crianca pode ter anotacao que muda quem pode leva-la embora. E o maior
+    risco juridico do projeto, e a mitigacao barata e esta: mostrar a anotacao
+    ANTES da acao e exigir reconhecimento.
+
+    O caso vem da SEMENTE (Ravi Bacelar, Pré 2). A primeira versao desta secao
+    importava uma planilha com restricoes e devolvia o cadastro no fim — e uma
+    execucao que morreu no meio deixou o servidor com dois alunos, fazendo TODAS
+    as secoes seguintes falharem em rodadas posteriores, sem relacao aparente
+    com o que elas testam. Teste que mexe no cadastro e teste que envenena os
+    outros.
+  */
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+
+  const buscarNa = async (texto) => {
+    await cdp.chamar('Runtime.evaluate', {
+      expression:
+        '(() => { const c = document.getElementById(' +
+        JSON.stringify('consulta') +
+        '); c.value = ' +
+        JSON.stringify(texto) +
+        '; c.dispatchEvent(new Event(' +
+        JSON.stringify('input') +
+        ')) })()',
+    })
+    await esperar(450)
+  }
+
+  await buscarNa('ravi')
+  const marcada = await cdp.avaliar(`
+    (() => {
+      const li = document.querySelector('#resultados .linha')
+      const marca = li?.querySelector('.marca-restricao')
+      return { existe: !!marca, texto: marca?.textContent ?? '' }
+    })()
+  `)
+  conferir('a linha avisa que ha restricao ANTES do toque',
+    marcada.existe === true && marcada.texto.length > 0, JSON.stringify(marcada))
+
+  /*
+    O texto da anotacao NAO pode estar no HTML da pagina antes do toque: ele so
+    sai do servidor uma crianca por vez, quando alguem esta prestes a agir. Com
+    o texto junto da lista, um tablet esquecido no balcao passaria a expor
+    guarda e conflito de 292 familias em vez de nome e turma.
+  */
+  const noHtml = await cdp.avaliar(
+    ` document.documentElement.innerHTML.includes('avó materna') `,
+  )
+  conferir('e o TEXTO da anotacao nao esta na pagina antes de alguem pedir',
+    noHtml === false, String(noHtml))
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: ` document.querySelector('#resultados .linha button').click() `,
+    userGesture: true,
+  })
+  await esperar(800)
+
+  const caixa = await cdp.avaliar(`
+    (() => {
+      const d = document.querySelector('dialog.restricao')
+      if (!d) return { existe: false }
+      return {
+        existe: true,
+        aberta: d.open,
+        texto: d.querySelector('.texto')?.textContent ?? '',
+        quem: d.querySelector('.quem')?.textContent ?? '',
+        focoNoVoltar: document.activeElement === d.querySelector('button'),
+        emSaida: document.querySelectorAll('#ativas .linha').length,
+      }
+    })()
+  `)
+  conferir('tocar em Chamar abre a caixa', caixa.existe === true && caixa.aberta === true,
+    JSON.stringify(caixa))
+  conferir('a caixa mostra a anotacao inteira',
+    /avó materna/.test(caixa.texto), JSON.stringify(caixa.texto))
+  conferir('e diz de quem e, e o que vai acontecer',
+    /Ravi/.test(caixa.quem) && /chamar/.test(caixa.quem), JSON.stringify(caixa.quem))
+  conferir('o foco comeca no botao que NAO segue',
+    caixa.focoNoVoltar === true, JSON.stringify(caixa))
+  conferir('e NADA aconteceu ainda: a crianca nao foi chamada',
+    caixa.emSaida === 0, 'em saida: ' + caixa.emSaida)
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression:
+      ` document.querySelector('dialog.restricao button').click() `,
+    userGesture: true,
+  })
+  await esperar(700)
+  const depoisDeVoltar = await cdp.avaliar(`
+    (() => ({
+      caixa: !!document.querySelector('dialog.restricao'),
+      emSaida: document.querySelectorAll('#ativas .linha').length,
+    }))()
+  `)
+  conferir('Voltar fecha a caixa e NAO chama a crianca',
+    depoisDeVoltar.caixa === false && depoisDeVoltar.emSaida === 0,
+    JSON.stringify(depoisDeVoltar))
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: ` document.querySelector('#resultados .linha button').click() `,
+    userGesture: true,
+  })
+  await esperar(800)
+  await cdp.chamar('Runtime.evaluate', {
+    expression:
+      ` document.querySelectorAll('dialog.restricao button')[1].click() `,
+    userGesture: true,
+  })
+  await esperar(1000)
+  const depoisDeSeguir = await cdp.avaliar(
+    ` document.querySelectorAll('#ativas .linha').length `,
+  )
+  conferir('reconhecer a restricao deixa seguir', depoisDeSeguir === 1,
+    'em saida: ' + depoisDeSeguir)
+
+  // Crianca SEM restricao nao abre caixa nenhuma: caixa que aparece sempre e
+  // caixa que ninguem le.
+  await buscarNa('gael')
+  await cdp.chamar('Runtime.evaluate', {
+    expression: ` document.querySelector('#resultados .linha button').click() `,
+    userGesture: true,
+  })
+  await esperar(900)
+  const semRestricao = await cdp.avaliar(`
+    (() => ({
+      caixa: !!document.querySelector('dialog.restricao'),
+      emSaida: document.querySelectorAll('#ativas .linha').length,
+    }))()
+  `)
+  conferir('crianca sem restricao nao abre caixa',
+    semRestricao.caixa === false && semRestricao.emSaida === 2,
+    JSON.stringify(semRestricao))
+
+  await esvaziarQuadro(outra)
+  await esperar(400)
 
   wsCdp.close()
   chrome.kill()

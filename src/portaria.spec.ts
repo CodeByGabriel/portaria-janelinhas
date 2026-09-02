@@ -710,3 +710,145 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
     ws.close()
   })
 })
+
+
+describe('restricao: o texto nunca sai em lote', () => {
+  const COM_RESTRICAO = [
+    'Nome,Turma,Restrição',
+    'Ana Beatriz Souza,Pré 1,Guarda compartilhada — não entregar ao pai sem autorização',
+    'Bruno Assuncao,Pré 1,',
+    'Carlos Lima,9º ano,Só a avó materna busca',
+  ].join('\n')
+
+  beforeEach(async () => {
+    await reset()
+    await pedir('/importar?papel=portaria', { method: 'POST', body: COM_RESTRICAO })
+  })
+
+  async function idDe(nome: string) {
+    const alunos = await (
+      await pedir('/alunos?papel=portaria')
+    ).json<{ id: string; nome: string; turma: string; temAlerta?: boolean }[]>()
+    const a = alunos.find((x) => x.nome === nome)
+    if (!a) throw new Error(`nao achei ${nome}`)
+    return a
+  }
+
+  it('REGRESSAO: /alunos entrega o booleano, NUNCA o texto', async () => {
+    /*
+      `/alunos` despeja o cadastro inteiro no navegador — ja e minimizacao ao
+      contrario, registrado em docs/lgpd.md. Com o texto dentro, cada tablet da
+      portaria carregaria em repouso a situacao familiar da escola toda: uma
+      tela aberta e esquecida no balcao passaria a expor guarda e conflito de
+      292 familias em vez de nome e turma.
+
+      O texto nao mora no tipo `Aluno`, entao nao ha o que esquecer de remover.
+      Este teste guarda a serializacao inteira contra o texto.
+    */
+    const corpo = await (await pedir('/alunos?papel=portaria')).text()
+    expect(corpo).not.toContain('Guarda compartilhada')
+    expect(corpo).not.toContain('avó materna')
+    expect(corpo).toContain('temAlerta')
+
+    const comAlerta = await idDe('Ana Beatriz Souza')
+    const semAlerta = await idDe('Bruno Assuncao')
+    expect(comAlerta.temAlerta).toBe(true)
+    expect(semAlerta.temAlerta).toBe(false)
+  })
+
+  it('a portaria le o texto de UMA crianca por vez', async () => {
+    const a = await idDe('Ana Beatriz Souza')
+    const r = await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)
+    expect(r.status).toBe(200)
+    const corpo = await r.json<{ texto: string }>()
+    expect(corpo.texto).toMatch(/Guarda compartilhada/)
+  })
+
+  it('crianca sem restricao devolve texto vazio, nao erro', async () => {
+    // Vazio e uma resposta; erro faria a tela tratar "sem restricao" como
+    // "nao consegui saber", e as duas coisas exigem condutas opostas.
+    const b = await idDe('Bruno Assuncao')
+    const r = await pedir(`/alerta?papel=portaria&alunoId=${b.id}`)
+    expect(r.status).toBe(200)
+    expect((await r.json<{ texto: string }>()).texto).toBe('')
+  })
+
+  it('C3: sem papel valido, /alerta nem responde', async () => {
+    const a = await idDe('Ana Beatriz Souza')
+    expect((await pedir(`/alerta?alunoId=${a.id}`)).status).toBe(400)
+    expect((await pedir(`/alerta?papel=Portaria&alunoId=${a.id}`)).status).toBe(400)
+  })
+
+  it('a sala so le a restricao da PROPRIA turma', async () => {
+    /*
+      O mesmo ataque que o filtro de turma ja fecha na leitura e na escrita: os
+      ids sao adivinhaveis, entao sem esta barreira a sala do Pré 1 varreria os
+      ids e leria a anotacao de guarda de todas as criancas da escola — que e o
+      dado mais sensivel que este sistema toca.
+    */
+    const daPre = await idDe('Ana Beatriz Souza')
+    const doNono = await idDe('Carlos Lima')
+    const pre = encodeURIComponent('Pré 1')
+
+    const propria = await pedir(`/alerta?papel=sala&turma=${pre}&alunoId=${daPre.id}`)
+    expect(propria.status).toBe(200)
+    expect((await propria.json<{ texto: string }>()).texto).toMatch(/Guarda/)
+
+    const alheia = await pedir(`/alerta?papel=sala&turma=${pre}&alunoId=${doNono.id}`)
+    expect(alheia.status).toBe(403)
+
+    // E sala sem turma declarada nao le nada, como nao ve nada.
+    expect((await pedir(`/alerta?papel=sala&alunoId=${daPre.id}`)).status).toBe(403)
+  })
+
+  it('alunoId invalido ou ausente e recusado antes de tocar no disco', async () => {
+    expect((await pedir('/alerta?papel=portaria')).status).toBe(400)
+    expect((await pedir('/alerta?papel=portaria&alunoId=')).status).toBe(400)
+    expect(
+      (await pedir(`/alerta?papel=portaria&alunoId=${'x'.repeat(200)}`)).status,
+    ).toBe(400)
+    expect((await pedir('/alerta?papel=portaria&alunoId=naoexiste')).status).toBe(404)
+  })
+
+  it('a restricao sobrevive ao reinicio', async () => {
+    const a = await idDe('Ana Beatriz Souza')
+    await derrubarInstancia()
+    const r = await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)
+    expect((await r.json<{ texto: string }>()).texto).toMatch(/Guarda compartilhada/)
+  })
+
+  it('reimportar SEM a coluna limpa as restricoes', async () => {
+    /*
+      E o caminho de correcao e de eliminacao que a trilha nao tem: a restricao
+      vive no cadastro, que a escola substitui quando quiser. Uma anotacao
+      errada — ou uma que deixou de valer porque a decisao judicial mudou — sai
+      com a proxima planilha, sem precisar de nada especial.
+    */
+    const semColuna = ['Nome,Turma', 'Ana Beatriz Souza,Pré 1'].join('\n')
+    const r = await pedir('/importar?papel=portaria', { method: 'POST', body: semColuna })
+    expect(r.status).toBe(200)
+
+    const a = await idDe('Ana Beatriz Souza')
+    expect(a.temAlerta).toBe(false)
+    expect(
+      (await (await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)).json<{ texto: string }>())
+        .texto,
+    ).toBe('')
+  })
+
+  it('marcacao na planilha nao vira codigo na tela da portaria', async () => {
+    const comMarcacao = [
+      'Nome,Turma,Observação',
+      'Ana Beatriz Souza,Pré 1,<script>alert(1)</script> não entregar',
+    ].join('\n')
+    await pedir('/importar?papel=portaria', { method: 'POST', body: comMarcacao })
+
+    const a = await idDe('Ana Beatriz Souza')
+    const texto = (
+      await (await pedir(`/alerta?papel=portaria&alunoId=${a.id}`)).json<{ texto: string }>()
+    ).texto
+    expect(texto).not.toContain('<')
+    expect(texto).not.toContain('>')
+    expect(texto).toContain('não entregar')
+  })
+})

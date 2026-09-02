@@ -154,6 +154,38 @@ export class Portaria {
       return Response.json(this.livro.alunos())
     }
 
+    /*
+      A restricao de UMA crianca, e so quando alguem esta prestes a agir.
+
+      Existe como rota separada, e nao como campo em `/alunos`, porque
+      `/alunos` despeja o cadastro inteiro no navegador — e isso ja e
+      minimizacao ao contrario, registrado em `docs/lgpd.md`. Com o texto
+      dentro, cada tablet da portaria carregaria em repouso a situacao familiar
+      da escola toda. Aqui sai uma crianca por vez.
+
+      A sala so alcanca a PROPRIA turma, pela mesma regra da leitura e da
+      escrita: se a restricao vazasse por aqui, a sala do Pré 1 leria a
+      anotacao de guarda de um aluno do 9º ano varrendo ids.
+    */
+    if (url.pathname === '/alerta') {
+      const alunoId = url.searchParams.get('alunoId') ?? ''
+      if (alunoId.length === 0 || alunoId.length > 64) {
+        return new Response('alunoId invalido', { status: 400 })
+      }
+
+      const aluno = this.livro.alunos().find((a) => a.id === alunoId)
+      if (!aluno) return new Response('aluno desconhecido', { status: 404 })
+
+      if (papel === 'sala') {
+        const turma = url.searchParams.get('turma')
+        if (!turma || aluno.turma !== turma) {
+          return new Response('a sala so le alerta da propria turma', { status: 403 })
+        }
+      }
+
+      return Response.json({ alunoId, texto: this.deposito.alertaDe(alunoId) })
+    }
+
     if (url.pathname === '/registro') {
       if (papel !== 'portaria') return new Response('so a portaria le o registro', { status: 403 })
       return Response.json(this.livro.registro())
@@ -220,7 +252,11 @@ export class Portaria {
 
       try {
         this.livro.substituirCadastro(resultado.alunos)
-        this.deposito.trocarCadastro(resultado.alunos, this.livro.versao())
+        this.deposito.trocarCadastro(
+          resultado.alunos,
+          this.livro.versao(),
+          resultado.alertas,
+        )
       } catch (erro) {
         // Ha crianca em saida agora. Trocar o cadastro sumiria com ela de
         // todas as telas e deixaria a trilha com um liberar sem entregar.

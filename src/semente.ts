@@ -39,6 +39,19 @@ export interface Aluno {
   id: string
   nome: string
   turma: Turma
+  /**
+   * Ha uma restricao registrada para esta crianca.
+   *
+   * BOOLEANO, e nao o texto. O texto vive so no servidor e sai por
+   * `/alerta`, uma crianca por vez, quando alguem esta prestes a agir.
+   *
+   * `/alunos` entrega o cadastro inteiro ao navegador — ja e minimizacao ao
+   * contrario, e `docs/lgpd.md` registra isso. Mandar junto a anotacao de
+   * guarda de cada crianca faria cada tablet da portaria carregar, em repouso,
+   * a situacao familiar da escola inteira. O aviso de que existe algo a ler
+   * cabe num booleano.
+   */
+  temAlerta?: boolean
 }
 
 /*
@@ -115,10 +128,40 @@ const NOMES: readonly string[] = [
 
 const POR_TURMA = 4
 
+/*
+  Uma restricao na semente, e por que ela precisa estar aqui.
+
+  Restricao de guarda e o maior risco juridico deste projeto, e ate agora a
+  semente nao tinha nenhum caso — entao a caixa de alerta nao podia ser
+  exercitada sem que o teste IMPORTASSE uma planilha, o que substitui o
+  cadastro inteiro. Uma dessas execucoes morreu no meio e deixou o servidor com
+  dois alunos, envenenando todas as rodadas seguintes. Semente sem o caso
+  dificil empurra o caso dificil para dentro do teste, onde ele vira efeito
+  colateral.
+
+  Ravi Bacelar, do Pré 2, de proposito: nenhuma outra verificacao usa aquela
+  turma, entao a caixa nao aparece no meio de um teste que nao e sobre ela.
+
+  O texto e FICCAO DECLARADA, como todo o resto da semente. Nenhum dado real
+  de crianca entra neste repositorio.
+*/
+const RESTRICOES: Readonly<Record<string, string>> = {
+  'Ravi Bacelar':
+    'Guarda compartilhada. Entregar somente à mãe ou à avó materna, conforme decisão judicial de 2026 (ficção da semente).',
+}
+
+/** As restricoes da semente, prontas para o deposito guardar. */
+export function alertasDaSemente(): { id: string; texto: string }[] {
+  return semear()
+    .filter((a) => RESTRICOES[a.nome])
+    .map((a) => ({ id: a.id, texto: RESTRICOES[a.nome]! }))
+}
+
 export function semear(): Aluno[] {
   return NOMES.map((nome, i) => ({
     id: `a${String(i + 1).padStart(2, '0')}`,
     nome,
     turma: TURMAS[Math.floor(i / POR_TURMA)],
+    temAlerta: RESTRICOES[nome] !== undefined,
   }))
 }

@@ -254,6 +254,71 @@ body {
   cursor: pointer;
 }
 
+/*
+  Caixa de restricao.
+
+  Vermelho-magenta e escuro de proposito: nao se parece com nada mais no app,
+  porque nao e mais uma etapa do fluxo — e uma interrupcao. E o texto da
+  anotacao vem grande, porque a pessoa esta de pe, com fila esperando, e vai ler
+  em dois segundos ou nao vai ler.
+*/
+.restricao {
+  border: 0;
+  border-radius: var(--canto);
+  padding: 1.3rem 1.4rem 1.15rem;
+  max-width: 34rem;
+  width: calc(100vw - 2rem);
+  background: var(--superficie);
+  border-top: 6px solid var(--alerta);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.28);
+  color: var(--tinta);
+}
+
+.restricao::backdrop {
+  background: rgb(20 16 14 / 0.55);
+}
+
+.restricao h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--alerta);
+}
+
+.restricao .quem {
+  margin: 0 0 0.9rem;
+  font-size: 0.85rem;
+  color: var(--tinta-media);
+}
+
+.restricao .texto {
+  margin: 0 0 1.3rem;
+  font-size: 1.1rem;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.restricao .botoes {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.restricao .botoes button { flex: 1 1 10rem; }
+
+/*
+  A marca de que existe restricao, na lista e na busca.
+
+  Aparece ANTES de qualquer acao, para a pessoa saber que a caixa vem — nao
+  para substitui-la. Texto e simbolo juntos, como todo estado deste app.
+*/
+.marca-restricao {
+  color: var(--alerta);
+  font-weight: 700;
+}
+/* O ponto separa da turma; sem ele a marca colava ("Pré 2! restrição"). */
+.marca-restricao::before { content: " · ! "; }
+
 /* ---------- cartao do aluno ---------- */
 
 .cartao {

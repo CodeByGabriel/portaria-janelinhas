@@ -1,6 +1,6 @@
 export { Portaria } from './portaria.ts'
 
-const DO_PORTARIA = new Set(['/ws', '/registro', '/alunos', '/importar'])
+const DO_PORTARIA = new Set(['/ws', '/registro', '/alunos', '/importar', '/alerta'])
 
 export default {
   async fetch(

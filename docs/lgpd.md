@@ -55,6 +55,35 @@ resto da planilha (`src/importar.ts:185-203`).
 > ⚠️ O `id` é derivado do nome. Ele **não é anônimo**: dois sistemas com a mesma regra
 > chegam ao mesmo `id` para a mesma pessoa. Trate o `id` como dado pessoal.
 
+### `cadastro.alerta` — a restrição, quando a escola registra uma
+
+Coluna **opcional** da planilha (`Restrição`, `Observação`, `Alerta` ou `Guarda`).
+Texto livre, até 300 caracteres, filtrado contra marcação como o nome. É a informação
+mais sensível que este sistema toca: guarda compartilhada, decisão judicial, quem pode e
+quem não pode levar a criança.
+
+Três decisões que a tornam tratável:
+
+**O texto nunca sai em lote.** `/alunos` entrega o cadastro inteiro ao navegador — já é
+minimização ao contrário (§6). Com a anotação dentro, cada tablet da portaria carregaria
+**em repouso** a situação familiar da escola toda, e uma tela esquecida no balcão passaria
+a expor guarda e conflito de 292 famílias em vez de nome e turma. O que viaja na lista é
+um booleano (`temAlerta`); o texto sai por `/alerta`, **uma criança por vez**, no
+instante em que alguém está prestes a chamar ou liberar. O texto não existe dentro do tipo
+`Aluno`, então não há o que esquecer de remover.
+
+**A sala só lê a da própria turma.** Mesma regra da leitura e da escrita. Sem ela, a sala
+do Pré 1 varreria os ids e leria a anotação de guarda da escola inteira.
+
+**Ela vive no cadastro, e não na trilha** — e por isso, ao contrário da `razao`, ela TEM
+caminho de correção e de eliminação: a próxima planilha substitui ou apaga. Uma anotação
+errada, ou que deixou de valer porque a decisão judicial mudou, sai com a reimportação.
+É a diferença que permite texto livre aqui e não lá.
+
+> ⚠️ Isto é **alerta, não autorização**. O sistema não sabe quem está no portão — ele não
+> pode decidir, só pode garantir que quem decide leu. A verificação de verdade ("não
+> entregar a X") depende do modelo de responsáveis, que é Fase 2. `TODO(fase2)`
+
 ### `chamadas` — quem está saindo agora
 `alunoId`, `nome`, `turma`, `estado`, `desde`, `em`. Some quando o ciclo fecha.
 
