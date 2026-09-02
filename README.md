@@ -159,15 +159,28 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='workerd.exe'" |
 Nada disto é bug — é escopo deliberadamente adiado, e cada item precisa da visita à escola.
 
 - **Autenticação de verdade.** Hoje o papel vem da query string. Antes de qualquer dado real,
-  isso precisa ser login.
-- **Persistência.** O Durable Object tem armazenamento provisionado no `wrangler.toml` e não
-  usado. Um reinício apaga o dia inteiro, **inclusive a trilha de auditoria**.
-- **Consentimento LGPD por responsável**, e a foto real da criança.
+  isso precisa ser login. É o item que sozinho impede subir a lista da escola — ver
+  `docs/lgpd.md` §6.
+- **Base legal e contrato de operador.** Quem é controladora, quem é operador, e sob qual
+  artigo o tratamento se sustenta. `docs/lgpd.md` §1 e §4, os dois com `TODO(juridico)`.
+- **Foto real da criança**, se a escola quiser: hoje o retrato é ilustração gerada do nome.
 - **Nomes exatos das turmas.** A faixa Pré 1–9º ano veio da escola; os rótulos ainda não.
   Todo `conteudo/institucional/` do repo é `TODO(visita)`.
-- **Limite de tamanho na importação e na trilha.** Ambas crescem sem teto hoje.
+- **Busca no servidor.** Hoje `/alunos` entrega o cadastro inteiro ao navegador e a busca
+  roda no cliente — minimização ao contrário. `docs/lgpd.md` §6.
+- **Exportação da trilha antes da poda**, se a escola precisar guardar mais de 90 dias.
+
+**Fechado desde então:** a persistência existe (a trilha e o cadastro sobrevivem ao
+reinício, e o cadastro importado não volta mais para a semente), e a importação, as
+sessões e a trilha têm teto — 1 MB, 200 conexões e 90 dias de retenção.
 
 ## Documentos
 
 - `docs/superpowers/specs/2026-09-01-portaria-janelinhas-design.md` — o desenho e o porquê
 - `docs/superpowers/plans/2026-09-01-portaria-janelinhas.md` — o plano executado, tarefa a tarefa
+- `docs/plano-refatoracao.md` — a refatoração em curso, com o que cada fase fecha
+- `docs/pesquisa-refatoracao.md` — a pesquisa que a embasa, e onde o código a desmentiu
+- `docs/baseline.md` — os números do "antes", contra os quais cada fase é medida
+- **`docs/lgpd.md` — o que o sistema coleta, onde guarda, quem alcança, e os três
+  bloqueios que impedem dado real de entrar hoje. Leia antes de qualquer conversa com a
+  escola sobre subir a lista de verdade.**
