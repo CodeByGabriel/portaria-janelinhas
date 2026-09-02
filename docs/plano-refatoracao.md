@@ -235,6 +235,70 @@ Acrescento um item que a pesquisa não levantou: **`/alunos` entrega o cadastro 
 
 ---
 
+### Fim da Fase 0 — red team e blue team
+
+Passagem feita em 01/09/2026 sobre a superfície que a fase mexeu. Três achados, todos
+com regressão.
+
+**F0-R1 — a chamada esquecida atravessa a noite. Grave, e criado pela própria fase.**
+Enquanto o `Livro` morria a cada reinício, o quadro nascia vazio todo dia. A persistência
+da 0.2 fez o quadro sobreviver — e nada limpava. Um `chamado` que ninguém fechou volta na
+manhã seguinte com a mesma aparência de "responsável no portão agora", e a professora
+libera uma criança para ninguém.
+
+O segundo dano é mais silencioso: `substituirCadastro` recusa a troca com criança em
+saída, então uma chamada esquecida de ontem trancava a secretaria fora da importação
+**para sempre** — antes bastava reiniciar, e reiniciar deixou de adiantar.
+
+Consertado com `Livro.expirar()`, que continua puro: chamadas com mais de 12 horas voltam
+para `aguardando` pela transição `cancelar`, que já existe, e entram na trilha como
+qualquer outra ação. O evento grava `papel: 'sistema'` e `origem: 'expiracao automatica'`
+— dizer `'portaria'` afirmaria que a porteira cancelou, e ninguém cancelou. Esses dois
+campos são strings livres no evento de auditoria e **não** pertencem à união `Papel` que
+autoriza conexões, então `'sistema'` nunca vira papel aceitável numa URL. O Durable Object
+chama na hidratação **e** no alarme diário, porque só o alarme deixaria uma chamada das
+17h de sexta no quadro até a madrugada.
+
+`liberado` fica de fora **de propósito**, e isso é decisão, não omissão. Marcá-lo como
+entregue seria o sistema afirmando que um adulto recebeu a criança sem nenhum adulto ter
+recebido nada; devolvê-lo para `aguardando` apagaria a confirmação da professora, que é o
+único evento que este sistema existe para proteger. Criança liberada e não entregue é caso
+aberto, e caso aberto é para uma pessoa fechar — inclusive continuando a trancar a troca
+de cadastro, que é exatamente para o que essa tranca serve. **O fecho disso é da Fase 1**,
+onde 1.1 já traz a máquina de eventos compensatórios.
+
+**F0-R2 — a recusa da importação não dizia quem travou.** "há 1 criança em saída agora"
+manda a secretaria procurar sem dizer onde, e depois da persistência essa criança pode ser
+de ontem. Agora a mensagem nomeia cada uma, com turma e estado.
+
+**F0-R3 — silenciar não apagava o aviso de som.** A tela continuava dizendo "toque aqui
+para reativar" depois de a professora ter desligado o som de propósito: o app insistindo
+em consertar o que ela acabou de escolher. Religar traz o aviso de volta se o problema
+persistir. E o texto do aviso passou a ser escrito **antes** de o elemento aparecer —
+região `aria-live` preenchida depois de aparecer às vezes não é anunciada.
+
+10 verificações novas: 5 no `livro.test.ts`, 5 no `portaria.spec.ts` (que envelhece a
+chamada direto no SQLite, sem relógio injetável, para o caminho exercitado continuar sendo
+o de produção inteiro), e 3 no `telas.mjs`.
+
+### Definição de pronto da Fase 0 — conferida
+
+| Critério | Estado |
+|---|---|
+| Reinício preserva trilha e cadastro, e não volta para a semente | ✅ 0.2, provado com servidor morto e ressuscitado |
+| Os 30 checks fim-a-fim verdes | ✅ 31, com a mesa se esvaziando sozinha |
+| Zero par de contraste reprovando no teste automático | ✅ 0.5, 18 testes |
+| Nenhum alvo primário abaixo de 44px | ✅ 0.5, medido no DOM |
+| `docs/lgpd.md` escrito | ✅ 0.7 |
+| Prints "depois" comparados com a baseline | ✅ `docs/prints/fase-0/` e `fase-0-deuteranopia/` |
+| Modo demonstração, arquivo único e `prints.mjs` funcionando | ✅ |
+| **0.3, hibernação** | ⛔ bloqueada por bug do runtime, documentada acima |
+
+Portões ao fim da fase: `npm test` 136 + 28, `typecheck`, `fim-a-fim` e `telas`, todos com
+código de saída 0.
+
+---
+
 ## 5. Fase 1 — Fluxo humano
 
 ### 1.1 Evento compensatório `retornou` (M)

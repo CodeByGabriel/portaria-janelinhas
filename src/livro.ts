@@ -138,6 +138,55 @@ export class Livro {
   }
 
   /**
+   * Fecha as chamadas esquecidas, e devolve os eventos para quem persiste.
+   *
+   * Enquanto este objeto morria a cada reinicio isto nao existia: o quadro
+   * nascia vazio todo dia. Com a persistencia ele sobrevive, e um "chamado"
+   * que ninguem fechou volta na manha seguinte parecendo responsavel no portao
+   * AGORA — a professora libera uma crianca para ninguem. O segundo dano e
+   * mais silencioso: `substituirCadastro` recusa a troca com crianca em saida,
+   * entao uma chamada esquecida de ontem tranca a secretaria fora da
+   * importacao para sempre. Antes bastava reiniciar.
+   *
+   * Usa a transicao que ja existe — `cancelar`, de chamado para aguardando — e
+   * grava na trilha como qualquer outra acao. Nao e remocao silenciosa.
+   *
+   * `papel: 'sistema'` e deliberado: dizer 'portaria' afirmaria que a porteira
+   * cancelou, e ninguem cancelou. O campo e livre no evento de auditoria e
+   * NAO pertence a uniao `Papel` que autoriza — 'sistema' nunca vira papel
+   * aceitavel numa conexao.
+   *
+   * `liberado` fica de fora de proposito. Marca-lo como entregue seria o
+   * sistema afirmando que um adulto recebeu a crianca sem nenhum adulto ter
+   * recebido nada; devolve-lo a aguardando apagaria a confirmacao da
+   * professora, que e o unico evento que este sistema existe para proteger.
+   * Crianca liberada e nao entregue e caso aberto, e caso aberto e para uma
+   * pessoa fechar.
+   */
+  expirar(antesDe: number, agora: number): EventoAuditoria[] {
+    const eventos: EventoAuditoria[] = []
+    for (const chamada of [...this.chamadas.values()]) {
+      if (chamada.estado !== 'chamado' || chamada.desde >= antesDe) continue
+
+      this.chamadas.delete(chamada.alunoId)
+      const evento: EventoAuditoria = {
+        alunoId: chamada.alunoId,
+        nome: chamada.nome,
+        turma: chamada.turma,
+        acao: 'cancelar',
+        papel: 'sistema',
+        origem: 'expiracao automatica',
+        de: 'chamado',
+        para: 'aguardando',
+        em: agora,
+      }
+      this.trilha.push(evento)
+      eventos.push(evento)
+    }
+    return eventos
+  }
+
+  /**
    * Troca o cadastro inteiro. Nao apaga a trilha: ela e append-only, e apagar
    * o historico ao reimportar uma planilha seria exatamente o furo que ela
    * existe para tapar.
@@ -148,8 +197,16 @@ export class Livro {
    */
   substituirCadastro(alunos: Aluno[]): void {
     if (this.chamadas.size > 0) {
+      /*
+        Nomeia quem esta em saida. "ha 1 crianca em saida agora" manda a
+        secretaria procurar sem dizer onde — e depois da persistencia essa
+        crianca pode ser de ontem, o que torna a busca as cegas ainda pior.
+      */
+      const presas = [...this.chamadas.values()]
+        .map((c) => `${c.nome} (${c.turma}, ${c.estado})`)
+        .join('; ')
       throw new Error(
-        `ha ${this.chamadas.size} crianca(s) em saida agora; termine a saida antes de trocar o cadastro`,
+        `ha ${this.chamadas.size} crianca(s) em saida agora; termine a saida antes de trocar o cadastro: ${presas}`,
       )
     }
     this.cadastro.clear()

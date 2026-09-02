@@ -136,8 +136,10 @@
       nada mais: a professora só descobria pelo responsável reclamando no portão.
     */
     aoFalharSom((mensagem) => {
-      avisoSom.hidden = !mensagem
+      // O texto ANTES de mostrar: uma região aria-live que aparece já com o
+      // conteúdo é anunciada; preenchida depois de aparecer, às vezes não.
       if (mensagem) avisoSom.textContent = mensagem
+      avisoSom.hidden = !mensagem
     })
     avisoSom.onclick = () => destravar()
 

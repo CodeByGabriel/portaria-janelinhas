@@ -1,5 +1,5 @@
 /// <reference types="@cloudflare/vitest-plugin/types" />
-import { env, abortAllDurableObjects, reset } from 'cloudflare:test'
+import { env, abortAllDurableObjects, reset, runInDurableObject } from 'cloudflare:test'
 import { describe, it, expect, beforeEach } from 'vitest'
 
 /*
@@ -330,5 +330,145 @@ describe('tetos de tamanho', () => {
     const corpo = await r.json<{ erros: unknown[]; errosTotal: number }>()
     expect(corpo.erros.length).toBe(100)
     expect(corpo.errosTotal).toBe(500)
+  })
+})
+
+describe('chamada esquecida nao atravessa a noite', () => {
+  beforeEach(async () => {
+    await reset()
+  })
+
+  /*
+    Envelhece a chamada no DISCO, sem tocar na aplicacao.
+
+    Nao ha como adiantar o relogio do workerd, e por um `Date.now()` injetavel
+    no Durable Object so para isto o teste passaria a medir um cano de teste em
+    vez do caminho de producao. Reescrever `desde` no SQLite produz exatamente
+    o estado que o disco teria depois de uma noite, e o caminho exercitado
+    depois disso e o de producao inteiro: hidratacao, expiracao, persistencia,
+    transmissao.
+  */
+  async function envelhecerNoDisco(quandoMs: number) {
+    await runInDurableObject(portaria(), (_instancia, estado) => {
+      estado.storage.sql.exec('UPDATE chamadas SET desde = ?, em = ?', quandoMs, quandoMs)
+    })
+  }
+
+  it('REGRESSAO: um chamado de ontem nao volta no quadro de hoje', async () => {
+    /*
+      Enquanto o Livro morria a cada reinicio, o quadro nascia vazio todo dia.
+      Com a persistencia da 0.2 ele sobrevive — e um "chamado" que ninguem
+      fechou volta na manha seguinte parecendo responsavel no portao AGORA.
+      A professora libera uma crianca para ninguem.
+    */
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
+    ws.close()
+
+    await envelhecerNoDisco(1_000_000) // 1970, bem antes de qualquer corte
+    await derrubarInstancia()
+
+    const nova = await ligar('papel=portaria')
+    const retrato = await proximoRetrato(nova)
+    expect((retrato.chamadas as unknown[]).length).toBe(0)
+    nova.close()
+  })
+
+  it('e a expiracao entra na trilha como acao do sistema, nao da portaria', async () => {
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
+    ws.close()
+
+    await envelhecerNoDisco(1_000_000)
+    await derrubarInstancia()
+
+    const nova = await ligar('papel=portaria')
+    await proximoRetrato(nova)
+    const trilha = await (
+      await pedir('/registro?papel=portaria')
+    ).json<{ acao: string; papel: string; origem: string; de: string; para: string }[]>()
+
+    // O "chamar" continua la: a expiracao acrescenta, nunca reescreve.
+    expect(trilha.length).toBe(2)
+    expect(trilha[0].acao).toBe('chamar')
+
+    const fim = trilha[1]
+    expect(fim.acao).toBe('cancelar')
+    expect(fim.de).toBe('chamado')
+    expect(fim.para).toBe('aguardando')
+    // Dizer 'portaria' aqui afirmaria que a porteira cancelou. Ninguem cancelou.
+    expect(fim.papel).toBe('sistema')
+    expect(fim.origem).toMatch(/expiracao/)
+    nova.close()
+  })
+
+  it('REGRESSAO: uma chamada esquecida deixa de trancar a importacao para sempre', async () => {
+    /*
+      `substituirCadastro` recusa a troca com crianca em saida — protecao certa.
+      Mas com a chamada sobrevivendo aos reinicios, uma esquecida de ontem
+      trancava a secretaria fora da importacao sem saida nenhuma: antes bastava
+      reiniciar o servidor, e agora reiniciar nao adianta.
+    */
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
+    ws.close()
+
+    const trancado = await pedir('/importar?papel=portaria', {
+      method: 'POST',
+      body: 'Nome,Turma\nAna Beatriz Souza,Pré 1',
+    })
+    expect(trancado.status).toBe(409)
+
+    await envelhecerNoDisco(1_000_000)
+    await derrubarInstancia()
+
+    const nova = await ligar('papel=portaria')
+    await proximoRetrato(nova)
+    const liberado = await pedir('/importar?papel=portaria', {
+      method: 'POST',
+      body: 'Nome,Turma\nAna Beatriz Souza,Pré 1',
+    })
+    expect(liberado.status).toBe(200)
+    nova.close()
+  })
+
+  it('uma chamada de agora NAO expira', async () => {
+    // O outro lado do erro: expirar cedo demais tira do quadro uma crianca com
+    // o responsavel esperando no portao neste instante.
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
+    ws.close()
+
+    await derrubarInstancia()
+
+    const nova = await ligar('papel=portaria')
+    const retrato = await proximoRetrato(nova)
+    expect((retrato.chamadas as unknown[]).length).toBe(1)
+    nova.close()
+  })
+
+  it('a recusa da importacao NOMEIA quem esta em saida', async () => {
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
+
+    const r = await pedir('/importar?papel=portaria', {
+      method: 'POST',
+      body: 'Nome,Turma\nAna Beatriz Souza,Pré 1',
+    })
+    expect(r.status).toBe(409)
+    const corpo = await r.json<{ erros: { motivo: string }[] }>()
+    // Sem o nome, a secretaria fica procurando as cegas qual crianca travou.
+    expect(corpo.erros[0].motivo).toMatch(/\(.+,\s*chamado\)/)
+    ws.close()
   })
 })

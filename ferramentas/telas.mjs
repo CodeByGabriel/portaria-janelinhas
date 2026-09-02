@@ -385,6 +385,51 @@ async function principal() {
     JSON.stringify(depois))
 
   /*
+    Silenciar tem que apagar o aviso.
+
+    Sem isto a tela insistia em "toque aqui para reativar" depois de a
+    professora ter desligado o som de proposito — o app tentando consertar algo
+    que ela acabou de escolher.
+  */
+  await cdp.avaliar(`window.__contextos[0].suspend()`)
+  await esperar(400)
+  const avisoAntesDoMudo = await cdp.avaliar(
+    `document.getElementById('avisoSom').hidden === false`,
+  )
+  conferir('o aviso esta de pe antes de silenciar', avisoAntesDoMudo === true)
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('mudo').click()`,
+    userGesture: true,
+  })
+  await esperar(300)
+  const avisoDepoisDoMudo = await cdp.avaliar(
+    `document.getElementById('avisoSom').hidden === false`,
+  )
+  conferir('silenciar apaga o aviso de som interrompido',
+    avisoDepoisDoMudo === false, String(avisoDepoisDoMudo))
+
+  // e religar traz o aviso de volta, porque o problema continua existindo
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('mudo').click()`,
+    userGesture: false,
+  })
+  await esperar(400)
+  const avisoAoReligar = await cdp.avaliar(`
+    (() => ({ aviso: document.getElementById('avisoSom').hidden === false,
+              estado: window.__contextos[0].state }))()
+  `)
+  conferir('religar com o som ainda parado traz o aviso de volta',
+    avisoAoReligar.estado !== 'running' ? avisoAoReligar.aviso === true : true,
+    JSON.stringify(avisoAoReligar))
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `window.__contextos[0].resume()`,
+    userGesture: true,
+  })
+  await esperar(400)
+
+  /*
     O mudo tem que atravessar o F5. Sem isto a professora silenciava a sala e o
     proximo recarregamento devolvia o som, no meio do turno, com a turma toda
     em aula.

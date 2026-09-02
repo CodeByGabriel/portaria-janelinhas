@@ -21,6 +21,17 @@ const LIMITE_SESSOES = 200
 const DIAS_DE_RETENCAO = 90
 const UM_DIA = 24 * 60 * 60 * 1000
 
+/*
+  Depois de quantas horas uma chamada e considerada esquecida.
+
+  Doze horas nao fecham nada legitimo: a saida mais longa da escola dura
+  minutos, e o maior turno nao chega perto disso. Mas atravessam a noite, que e
+  o que precisa ser cortado — chamada de ontem no quadro de hoje parece
+  responsavel no portao AGORA.
+*/
+const HORAS_ATE_EXPIRAR = 12
+const UMA_HORA = 60 * 60 * 1000
+
 /**
  * Um Durable Object para a escola inteira. Guarda o estado do dia e as
  * conexoes abertas. Toda a regra mora no Livro; aqui so entra rede e disco.
@@ -44,8 +55,28 @@ export class Portaria {
     estado.blockConcurrencyWhile(async () => {
       this.deposito.iniciar()
       this.livro = new Livro(this.deposito.carregar())
+      this.expirarEsquecidas()
       await this.agendarPoda()
     })
+  }
+
+  /*
+    Roda na hidratacao E no alarme diario, de proposito.
+
+    So no alarme, uma chamada esquecida as 17h de sexta ficaria no quadro ate o
+    alarme da madrugada — e apareceria para quem abrir a tela no sabado. So na
+    hidratacao, um objeto que fica dias acordado nunca limparia. Os dois juntos
+    cobrem os dois caminhos, e a operacao e idempotente: o que ja expirou nao
+    esta mais no mapa.
+  */
+  private expirarEsquecidas(): void {
+    const agora = Date.now()
+    const eventos = this.livro.expirar(agora - HORAS_ATE_EXPIRAR * UMA_HORA, agora)
+    for (const evento of eventos) this.persistir(evento)
+    // Sem isto, uma tela aberta durante a virada continuaria mostrando a
+    // crianca que acabou de sair do quadro — que e o estado que a expiracao
+    // existe para desfazer.
+    if (eventos.length > 0) this.transmitir()
   }
 
   /**
@@ -80,6 +111,7 @@ export class Portaria {
    */
   async alarm(): Promise<void> {
     this.deposito.podar(Date.now() - DIAS_DE_RETENCAO * UM_DIA)
+    this.expirarEsquecidas()
     await this.estado.storage.setAlarm(Date.now() + UM_DIA)
   }
 

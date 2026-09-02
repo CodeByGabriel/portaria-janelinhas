@@ -293,3 +293,102 @@ test('o retrato carrega a versao do cadastro', () => {
   const livro = new Livro()
   assert.equal(livro.retratoPara('portaria').cadastro, livro.versao())
 })
+
+/*
+  Chamada esquecida nao pode atravessar a noite.
+
+  Enquanto o Livro morria a cada reinicio isso nao existia: o quadro nascia
+  vazio todo dia. Com a persistencia da 0.2 ele sobrevive — e um "chamado" que
+  ninguem fechou volta na manha seguinte parecendo responsavel no portao AGORA.
+  A professora libera uma crianca para ninguem.
+
+  E ha o segundo dano, mais silencioso: `substituirCadastro` recusa a troca com
+  crianca em saida. Uma chamada esquecida de ontem tranca a secretaria fora da
+  importacao para sempre, e antes bastava reiniciar.
+
+  A expiracao usa a transicao que ja existe (`cancelar`, chamado -> aguardando)
+  e entra na trilha como qualquer outra acao. Nao e remocao silenciosa.
+*/
+
+const UMA_HORA = 60 * 60 * 1000
+
+test('chamada esquecida expira pelo caminho legitimo', () => {
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  const ontem = 1_000_000
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, ontem, 'portaria')
+  assert.equal(livro.retratoPara('portaria').chamadas.length, 1)
+
+  const agora = ontem + 13 * UMA_HORA
+  const eventos = livro.expirar(agora - 12 * UMA_HORA, agora)
+
+  assert.equal(eventos.length, 1)
+  assert.equal(eventos[0].alunoId, alvo.id)
+  assert.equal(eventos[0].acao, 'cancelar')
+  assert.equal(eventos[0].de, 'chamado')
+  assert.equal(eventos[0].para, 'aguardando')
+  assert.equal(livro.retratoPara('portaria').chamadas.length, 0)
+})
+
+test('a expiracao entra na trilha, nao apaga nada', () => {
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 1000, 'portaria')
+  const antes = livro.registro().length
+
+  livro.expirar(1000 + UMA_HORA, 1000 + 2 * UMA_HORA)
+
+  const trilha = livro.registro()
+  assert.equal(trilha.length, antes + 1)
+  assert.equal(trilha.at(-1)?.acao, 'cancelar')
+  // Nao pode dizer que a portaria cancelou: ninguem cancelou.
+  assert.equal(trilha.at(-1)?.papel, 'sistema')
+  assert.match(String(trilha.at(-1)?.origem), /expiracao/)
+})
+
+test('a expiracao nao toca em chamada recente', () => {
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 10_000, 'portaria')
+
+  const eventos = livro.expirar(10_000 - UMA_HORA, 10_000 + 60_000)
+
+  assert.equal(eventos.length, 0)
+  assert.equal(livro.retratoPara('portaria').chamadas.length, 1)
+})
+
+test('a expiracao NAO fecha um liberado, porque isso seria forjar a entrega', () => {
+  /*
+    `liberado` significa que a professora confirmou e a crianca esta a caminho
+    do portao. Marca-la como entregue automaticamente seria o sistema afirmando
+    que um adulto recebeu a crianca, sem nenhum adulto ter recebido nada. E
+    devolve-la para `aguardando` apagaria a confirmacao da professora, que e o
+    unico evento que este sistema existe para proteger.
+
+    Entao ela FICA no quadro, de proposito. Uma crianca liberada e nao entregue
+    e um caso aberto que uma pessoa precisa fechar — inclusive continuando a
+    trancar a troca de cadastro, que e para o que essa tranca serve.
+  */
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 1000, 'portaria')
+  livro.aplicar({ tipo: 'liberar', alunoId: alvo.id }, 1100, 'sala', alvo.turma)
+
+  const eventos = livro.expirar(1000 + 99 * UMA_HORA, 1000 + 100 * UMA_HORA)
+
+  assert.equal(eventos.length, 0)
+  assert.equal(livro.retratoPara('portaria').chamadas[0]?.estado, 'liberado')
+})
+
+test('a recusa da troca de cadastro DIZ quem esta em saida', () => {
+  // "ha 1 crianca em saida agora" manda a secretaria procurar sem dizer onde.
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 1000, 'portaria')
+
+  assert.throws(
+    () => livro.substituirCadastro([]),
+    (e: Error) => e.message.includes(alvo.nome),
+    'a mensagem precisa nomear a crianca para a secretaria conseguir agir',
+  )
+})

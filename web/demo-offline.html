@@ -1002,6 +1002,16 @@ function estaMudo() {
 function alternarMudo() {
   mudo = !mudo
   guardarMudo(mudo)
+  /*
+    Silenciar tem que apagar o aviso de som interrompido.
+
+    Sem isto a tela ficava dizendo "toque aqui para reativar" depois de a
+    professora ter desligado o som de proposito — o app insistindo em consertar
+    algo que ela acabou de escolher. E ao religar o aviso volta se o problema
+    ainda existir, em vez de ela achar que voltou e nao voltar.
+  */
+  if (mudo) avisar(null)
+  else acordar()
   return mudo
 }
 
