@@ -79,8 +79,15 @@ export function etiquetaDe(texto, estado) {
   return span
 }
 
-/** Monta a etiqueta a partir do estado, com o rotulo que lhe pertence. */
-function etiquetaDoEstado(estado) {
+/**
+ * Monta a etiqueta a partir do estado, com o rotulo e o icone que lhe pertencem.
+ *
+ * Exportada porque a portaria precisa RECONSTRUIR a etiqueta quando o estado
+ * muda. Reescrever so o texto apagava o <svg> junto — textContent substitui
+ * todos os filhos — e o rotulo escrito a mao la virava segunda fonte da
+ * verdade, que nao sabe de nenhum estado alem dos dois digitados.
+ */
+export function etiquetaDoEstado(estado) {
   const texto = ROTULO[estado]
   if (!texto) return null
   return etiquetaDe(texto, estado)

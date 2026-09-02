@@ -166,7 +166,20 @@ export class Livro {
   expirar(antesDe: number, agora: number): EventoAuditoria[] {
     const eventos: EventoAuditoria[] = []
     for (const chamada of [...this.chamadas.values()]) {
-      if (chamada.estado !== 'chamado' || chamada.desde >= antesDe) continue
+      /*
+        O corte e por `em`, nao por `desde`.
+
+        `desde` e a chave de ORDENACAO da fila, e `aplicar` a preserva entre
+        transicoes do mesmo ciclo (`anterior?.desde ?? agora`). Hoje as duas
+        coincidem para quem esta `chamado`, porque toda chamada nasce vinda de
+        `aguardando`, sem anterior — mas isso e coincidencia, nao regra, e a
+        primeira transicao que traga um `desde` antigo faz a chamada nascer
+        VENCIDA: o proximo `expirarEsquecidas()` a apaga do quadro com o
+        responsavel parado no portao.
+
+        `em` e o instante da ultima acao. E o que "esquecida" quer dizer.
+      */
+      if (chamada.estado !== 'chamado' || chamada.em >= antesDe) continue
 
       this.chamadas.delete(chamada.alunoId)
       const evento: EventoAuditoria = {

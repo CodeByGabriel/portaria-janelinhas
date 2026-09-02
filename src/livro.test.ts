@@ -392,3 +392,70 @@ test('a recusa da troca de cadastro DIZ quem esta em saida', () => {
     'a mensagem precisa nomear a crianca para a secretaria conseguir agir',
   )
 })
+
+test('REGRESSAO: a expiracao corta por `em`, nao por `desde`', () => {
+  /*
+    `desde` e a chave de ORDENACAO da fila, e `aplicar` a preserva entre as
+    transicoes do mesmo ciclo (`anterior?.desde ?? agora`). Hoje as duas
+    coincidem para quem esta `chamado`, porque toda chamada nasce vinda de
+    `aguardando`, sem anterior — mas isso e coincidencia, nao regra.
+
+    Com o corte por `desde`, a primeira transicao que traga um `desde` antigo
+    faz a chamada nascer VENCIDA, e o proximo passe de expiracao a apaga do
+    quadro com o responsavel parado no portao. `em` e o instante da ultima
+    acao, que e o que "esquecida" quer dizer.
+
+    O teste entra pelo caminho de producao: o Livro hidratado de um
+    instantaneo, como o Durable Object faz a cada acordar.
+  */
+  const semente = new Livro().alunos()
+  const alvo = semente[0]
+  const ontem = 1_000_000
+  const agora = ontem + 13 * UMA_HORA
+
+  const recemMexida = new Livro({
+    alunos: semente,
+    chamadas: [
+      {
+        alunoId: alvo.id,
+        nome: alvo.nome,
+        turma: alvo.turma,
+        estado: 'chamado',
+        desde: ontem,
+        em: agora - 60_000,
+      },
+    ],
+    trilha: [],
+    versaoCadastro: 1,
+  })
+
+  assert.equal(
+    recemMexida.expirar(agora - 12 * UMA_HORA, agora).length,
+    0,
+    'chamada mexida ha um minuto nao esta esquecida, por mais velho que seja o desde',
+  )
+  assert.equal(recemMexida.retratoPara('portaria').chamadas.length, 1)
+
+  const esquecida = new Livro({
+    alunos: semente,
+    chamadas: [
+      {
+        alunoId: alvo.id,
+        nome: alvo.nome,
+        turma: alvo.turma,
+        estado: 'chamado',
+        desde: agora - 60_000,
+        em: ontem,
+      },
+    ],
+    trilha: [],
+    versaoCadastro: 1,
+  })
+
+  assert.equal(
+    esquecida.expirar(agora - 12 * UMA_HORA, agora).length,
+    1,
+    'chamada sem nenhuma acao ha 13 horas esta esquecida, por mais novo que seja o desde',
+  )
+  assert.equal(esquecida.retratoPara('portaria').chamadas.length, 0)
+})

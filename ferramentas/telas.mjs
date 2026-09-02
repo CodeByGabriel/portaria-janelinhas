@@ -236,6 +236,73 @@ async function principal() {
     `${ativasMarcadas} de ${ativasAntes} sobreviveram`,
   )
 
+  console.log('\n== a etiqueta nao perde o icone quando o estado muda ==')
+
+  /*
+    A portaria trocava so o TEXTO da etiqueta, e textContent substitui todos os
+    filhos — inclusive o <svg> que o cartao.js monta. Resultado: na tela onde o
+    estado mais muda, a etiqueta perdia o icone assim que mudava, e os quatro
+    canais viravam dois, cor e texto. Exatamente o que a 0.5 existe para
+    impedir, quebrado no lugar mais movimentado.
+
+    Este teste olha a linha ANTES e DEPOIS de uma mudanca de estado.
+  */
+  /*
+    O nome entra como ARGUMENTO da funcao, nao como `const` antes dela.
+
+    `const` no escopo global do Runtime.evaluate vale para a sessao
+    inteira, e este helper e chamado duas vezes: a segunda morria com
+    "Identifier 'ALVO' has already been declared". E a ordem importa —
+    a funcao primeiro, o argumento depois; ao contrario, o JavaScript
+    tenta chamar a string como funcao.
+  */
+  const lerEtiqueta = () =>
+    cdp.avaliar(
+`
+      ((ALVO) => {
+        // Pelo NOME, nao pelo primeiro da lista: o quadro pode ter outras
+        // criancas das secoes anteriores, e ai o teste mediria a linha errada.
+        const li = [...document.querySelectorAll('#ativas .linha')].find(
+          (n) => n.querySelector('.nome')?.textContent?.startsWith(ALVO),
+        )
+        if (!li) return { existe: false }
+        const et = li.querySelector('.etiqueta')
+        return {
+          existe: true,
+          estado: li.dataset.estado,
+          texto: (et?.textContent || '').trim(),
+          temIcone: !!et?.querySelector('svg'),
+        }
+      })
+    ` + '(' + JSON.stringify(forasteiro.nome) + ')')
+
+  outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
+  await esperar(900)
+  const chamado = await lerEtiqueta()
+  conferir('a linha recem-chamada tem icone', chamado.temIcone === true,
+    JSON.stringify(chamado))
+
+  // Outra pessoa, na sala daquela crianca, libera. A etiqueta muda de estado
+  // na tela da PORTARIA, que e onde o defeito vivia.
+  const salaDoAluno = await ligarWs(
+    'papel=sala&turma=' + encodeURIComponent(forasteiro.turma),
+  )
+  await esperar(400)
+  salaDoAluno.send(JSON.stringify({ tipo: 'liberar', alunoId: forasteiro.id }))
+  await esperar(1200)
+
+  const liberado = await lerEtiqueta()
+  conferir('a etiqueta acompanhou a mudanca de estado',
+    liberado.estado === 'liberado' && liberado.texto.length > 0, JSON.stringify(liberado))
+  conferir('REGRESSAO: e continua com icone depois de mudar',
+    liberado.temIcone === true, JSON.stringify(liberado))
+  conferir('o rotulo vem do componente, nao de texto escrito na tela',
+    liberado.texto === 'liberado', JSON.stringify(liberado))
+
+  salaDoAluno.close()
+  outra.send(JSON.stringify({ tipo: 'entregar', alunoId: forasteiro.id }))
+  await esperar(600)
+
   console.log('\n== busca vazia deixa de ser indistinguivel de carregando ==')
   await cdp.avaliar(`
     (() => {
@@ -379,12 +446,22 @@ async function principal() {
     (() => ({
       cartoes: document.querySelectorAll('.cartao').length,
       aviso: document.getElementById('avisoSom').hidden === false,
+      rodando: window.__contextos[0].state === 'running',
     }))()
   `)
   conferir('a crianca aparece mesmo com o som parado',
     comChamada.cartoes >= 1, JSON.stringify(comChamada))
-  conferir('e o aviso continua de pe', comChamada.aviso === true,
-    JSON.stringify(comChamada))
+
+  /*
+    O invariante e este, e nao "o aviso continua de pe".
+
+    `acordar()` tenta o resume a cada toque, e as vezes ele volta — e ai o aviso
+    sumir e acerto, nao falha. A primeira versao desta verificacao exigia o
+    aviso de pe e reprovava o comportamento certo. O que NAO pode existir e o
+    terceiro caso: som que nao saiu e tela que nao diz nada.
+  */
+  conferir('nao existe silencio sem aviso',
+    comChamada.rodando || comChamada.aviso === true, JSON.stringify(comChamada))
 
   // A professora toca no aviso. O som volta e o aviso some sozinho.
   await cdp.chamar('Runtime.evaluate', {

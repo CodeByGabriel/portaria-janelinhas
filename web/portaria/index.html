@@ -101,7 +101,7 @@
 
   <script type="module">
     import { buscar } from '../comum/busca.js'
-    import { criarLinha, etiquetaDe } from '../comum/cartao.js'
+    import { criarLinha, etiquetaDe, etiquetaDoEstado } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
 
     const rede = document.getElementById('rede')
@@ -293,11 +293,21 @@
         }
         if (li.dataset.estado !== c.estado) {
           li.dataset.estado = c.estado
-          const etiqueta = li.querySelector('.etiqueta')
-          if (etiqueta) {
-            etiqueta.dataset.estado = c.estado
-            etiqueta.textContent = c.estado === 'chamado' ? 'responsável chegou' : 'liberado'
-          }
+          /*
+            RECONSTRÓI a etiqueta, não reescreve o texto dela.
+
+            A versão anterior fazia `etiqueta.textContent = ...`, e textContent
+            substitui TODOS os filhos — inclusive o <svg> do ícone que o
+            `cartao.js` monta. O resultado é que na tela onde o estado mais muda,
+            a etiqueta perdia o ícone assim que mudava, e os quatro canais
+            viravam dois: cor e texto. Justamente o que a 0.5 existe para impedir.
+
+            E o rótulo vinha escrito aqui à mão, uma segunda fonte da verdade que
+            não sabe de estado nenhum além dos dois que alguém lembrou de digitar.
+            Agora vem do componente, como no cartão da sala.
+          */
+          const antiga = li.querySelector('.etiqueta')
+          if (antiga) antiga.replaceWith(etiquetaDoEstado(c.estado))
         }
         const acaoDesejada =
           c.estado === 'chamado' ? 'cancelar' : c.estado === 'liberado' ? 'entregar' : ''
