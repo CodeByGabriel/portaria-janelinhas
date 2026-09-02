@@ -1013,6 +1013,108 @@ async function principal() {
   outra.close()
   await esperar(600)
 
+  console.log('\n== homonimo: a turma deixa de ser detalhe ==')
+
+  /*
+    Chamar a Maria Eduarda errada avisa a SALA errada, e a crianca certa
+    continua esperando no portao sem ninguem saber. Quando o nome se repete no
+    cadastro, a turma vira a UNICA coisa que separa as duas — e ate aqui ela
+    estava em cinza pequeno, do mesmo tamanho de todo o resto.
+
+    O par de homonimas mora na SEMENTE. A primeira versao desta verificacao
+    importava uma planilha com nomes repetidos e devolvia o cadastro depois —
+    e nao dava: importar deriva os ids de nome+turma (`i<hash>`), enquanto a
+    semente usa `a01..a44`, entao a devolucao trocava os ids e quebrava o
+    fim-a-fim, que os usa por escrito. Semente sem o caso dificil e semente que
+    so prova o caminho facil.
+  */
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+
+  const buscarPor = async (texto) => {
+    await cdp.chamar('Runtime.evaluate', {
+      expression:
+        '(() => { const c = document.getElementById(' +
+        JSON.stringify('consulta') +
+        '); c.value = ' +
+        JSON.stringify(texto) +
+        '; c.dispatchEvent(new Event(' +
+        JSON.stringify('input') +
+        ')) })()',
+    })
+    await esperar(450)
+  }
+
+  await buscarPor('maria eduarda')
+  const comHomonimo = await cdp.avaliar(`
+    (() => {
+      const linhas = [...document.querySelectorAll('#resultados .linha')]
+      return {
+        quantas: linhas.length,
+        marcadas: linhas.filter((li) => li.dataset.homonimo === 'true').length,
+        aviso: linhas[0]?.querySelector('.homonimo')?.textContent ?? '',
+        turmas: linhas.map((li) => li.querySelector('.turma-da-linha')?.textContent),
+      }
+    })()
+  `)
+  conferir('as duas homonimas aparecem', comHomonimo.quantas === 2,
+    JSON.stringify(comHomonimo))
+  conferir('as duas vem marcadas', comHomonimo.marcadas === 2,
+    JSON.stringify(comHomonimo))
+  conferir('com aviso em TEXTO, nao so em cor',
+    comHomonimo.aviso.length > 0, JSON.stringify(comHomonimo.aviso))
+  conferir('e as turmas aparecem e sao diferentes, que e o que as separa',
+    comHomonimo.turmas.filter(Boolean).length === 2 &&
+      comHomonimo.turmas[0] !== comHomonimo.turmas[1],
+    JSON.stringify(comHomonimo.turmas))
+
+  await buscarPor('alice')
+  const unico = await cdp.avaliar(`
+    (() => {
+      const li = document.querySelector('#resultados .linha')
+      return { marcada: li?.dataset.homonimo, temAviso: !!li?.querySelector('.homonimo') }
+    })()
+  `)
+  conferir('nome unico NAO e marcado',
+    unico.marcada === 'false' && unico.temAviso === false, JSON.stringify(unico))
+
+  /*
+    A ordem: quem casa no PRIMEIRO nome vem antes de quem casa no sobrenome.
+    Sem ordem, os resultados saiam na ordem da planilha e a crianca obvia podia
+    cair fora das oito primeiras por acaso de posicao no arquivo.
+  */
+  await buscarPor('maria')
+  const ordem = await cdp.avaliar(`
+    (() => [...document.querySelectorAll('#resultados .linha')].map(
+      (li) => li.querySelector('.nome')?.firstChild?.textContent?.trim(),
+    ))()
+  `)
+  conferir('busca por primeiro nome poe quem comeca com ele na frente',
+    ordem.length > 0 && ordem[0].startsWith('Maria'), JSON.stringify(ordem))
+
+  /*
+    Busca por sobrenome acha as duas homonimas E a Beatriz Nogueira, que so
+    divide o sobrenome. So as duas primeiras sao marcadas: a marca e sobre o
+    nome INTEIRO se repetir, nao sobre parte dele. Marcar a Beatriz seria um
+    alarme falso, e alarme falso e como se ensina alguem a ignorar alarme.
+  */
+  await buscarPor('nogueira')
+  const porSobrenome = await cdp.avaliar(`
+    (() => {
+      const linhas = [...document.querySelectorAll('#resultados .linha')]
+      return {
+        quantas: linhas.length,
+        marcadas: linhas.filter((li) => li.dataset.homonimo === 'true').length,
+      }
+    })()
+  `)
+  conferir('a busca por sobrenome acha as tres Nogueira',
+    porSobrenome.quantas === 3, JSON.stringify(porSobrenome))
+  conferir('mas so as duas de nome INTEIRO repetido sao marcadas',
+    porSobrenome.marcadas === 2, JSON.stringify(porSobrenome))
+
+  await buscarPor('')
+
   wsCdp.close()
   chrome.kill()
   await esperar(900)

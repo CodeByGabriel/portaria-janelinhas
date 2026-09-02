@@ -113,3 +113,81 @@ test('quando nao corta, total e igual ao numero de achados', () => {
 test('o limite e respeitado', () => {
   assert.equal(buscar(ALUNOS, 'a', 2).achados.length, 2)
 })
+
+/*
+  Ordenacao e homonimos: o que faltava na busca.
+*/
+
+import type { Turma } from './semente.ts'
+
+const TURMA: Turma = 'Pré 1'
+const aluno = (id: string, nome: string, turma: Turma = TURMA) => ({ id, nome, turma })
+
+test('quem casa no PRIMEIRO nome vem antes de quem casa no sobrenome', () => {
+  /*
+    A busca nao ordenava nada: os resultados saiam na ordem do cadastro, que e
+    a ordem da planilha. Com o corte em 8, a crianca obvia podia ficar de fora
+    por acaso de posicao — e a porteira concluiria que ela nao esta matriculada,
+    ou tocaria numa homonima.
+
+    Quem opera digita o que ouve, e o que se ouve no portao e o primeiro nome.
+  */
+  const cadastro = [
+    aluno('a', 'Beatriz Silva'),
+    aluno('b', 'Silvana Rocha'),
+    aluno('c', 'Ana Silva'),
+  ]
+  const { achados } = buscar(cadastro, 'silva')
+  // Silvana primeiro porque o termo casa no primeiro nome dela. As outras duas
+  // empatam em proximidade e desempatam pelo nome, que e a regra estavel.
+  assert.deepEqual(achados.map((x) => x.nome), ['Silvana Rocha', 'Ana Silva', 'Beatriz Silva'])
+})
+
+test('empate desempata pelo nome, para a lista nao dancar', () => {
+  // Ordem estavel importa: a lista e reconstruida a cada tecla, e resultado que
+  // troca de lugar sozinho e botao que foge do dedo.
+  const cadastro = [aluno('a', 'Ana Zuleide'), aluno('b', 'Ana Beatriz')]
+  assert.deepEqual(
+    buscar(cadastro, 'ana').achados.map((x) => x.nome),
+    ['Ana Beatriz', 'Ana Zuleide'],
+  )
+})
+
+test('REGRESSAO: iniciais e sobrenome continuam achando', () => {
+  const cadastro = [aluno('a', 'Maria Eduarda Nogueira')]
+  for (const consulta of ['m e n', 'nogueira', 'maria nog', 'eduarda', 'MARIA']) {
+    assert.equal(buscar(cadastro, consulta).achados.length, 1, `"${consulta}" nao achou`)
+  }
+})
+
+test('homonimos vem marcados, mesmo o que ficou fora do corte', () => {
+  /*
+    Numa escola de 292, "Maria Eduarda" repete. Chamar a homonima errada avisa a
+    SALA errada, e a crianca certa continua esperando.
+
+    A marca olha o cadastro INTEIRO, nao so os resultados mostrados: se ha duas
+    Marias e o corte deixou uma de fora, a que aparece continua precisando de
+    aviso — e e justamente esse o caso em que ninguem desconfia.
+  */
+  const cadastro = [
+    aluno('a', 'Maria Eduarda', 'Pré 1'),
+    aluno('b', 'Maria Eduarda', '9º ano'),
+    aluno('c', 'Joana Prado'),
+  ]
+  const r = buscar(cadastro, 'maria', 1)
+  assert.equal(r.achados.length, 1)
+  assert.equal(r.total, 2)
+  assert.ok(r.homonimos.includes(r.achados[0].id), 'a que aparece nao foi marcada')
+})
+
+test('acento e caixa nao criam homonimo falso nem escondem um verdadeiro', () => {
+  const cadastro = [aluno('a', 'Thaís Lima'), aluno('b', 'THAIS LIMA'), aluno('c', 'Thales Lima')]
+  const r = buscar(cadastro, 'lima')
+  assert.equal(r.homonimos.length, 2)
+  assert.ok(!r.homonimos.includes('c'))
+})
+
+test('nome unico nao e marcado como homonimo', () => {
+  const cadastro = [aluno('a', 'Joana Prado'), aluno('b', 'Bruno Assuncao')]
+  assert.deepEqual(buscar(cadastro, 'a').homonimos, [])
+})

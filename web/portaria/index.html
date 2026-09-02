@@ -14,6 +14,19 @@
       font-size: 0.85rem; padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
     }
     .corte { font-size: 0.82rem; color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
+    /*
+      A turma de um homônimo deixa de ser detalhe: é a única coisa que separa
+      duas crianças com o mesmo nome, e chamar a errada avisa a sala errada.
+    */
+    .linha[data-homonimo='true'] .turma-da-linha {
+      color: var(--estado-retorno);
+      font-weight: 600;
+    }
+    .homonimo {
+      color: var(--estado-retorno);
+      font-weight: 600;
+    }
+    .homonimo::before { content: " · "; }
     .contagem-secao {
       float: right; text-transform: none; letter-spacing: 0;
       font-weight: 500; color: var(--tinta-media);
@@ -327,8 +340,9 @@
 
     campo.oninput = () => {
       const ul = document.getElementById('resultados')
-      const { achados, total } = buscar(alunos, campo.value)
+      const { achados, total, homonimos } = buscar(alunos, campo.value)
       const presentes = new Set(achados.map((a) => a.id))
+      const repetidos = new Set(homonimos)
 
       podar(ul, linhasResultado, presentes)
 
@@ -337,6 +351,33 @@
           const li = criarLinha({ nome: aluno.nome, turma: aluno.turma })
           linhasResultado.set(aluno.id, li)
           ul.append(li)
+        }
+        /*
+          Homônimo é o erro caro desta tela.
+
+          Chamar a Maria Eduarda errada avisa a SALA errada, e a criança certa
+          continua esperando no portão sem ninguém saber. Quando o nome se
+          repete no cadastro, a turma deixa de ser detalhe e passa a ser a única
+          coisa que distingue as duas — então ela sobe de peso e ganha um aviso
+          ao lado, em vez de ficar em cinza pequeno como todo o resto.
+
+          A marca vem do cadastro INTEIRO, não dos resultados: se o corte em 8
+          deixou a outra Maria de fora, o aviso continua valendo — e é justo
+          esse o caso em que ninguém desconfia.
+        */
+        const li = linhasResultado.get(aluno.id)
+        const repetido = repetidos.has(aluno.id)
+        if (li.dataset.homonimo !== String(repetido)) {
+          li.dataset.homonimo = String(repetido)
+          let marca = li.querySelector('.homonimo')
+          if (repetido && !marca) {
+            marca = document.createElement('span')
+            marca.className = 'homonimo'
+            marca.textContent = 'nome repetido — confira a turma'
+            li.querySelector('.detalhe')?.append(marca)
+          } else if (!repetido && marca) {
+            marca.remove()
+          }
         }
       }
       ordenar(ul, achados.map((a) => a.id), linhasResultado)

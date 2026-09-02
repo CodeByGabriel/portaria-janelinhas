@@ -45,6 +45,15 @@ export interface Aluno {
   Quatro criancas por turma. Nomes brasileiros com acentuacao, apostrofo e
   hifen de verdade, para que a busca seja exercitada com o que a escola tem —
   e nao com nomes de laboratorio.
+
+  E um par de HOMONIMAS, de proposito: "Maria Eduarda Nogueira" no 1º ano e no
+  6º ano. Numa escola de 292 criancas isso acontece, e ate aqui a semente nao
+  tinha nenhum caso — entao a marca de homonimo nao podia ser exercitada nem
+  pelo teste, nem pelos prints, nem pela demonstracao na frente da escola.
+
+  Semente sem o caso dificil e semente que so prova o caminho facil. Chamar a
+  Maria Eduarda errada avisa a SALA errada, e a crianca certa continua
+  esperando no portao sem ninguem saber.
 */
 const NOMES: readonly string[] = [
   // Pré 1
@@ -58,7 +67,7 @@ const NOMES: readonly string[] = [
   'Cecília Barroso',
   'Ravi Bacelar',
   // 1º ano
-  'Thaís Gonçalves',
+  'Maria Eduarda Nogueira',
   'João Conceição',
   'Lara Mendonça',
   'Benício Andrade',
@@ -83,7 +92,7 @@ const NOMES: readonly string[] = [
   'Antonella Xavier',
   'Noah Teixeira',
   // 6º ano
-  'Valentina Queiroz',
+  'Maria Eduarda Nogueira',
   'Heitor Camargo',
   "Maria Sant'Ana",
   'Bruno Assunção',

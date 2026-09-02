@@ -61,10 +61,13 @@ const TELAS = [
     espera: 1800,
     roteiro: `
       const campo = document.getElementById('consulta')
-      campo.value = 'sant'
+      // 'nogueira' mostra o caso que a busca passou a tratar: duas homonimas
+      // marcadas e uma terceira que so divide o sobrenome, sem marca. O print
+      // existe para mostrar o produto, e este e o caso que ele ganhou.
+      campo.value = 'nogueira'
       campo.dispatchEvent(new Event('input'))
     `,
-    pronto: `document.querySelectorAll('#resultados .linha').length >= 2`,
+    pronto: `document.querySelectorAll('#resultados .linha').length >= 3`,
   },
   {
     arquivo: 'portaria-importar.png',
