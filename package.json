@@ -15,7 +15,9 @@
     "demo:offline": "node ferramentas/construir-demo.mjs",
     "fim-a-fim": "node ferramentas/fim-a-fim.mjs",
     "test:puro": "node --experimental-strip-types --test \"src/*.test.ts\"",
-    "test:worker": "vitest run"
+    "test:worker": "vitest run",
+    "telas": "node ferramentas/telas.mjs",
+    "baseline": "node ferramentas/baseline.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.1.3",

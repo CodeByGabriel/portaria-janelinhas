@@ -68,6 +68,8 @@
     <input id="consulta" placeholder="Nome do aluno" autocomplete="off" autocapitalize="off">
     <div id="aviso"></div>
     <ul id="resultados"></ul>
+    <p class="corte" id="corteBusca" hidden></p>
+    <p class="vazio" id="semResultado" hidden>Nenhum aluno com esse nome.</p>
 
     <p class="secao">Em saída</p>
     <ul id="ativas"></ul>
@@ -114,7 +116,12 @@
       aoRetrato: (retrato) => {
         ativas = retrato.chamadas
         desenharAtivas()
-        if (campo.value) campo.oninput()
+        // NAO chamar campo.oninput() aqui. Reconstruir os resultados da busca
+        // por causa de um retrato da rede destroi o botao que a porteira esta
+        // prestes a tocar — a acao de outra pessoa, em outra sala, trocava o
+        // no sob o dedo dela. Em vez disso, so o estado das linhas ja
+        // desenhadas e atualizado.
+        atualizarResultados()
 
         /*
           Se outra pessoa importou uma planilha, a lista que este aparelho tem
@@ -134,7 +141,7 @@
       try {
         alunos = await fetch('/alunos?papel=portaria').then((r) => r.json())
         campo.value = ''
-        document.getElementById('resultados').innerHTML = ''
+        campo.oninput()
         if (mensagem) mostrarAviso(mensagem)
       } catch {
         mostrarAviso('A lista mudou e eu não consegui recarregar. Atualize a página.')
@@ -163,53 +170,147 @@
       return b
     }
 
+    /*
+      Reconciliacao por chave, nos dois lados.
+
+      A versao anterior fazia `ul.innerHTML = ''` a cada retrato: todo <li>,
+      todo retrato SVG e todo botao eram destruidos e recriados. Como o
+      servidor transmite o retrato inteiro a cada mudanca de QUALQUER aluno, a
+      acao de outra pessoa em outra sala reconstruia a lista debaixo do dedo
+      da porteira. O toque em curso se perdia — inofensivo — e o seguinte
+      podia cair no "Entregar" de outra crianca, que e o dano real.
+
+      A tela da sala ja fazia isto certo desde sempre; a portaria e que ficou
+      de fora. Aqui a lista mantem um Map por alunoId: remove so quem saiu,
+      muta quem ficou, e insere os novos na posicao certa. O elemento sob o
+      dedo sobrevive.
+    */
+    const linhasResultado = new Map()
+    const linhasAtivas = new Map()
+
+    /** Deixa o <ul> na ordem pedida sem recriar nada que ja esteja certo. */
+    function ordenar(ul, chavesEmOrdem, mapa) {
+      let anterior = null
+      for (const chave of chavesEmOrdem) {
+        const no = mapa.get(chave)
+        const esperado = anterior === null ? ul.firstChild : anterior.nextSibling
+        if (no !== esperado) ul.insertBefore(no, esperado)
+        anterior = no
+      }
+    }
+
+    function podar(ul, mapa, presentes) {
+      for (const [chave, no] of mapa) {
+        if (!presentes.has(chave)) {
+          no.remove()
+          mapa.delete(chave)
+        }
+      }
+    }
+
+    /** Troca so a acao da linha, preservando foto e nome ja renderizados. */
+    function definirAcao(li, acao) {
+      const atual = li.querySelector('.acao')
+      if (atual) atual.remove()
+      if (acao) {
+        acao.classList.add('acao')
+        li.append(acao)
+      }
+    }
+
     campo.oninput = () => {
       const ul = document.getElementById('resultados')
-      ul.innerHTML = ''
-      const emSaida = new Set(ativas.map((c) => c.alunoId))
       const { achados, total } = buscar(alunos, campo.value)
+      const presentes = new Set(achados.map((a) => a.id))
+
+      podar(ul, linhasResultado, presentes)
 
       for (const aluno of achados) {
-        const li = criarLinha({ nome: aluno.nome, turma: aluno.turma })
-        if (emSaida.has(aluno.id)) {
-          li.append(etiquetaDe('já em saída'))
-        } else {
-          li.append(botao('Chamar', true, () => {
-            conexao.enviar({ tipo: 'chamar', alunoId: aluno.id })
-            campo.value = ''
-            ul.innerHTML = ''
-          }))
+        if (!linhasResultado.has(aluno.id)) {
+          const li = criarLinha({ nome: aluno.nome, turma: aluno.turma })
+          linhasResultado.set(aluno.id, li)
+          ul.append(li)
         }
-        ul.append(li)
       }
+      ordenar(ul, achados.map((a) => a.id), linhasResultado)
+      atualizarResultados()
 
+      const corte = document.getElementById('corteBusca')
       if (total > achados.length) {
-        const corte = document.createElement('li')
-        corte.className = 'corte'
         corte.textContent =
           `Mostrando ${achados.length} de ${total}. Digite o sobrenome para afinar.`
-        ul.append(corte)
+        corte.hidden = false
+      } else {
+        corte.hidden = true
+      }
+
+      // Busca sem resultado dizia NADA: lista em branco, indistinguivel de
+      // "ainda carregando". Agora ela fala.
+      const vazio = document.getElementById('semResultado')
+      vazio.hidden = !(campo.value.trim() !== '' && achados.length === 0)
+    }
+
+    /** So a acao de cada resultado muda quando o retrato chega. */
+    function atualizarResultados() {
+      const emSaida = new Set(ativas.map((c) => c.alunoId))
+      for (const [id, li] of linhasResultado) {
+        const jaSaindo = emSaida.has(id)
+        if (li.dataset.saindo === String(jaSaindo)) continue
+        li.dataset.saindo = String(jaSaindo)
+        definirAcao(
+          li,
+          jaSaindo
+            ? etiquetaDe('já em saída')
+            : botao('Chamar', true, () => {
+                conexao.enviar({ tipo: 'chamar', alunoId: id })
+                campo.value = ''
+                campo.oninput()
+              }),
+        )
       }
     }
 
     function desenharAtivas() {
       const ul = document.getElementById('ativas')
-      ul.innerHTML = ''
       const ordenadas = [...ativas].sort((a, b) => a.desde - b.desde)
+      const presentes = new Set(ordenadas.map((c) => c.alunoId))
       document.getElementById('nenhuma').hidden = ordenadas.length > 0
 
+      podar(ul, linhasAtivas, presentes)
+
       for (const c of ordenadas) {
-        const li = criarLinha({ nome: c.nome, turma: c.turma, estado: c.estado })
-        if (c.estado === 'chamado') {
-          li.append(botao('Cancelar', false, () =>
-            conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId })))
+        let li = linhasAtivas.get(c.alunoId)
+        if (!li) {
+          li = criarLinha({ nome: c.nome, turma: c.turma, estado: c.estado })
+          li.dataset.estado = c.estado
+          linhasAtivas.set(c.alunoId, li)
+          ul.append(li)
         }
-        if (c.estado === 'liberado') {
-          li.append(botao('Entregar', true, () =>
-            conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId })))
+        if (li.dataset.estado !== c.estado) {
+          li.dataset.estado = c.estado
+          const etiqueta = li.querySelector('.etiqueta')
+          if (etiqueta) {
+            etiqueta.dataset.estado = c.estado
+            etiqueta.textContent = c.estado === 'chamado' ? 'responsável chegou' : 'liberado'
+          }
         }
-        ul.append(li)
+        const acaoDesejada =
+          c.estado === 'chamado' ? 'cancelar' : c.estado === 'liberado' ? 'entregar' : ''
+        if (li.dataset.acao !== acaoDesejada) {
+          li.dataset.acao = acaoDesejada
+          definirAcao(
+            li,
+            acaoDesejada === 'cancelar'
+              ? botao('Cancelar', false, () =>
+                  conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId }))
+              : acaoDesejada === 'entregar'
+                ? botao('Entregar', true, () =>
+                    conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId }))
+                : null,
+          )
+        }
       }
+      ordenar(ul, ordenadas.map((c) => c.alunoId), linhasAtivas)
     }
 
     function placar(rotulo, valor, ruim) {
