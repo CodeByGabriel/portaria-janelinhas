@@ -365,6 +365,11 @@ body {
   color: var(--tinta-fraca);
 }
 
+/* O ponto so aparece quando ha os dois lados; sem ele a linha comecaria com
+   um separador solto enquanto o cronometro ainda nao foi escrito. */
+.linha .espera:not(:empty)::before { content: " · "; }
+.linha .espera { font-variant-numeric: tabular-nums; }
+
 
 /* ---------- faixa lateral de estado ---------- */
 

@@ -98,6 +98,63 @@ function abrirWs(query) {
   e fechando conexoes torna isso mais provavel. Uma falha de ligacao aqui
   quase nunca e defeito do app; e o ambiente.
 */
+/*
+  Como a portaria fecha cada estado.
+
+  Estas verificacoes contam criancas ("2 criancas na fila"), e o quadro
+  PERSISTE desde a 0.2. Sem esvaziar antes, cada secao herda o que a anterior —
+  ou uma rodada de prints — deixou, e a contagem mede o historico em vez do que
+  a propria secao acabou de montar.
+
+  Fecha pelo caminho legitimo, nunca apagando: a trilha registra a limpeza como
+  registraria qualquer acao da portaria.
+*/
+const FECHA_ESTADO = {
+  chamado: 'cancelar',
+  liberado: 'entregar',
+  retorno: 'encerrar',
+}
+
+async function esvaziarQuadro() {
+  /*
+    Cada volta abre uma conexao NOVA de proposito.
+
+    O servidor manda o retrato no instante do accept, entao uma conexao nova e a
+    unica forma de perguntar "como esta o quadro agora?" sem depender de alguem
+    mudar alguma coisa. Esperar um retrato numa conexao ja aberta trava quando
+    nada acontece — que e exatamente o caso quando o quadro ja esta vazio.
+  */
+  for (let volta = 0; volta < 10; volta++) {
+    const ws = await ligarWs('papel=portaria')
+    const retrato = await new Promise((resolve) => {
+      const ouvir = (e) => {
+        const m = JSON.parse(e.data)
+        if (m.tipo === 'retrato') {
+          ws.removeEventListener('message', ouvir)
+          resolve(m)
+        }
+      }
+      ws.addEventListener('message', ouvir)
+      setTimeout(() => resolve(null), 3000)
+    })
+
+    const chamadas = retrato?.chamadas ?? []
+    if (chamadas.length === 0) {
+      ws.close()
+      await esperar(200)
+      return true
+    }
+    for (const c of chamadas) {
+      const tipo = FECHA_ESTADO[c.estado]
+      if (tipo) ws.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
+      await esperar(180)
+    }
+    ws.close()
+    await esperar(300)
+  }
+  return false
+}
+
 async function ligarWs(query, tentativas = 4) {
   for (let i = 1; i <= tentativas; i++) {
     try {
@@ -249,6 +306,122 @@ async function principal() {
     ativasMarcadas === ativasAntes,
     `${ativasMarcadas} de ${ativasAntes} sobreviveram`,
   )
+
+  console.log('\n== a fila em saida: grupo, cronometro e contagem ==')
+
+  /*
+    A tela que gerencia a fila era a unica que nao mostrava o tamanho dela, e o
+    `desde` existia desde sempre sem nunca ter sido desenhado.
+  */
+  // Ponto de partida conhecido: contagem absoluta exige quadro vazio.
+  conferir('o quadro comeca vazio para contar', await esvaziarQuadro())
+  await esperar(600)
+
+  const salaDoForasteiro = await ligarWs(
+    'papel=sala&turma=' + encodeURIComponent(forasteiro.turma),
+  )
+  await esperar(400)
+  outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
+  await esperar(900)
+
+  const comUm = await cdp.avaliar(`
+    (() => {
+      const c = document.getElementById('contagemSaida')
+      const grupos = [...document.querySelectorAll('#ativas .grupo')].map((g) => ({
+        estado: g.dataset.grupo,
+        quantos: g.querySelector('.quantos')?.textContent,
+      }))
+      const espera = document.querySelector('#ativas .linha .espera')?.textContent ?? ''
+      return { contagem: c.textContent.trim(), visivel: !c.hidden, grupos, espera }
+    })()
+  `)
+  conferir('a contagem aparece e concorda com a lista',
+    comUm.visivel === true && /1 crian/.test(comUm.contagem), JSON.stringify(comUm))
+  conferir('a linha mostra ha quanto tempo espera',
+    /h[aá] \d+/.test(comUm.espera), JSON.stringify(comUm.espera))
+  conferir('e a fila esta agrupada por estado, com o grupo contado',
+    comUm.grupos.length === 1 && comUm.grupos[0].estado === 'chamado' &&
+      comUm.grupos[0].quantos === '1',
+    JSON.stringify(comUm.grupos))
+
+  // Uma segunda crianca, em outro estado: dois grupos, e a acao da portaria em cima.
+  salaDoForasteiro.send(JSON.stringify({ tipo: 'liberar', alunoId: forasteiro.id }))
+  await esperar(400)
+  outra.send(JSON.stringify({ tipo: 'chamar', alunoId: segundo.id }))
+  await esperar(900)
+
+  const comDois = await cdp.avaliar(`
+    (() => {
+      const filhos = [...document.getElementById('ativas').children]
+      return {
+        ordem: filhos.map((n) =>
+          n.classList.contains('grupo')
+            ? 'GRUPO:' + n.dataset.grupo
+            : n.dataset.estado),
+        contagem: document.getElementById('contagemSaida').textContent.trim(),
+      }
+    })()
+  `)
+  conferir('a contagem acompanha', /2 crian/.test(comDois.contagem), comDois.contagem)
+  conferir('o que a portaria PODE ENTREGAR vem primeiro',
+    comDois.ordem[0] === 'GRUPO:liberado' && comDois.ordem[1] === 'liberado',
+    JSON.stringify(comDois.ordem))
+  conferir('e quem espera a sala vem depois',
+    comDois.ordem.includes('GRUPO:chamado') &&
+      comDois.ordem.indexOf('GRUPO:chamado') > comDois.ordem.indexOf('GRUPO:liberado'),
+    JSON.stringify(comDois.ordem))
+
+  /*
+    O cronometro nao pode trocar no nenhum.
+
+    Redesenhar a lista de dez em dez segundos seria o furo S2 automatizado: o
+    botao sob o dedo da porteira trocado por conta propria, sem nem haver um
+    evento. Aqui o tique so reescreve o texto de um <span>.
+  */
+  await cdp.avaliar(`
+    (() => {
+      window.__antes = [...document.querySelectorAll('#ativas .linha')]
+      window.__textoAntes = window.__antes.map((li) => li.querySelector('.espera').textContent)
+    })()
+  `)
+  await esperar(11000)
+  const depoisDoTique = await cdp.avaliar(`
+    (() => {
+      const agora = [...document.querySelectorAll('#ativas .linha')]
+      return {
+        mesmosNos: agora.length === window.__antes.length &&
+          agora.every((li, i) => li === window.__antes[i]),
+        mudouTexto: agora.some(
+          (li, i) => li.querySelector('.espera').textContent !== window.__textoAntes[i],
+        ),
+      }
+    })()
+  `)
+  conferir('o tique do cronometro NAO troca os nos da lista',
+    depoisDoTique.mesmosNos === true, JSON.stringify(depoisDoTique))
+  conferir('mas o tempo escrito anda', depoisDoTique.mudouTexto === true,
+    JSON.stringify(depoisDoTique))
+
+  // limpa
+  salaDoForasteiro.close()
+  outra.send(JSON.stringify({ tipo: 'entregar', alunoId: forasteiro.id }))
+  await esperar(300)
+  outra.send(JSON.stringify({ tipo: 'cancelar', alunoId: segundo.id }))
+  await esperar(500)
+
+  const vazia = await cdp.avaliar(`
+    (() => ({
+      contagemEscondida: document.getElementById('contagemSaida').hidden,
+      grupos: document.querySelectorAll('#ativas .grupo').length,
+      vazioVisivel: !document.getElementById('nenhuma').hidden,
+    }))()
+  `)
+  conferir('com a fila vazia, a contagem some', vazia.contagemEscondida === true,
+    JSON.stringify(vazia))
+  conferir('e nao sobra cabecalho de grupo vazio', vazia.grupos === 0,
+    JSON.stringify(vazia))
+  conferir('e o aviso de fila vazia aparece', vazia.vazioVisivel === true,
+    JSON.stringify(vazia))
 
   console.log('\n== a etiqueta nao perde o icone quando o estado muda ==')
 

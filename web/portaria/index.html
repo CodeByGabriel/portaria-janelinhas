@@ -14,6 +14,23 @@
       font-size: 0.85rem; padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
     }
     .corte { font-size: 0.82rem; color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
+    .contagem-secao {
+      float: right; text-transform: none; letter-spacing: 0;
+      font-weight: 500; color: var(--tinta-media);
+    }
+    /*
+      Cabeçalho de grupo. É um <li> para viver dentro da mesma <ul> e passar
+      pela mesma reconciliação por chave das linhas — uma lista com duas
+      estruturas paralelas seria a chance de as duas saírem de sincronia.
+    */
+    .grupo {
+      list-style: none;
+      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--tinta-fraca);
+      padding: 0.7rem 0.2rem 0.25rem;
+      display: flex; align-items: baseline; gap: 0.4rem;
+    }
+    .grupo .quantos { color: var(--tinta-media); }
     .duasAcoes { display: flex; gap: 0.4rem; }
     .duasAcoes button { white-space: nowrap; }
     details {
@@ -78,7 +95,15 @@
     <p class="corte" id="corteBusca" hidden></p>
     <p class="vazio" id="semResultado" hidden>Nenhum aluno com esse nome.</p>
 
-    <p class="secao">Em saída</p>
+    <p class="secao">
+      Em saída
+      <!--
+        A tela que gerencia a fila era a única que não mostrava o tamanho dela.
+        A contagem fica no cabeçalho, e não no rodapé, porque é aqui que a
+        porteira olha antes de decidir se dá conta ou chama reforço.
+      -->
+      <span class="contagem-secao" id="contagemSaida" hidden></span>
+    </p>
     <ul id="ativas"></ul>
     <p class="vazio" id="nenhuma">Ninguém em saída agora.</p>
 
@@ -114,6 +139,47 @@
     let ativas = []
     let versaoCadastro = null
 
+    /*
+      O cronômetro conta pelo relógio do SERVIDOR, não pelo do tablet.
+
+      `desde` é carimbado no Worker. O relógio de um tablet de escola erra
+      minutos com facilidade, e um aparelho adiantado mostraria "esperando há
+      -3 min", enquanto um atrasado esconderia uma espera real. Cada retrato
+      traz o `em` do servidor: a diferença entre ele e o relógio local é o
+      deslocamento, e ele é recalculado a cada retrato.
+    */
+    let deslocamentoDoRelogio = 0
+    const agoraNoServidor = () => Date.now() + deslocamentoDoRelogio
+
+    /** "há 4 min", em português curto. Segundos só no primeiro minuto. */
+    function espera(desde) {
+      const s = Math.max(0, Math.round((agoraNoServidor() - desde) / 1000))
+      if (s < 60) return `há ${s}s`
+      const min = Math.floor(s / 60)
+      if (min < 60) return `há ${min} min`
+      const h = Math.floor(min / 60)
+      return `há ${h}h${String(min % 60).padStart(2, '0')}`
+    }
+
+    /*
+      A ordem da fila, e por que ela não é só `desde`.
+
+      A porteira olha esta lista para saber O QUE FAZER AGORA. `liberado` é
+      criança a caminho do portão, para ela entregar; `retorno` espera uma
+      decisão dela; `chamado` está com a sala, e não há nada para ela fazer
+      além de cancelar. Então as ações dela sobem.
+
+      Dentro de cada grupo a ordem é `desde`, que é estável: quem chegou antes
+      fica antes, e a linha não pula de lugar quando outra criança muda de
+      estado do outro lado da escola.
+    */
+    const GRUPOS = [
+      ['liberado', 'Pode entregar'],
+      ['retorno', 'Voltou para a sala'],
+      ['chamado', 'Esperando a sala liberar'],
+    ]
+    const PRIORIDADE = Object.fromEntries(GRUPOS.map(([e], i) => [e, i]))
+
     const conexao = ligar({
       papel: 'portaria',
       aoEstadoDaRede: (estado) => {
@@ -121,6 +187,9 @@
         rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'
       },
       aoRetrato: (retrato) => {
+        if (typeof retrato.em === 'number' && retrato.em > 0) {
+          deslocamentoDoRelogio = retrato.em - Date.now()
+        }
         ativas = retrato.chamadas
         desenharAtivas()
         // NAO chamar campo.oninput() aqui. Reconstruir os resultados da busca
@@ -308,11 +377,40 @@
       }
     }
 
+    /** Cabeçalhos de grupo, por estado. Vivem na mesma <ul> das linhas. */
+    const cabecalhos = new Map()
+
+    function cabecalhoDe(estado, rotulo, quantos) {
+      let li = cabecalhos.get(estado)
+      if (!li) {
+        li = document.createElement('li')
+        li.className = 'grupo'
+        li.dataset.grupo = estado
+        const texto = document.createElement('span')
+        texto.textContent = rotulo
+        const conta = document.createElement('span')
+        conta.className = 'quantos'
+        li.append(texto, conta)
+        li.__conta = conta
+        cabecalhos.set(estado, li)
+      }
+      li.__conta.textContent = String(quantos)
+      return li
+    }
+
     function desenharAtivas() {
       const ul = document.getElementById('ativas')
-      const ordenadas = [...ativas].sort((a, b) => a.desde - b.desde)
+      const ordenadas = [...ativas].sort(
+        (a, b) =>
+          (PRIORIDADE[a.estado] ?? 9) - (PRIORIDADE[b.estado] ?? 9) || a.desde - b.desde,
+      )
       const presentes = new Set(ordenadas.map((c) => c.alunoId))
       document.getElementById('nenhuma').hidden = ordenadas.length > 0
+
+      const contagem = document.getElementById('contagemSaida')
+      contagem.hidden = ordenadas.length === 0
+      contagem.textContent =
+        ordenadas.length === 1 ? '1 criança' : `${ordenadas.length} crianças`
 
       podar(ul, linhasAtivas, presentes)
 
@@ -363,9 +461,54 @@
           li.dataset.acao = acaoDesejada
           definirAcao(li, acaoPara(acaoDesejada, c))
         }
+        li.__desde = c.desde
       }
-      ordenar(ul, ordenadas.map((c) => c.alunoId), linhasAtivas)
+
+      /*
+        A sequência final intercala cabeçalhos e linhas na mesma <ul>, e passa
+        pela mesma reconciliação por chave. Um cabeçalho de grupo vazio não
+        entra — grupo com título e sem ninguém dentro é ruído que a porteira
+        precisa ler para descobrir que não precisava.
+      */
+      const sequencia = []
+      const mapa = new Map(linhasAtivas)
+      for (const [estado, rotulo] of GRUPOS) {
+        const doGrupo = ordenadas.filter((c) => c.estado === estado)
+        if (doGrupo.length === 0) continue
+        const chave = `grupo:${estado}`
+        mapa.set(chave, cabecalhoDe(estado, rotulo, doGrupo.length))
+        sequencia.push(chave, ...doGrupo.map((c) => c.alunoId))
+      }
+      // Estado sem grupo declarado ainda aparece, no fim, em vez de sumir.
+      for (const c of ordenadas) {
+        if (!(c.estado in PRIORIDADE)) sequencia.push(c.alunoId)
+      }
+
+      for (const [estado, li] of cabecalhos) {
+        if (!sequencia.includes(`grupo:${estado}`)) li.remove()
+      }
+
+      ordenar(ul, sequencia, mapa)
+      atualizarEsperas()
     }
+
+    /*
+      Só os cronômetros mudam a cada tique — nunca a estrutura.
+
+      Reconstruir a lista de dez em dez segundos seria trocar o nó sob o dedo da
+      porteira por conta própria, sem nem haver um evento: exatamente o furo S2,
+      agora automatizado. Aqui só o `textContent` de um <span> é reescrito.
+
+      Dez segundos, e não um: a espera na saída se mede em minutos, e um número
+      piscando a cada segundo é um pedido de atenção que nunca vale a pena.
+    */
+    function atualizarEsperas() {
+      for (const li of linhasAtivas.values()) {
+        const alvo = li.querySelector('.espera')
+        if (alvo && typeof li.__desde === 'number') alvo.textContent = espera(li.__desde)
+      }
+    }
+    setInterval(atualizarEsperas, 10_000)
 
     function placar(rotulo, valor, ruim) {
       const d = document.createElement('div')

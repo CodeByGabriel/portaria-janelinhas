@@ -145,9 +145,25 @@ export function criarLinha({ nome, turma, estado }) {
   bloco.className = 'nome'
   bloco.append(document.createTextNode(nome))
 
+  /*
+    A turma e a espera dividem a mesma linha de detalhe, em spans separados.
+
+    Separados porque o tempo muda a cada tique e a turma nao: escrever os dois
+    juntos obrigaria a reescrever o texto inteiro a cada dez segundos, e o
+    proximo `textContent =` seria mais uma chance de apagar algo por engano —
+    foi assim que a etiqueta perdeu o icone.
+  */
   const detalhe = document.createElement('span')
   detalhe.className = 'detalhe'
-  detalhe.textContent = turma
+
+  const turmaEl = document.createElement('span')
+  turmaEl.className = 'turma-da-linha'
+  turmaEl.textContent = turma
+
+  const espera = document.createElement('span')
+  espera.className = 'espera'
+
+  detalhe.append(turmaEl, espera)
   bloco.append(detalhe)
 
   raiz.append(foto(nome, 'foto'), bloco)
