@@ -448,6 +448,64 @@ Campo de observação por aluno, vindo de coluna opcional da planilha, disparand
 
 ---
 
+### Fim da Fase 1 — red team e blue team
+
+Passagem feita em 02/09/2026. Três achados, todos com regressão.
+
+**F1-R1 — a caixa de restrição é a maior janela do app, e ninguém a estava guardando.**
+Ela fica aberta enquanto uma pessoa *lê* — segundos, não milissegundos — e é exatamente
+nesse intervalo que a secretária pode reimportar a planilha. Com a lista trocada, o id que
+o botão guardou deixa de valer, e a restrição recém-lida pode não ser mais a daquela
+criança. É o mesmo furo que a versão de cadastro já fechava na busca, agora com uma
+anotação de guarda no meio. A portaria passou a reconferir a versão depois da caixa, e há
+uma verificação que reproduz o ataque inteiro no navegador.
+
+**F1-R2 — o arquivo único offline tinha deixado de ser offline.** O `tokens.css` passou a
+referenciar `./fontes/*.woff2`, e num arquivo copiado para um pen drive esse caminho não
+resolve. O navegador não reclama: cai para a fonte de sistema em silêncio, e a
+demonstração mostra uma identidade visual que não é a do produto. As fontes agora entram
+embutidas em base64 — o arquivo vai de ~50 KB para 101 KB, e o "zero dependência externa"
+que ele anuncia voltou a ser verdade. O orçamento de 120 KB não se aplica a ele: é sobre a
+primeira carga pela rede da escola, e este arquivo é copiado à mão, uma vez.
+
+**F1-R3 — os portões se envenenavam, e o sintoma sempre aparecia longe da causa.** Três
+vezes nesta fase o mesmo formato apareceu: **dado velho lido como dado atual**, sem que
+houvesse como distinguir "sei" de "não sei".
+
+- `esvaziarQuadro` esperava um retrato e, não vindo nenhum, dava o quadro por vazio — mas
+  quadro vazio não gera evento nenhum. Depois de oitenta verificações o socket
+  compartilhado já tinha caído, e o último retrato que ele viu, de minutos atrás, virou "o
+  estado atual". A função agora exige socket aberto e abre o dela se preciso.
+- O `fim-a-fim` usava `a01`, `a04`, `a41` — o esquema posicional da semente. Qualquer
+  importação recalcula os ids a partir de nome+turma, e a partir daí todo id escrito à mão
+  aponta para ninguém. Bastou uma verificação de tela reimportar a planilha para o arquivo
+  inteiro falhar, sem uma linha de relação com o que ele testa. Os ids agora vêm da lista,
+  por posição.
+- O ataque da F1-R1 reimporta sem a coluna de restrição, apagando o alerta da semente — e
+  a execução *seguinte* falhava inteira. O `telas.mjs` passou a devolver o cadastro com a
+  restrição no fim.
+
+Verificado alternando as duas suítes quatro vezes: `telas` → `fim-a-fim` → `telas` →
+`fim-a-fim`, com 87 e 48 verificações em todas. A ordem entre os portões deixou de
+importar.
+
+### Definição de pronto da Fase 1 — conferida
+
+| Critério | Estado |
+|---|---|
+| "retornou" na trilha sem nenhuma remoção | ✅ 1.1, com estado próprio — ver o desvio acima |
+| Busca acha por iniciais e diz quando não acha | ✅ 1.2, mais ordenação e aviso de homônimo |
+| Fila com timer e contagem | ✅ 1.3, agrupada pela ação que ela pede |
+| "Pátio" aplicado dentro do orçamento de peso | ✅ 1.5, 106,6 KB de 120 KB, com portão |
+| Wake lock ativo | ✅ 1.6, com reaquisição no `visibilitychange` |
+| Alerta de restrição bloqueando as duas ações | ✅ 1.9, chamar e liberar |
+| **1.4, irmãos** | ⏭ adiado para a Fase 2 pelo próprio plano |
+
+Portões ao fim da fase: `npm test` 173 + 43, `typecheck`, `fim-a-fim` (48), `telas` (87) e
+`peso` (106,6/120 KB), todos com código de saída 0.
+
+---
+
 ## 6. Fase 2 — "A quem" e identidade
 
 ### 2.1 Responsáveis autorizados (G)

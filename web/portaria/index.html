@@ -432,6 +432,7 @@
                   deixado de valer — ou que acabou de passar a valer.
                 */
                 const aluno = alunos.find((a) => a.id === id)
+                const versaoAoTocar = versaoCadastro
                 const seguir = await podeSeguir({
                   alunoId: id,
                   nome: aluno?.nome ?? '',
@@ -439,6 +440,23 @@
                   acao: 'chamar para a saída',
                 })
                 if (!seguir) return
+
+                /*
+                  A caixa fica aberta enquanto alguém LÊ — segundos, não
+                  milissegundos. É a maior janela do app, e é justamente nela
+                  que a secretária pode reimportar a planilha.
+
+                  Com a lista trocada, o id que este botão guardou deixa de
+                  valer, e a restrição que a pessoa acabou de ler pode não ser
+                  mais a daquela criança. Chamar assim mesmo é o mesmo furo que
+                  a versão de cadastro já fecha na busca, só que agora com uma
+                  anotação de guarda no meio.
+                */
+                if (versaoCadastro !== versaoAoTocar) {
+                  mostrarAviso('A lista mudou enquanto você lia. Busque de novo.')
+                  recarregarCadastro()
+                  return
+                }
                 conexao.enviar({ tipo: 'chamar', alunoId: id })
                 campo.value = ''
                 campo.oninput()

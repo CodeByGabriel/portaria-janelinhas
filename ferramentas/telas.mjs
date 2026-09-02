@@ -109,6 +109,27 @@ function abrirWs(query) {
   Fecha pelo caminho legitimo, nunca apagando: a trilha registra a limpeza como
   registraria qualquer acao da portaria.
 */
+/*
+  A restricao que a semente instala, repetida aqui.
+
+  Repeticao deliberada, e ela precisa de explicacao: o ataque do red team
+  reimporta a planilha para provocar a troca de versao do cadastro, e importar
+  SUBSTITUI a lista inteira — inclusive a coluna de restricao. Como `/alunos`
+  entrega so o booleano (que e o ponto da 1.9), este arquivo nao consegue ler o
+  texto para devolve-lo.
+
+  Entao ele devolve o que sabe. Sem isso, uma execucao apaga o alerta e a
+  execucao SEGUINTE falha inteira na secao da restricao, sem nenhuma relacao
+  aparente com o ataque que a causou.
+
+  Se `src/semente.ts` mudar o texto, a unica coisa que quebra e a comparacao de
+  substring logo abaixo — visivel, e nao silenciosa.
+*/
+const RESTRICAO_DA_SEMENTE =
+  'Guarda compartilhada. Entregar somente à mãe ou à avó materna, ' +
+  'conforme decisão judicial de 2026 (ficção da semente).'
+const CRIANCA_COM_RESTRICAO = 'Ravi Bacelar'
+
 const FECHA_ESTADO = {
   chamado: 'cancelar',
   liberado: 'entregar',
@@ -117,20 +138,40 @@ const FECHA_ESTADO = {
 
 async function esvaziarQuadro(ws) {
   /*
-    Le o ULTIMO retrato conhecido da conexao, e nao "o proximo que chegar".
+    Exige socket VIVO, e abre um proprio se o de fora tiver caido.
 
-    Quadro vazio nao gera evento nenhum, entao esperar por um e confundir
-    "nada mudou" com "nao ha nada" — foi exatamente esse engano que fez esta
-    funcao declarar sucesso com duas criancas no quadro, e a secao seguinte
-    falhar contando o que a anterior deixou.
+    A versao anterior lia `ws.__retratos.at(-1)` sem conferir nada. Depois de
+    oitenta verificacoes o socket compartilhado ja tinha caido em algum ponto, e
+    o ultimo retrato que ele viu — de minutos atras — passou a ser lido como o
+    estado atual: a funcao declarava o quadro vazio com duas criancas nele, e a
+    secao seguinte falhava inteira. E a terceira vez nesta refatoracao que dado
+    velho e lido como dado atual, e as tres tinham o mesmo formato: nao havia
+    como distinguir "sei que esta vazio" de "nao sei".
 
-    Um socket so, ja aberto: o wrangler ainda cai com desconexao abrupta de
-    WebSocket, e uma conexao nova por volta era mais uma chance de derrubar o
-    servidor no meio da suite.
+    Agora, se a conexao entregue nao estiver aberta, esta funcao abre a dela e
+    fecha ao sair. Um connect por chamada, e nao um por volta: o wrangler ainda
+    cai com desconexao abrupta de WebSocket.
   */
+  let proprio = null
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    proprio = await ligarWs('papel=portaria')
+    ws = proprio
+    await esperar(500)
+  }
+
+  const encerrar = async (resultado) => {
+    if (proprio) {
+      proprio.close()
+      await esperar(300)
+    }
+    return resultado
+  }
+
   for (let volta = 0; volta < 10; volta++) {
+    if (ws.readyState !== WebSocket.OPEN) return encerrar(false)
+
     const chamadas = ws.__retratos.at(-1)?.chamadas ?? []
-    if (chamadas.length === 0) return true
+    if (chamadas.length === 0) return encerrar(true)
 
     for (const c of chamadas) {
       const tipo = FECHA_ESTADO[c.estado]
@@ -139,7 +180,7 @@ async function esvaziarQuadro(ws) {
     }
     await esperar(500)
   }
-  return (ws.__retratos.at(-1)?.chamadas ?? []).length === 0
+  return encerrar((ws.__retratos.at(-1)?.chamadas ?? []).length === 0)
 }
 
 /*
@@ -1255,6 +1296,108 @@ async function principal() {
 
   await esvaziarQuadro(outra)
   await esperar(400)
+
+  console.log('\n== red team da fase 1 ==')
+
+  /*
+    A caixa de restricao fica aberta enquanto alguem LE — segundos, nao
+    milissegundos. E a maior janela do app, e e nela que a secretaria pode
+    reimportar a planilha. Com a lista trocada, o id que o botao guardou deixa
+    de valer, e a restricao recem-lida pode nao ser mais a daquela crianca.
+  */
+  // Quadro vazio: com a crianca ja em saida nao ha botao Chamar para tocar, e
+  // com alguem no quadro a reimportacao e recusada com 409 — o ataque nem
+  // chegaria a acontecer, e as quatro verificacoes falhariam sem provar nada.
+  conferir('o quadro comeca vazio para o ataque', await esvaziarQuadro(outra))
+  await esperar(600)
+
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression:
+      '(() => { const c = document.getElementById(' +
+      JSON.stringify('consulta') +
+      '); c.value = ' +
+      JSON.stringify('ravi') +
+      '; c.dispatchEvent(new Event(' +
+      JSON.stringify('input') +
+      ')) })()',
+  })
+  await esperar(500)
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: ` document.querySelector('#resultados .linha button').click() `,
+    userGesture: true,
+  })
+  await esperar(800)
+
+  const abriu = await cdp.avaliar(
+    ` document.querySelector('dialog.restricao')?.open === true `,
+  )
+  conferir('a caixa esta aberta para o ataque', abriu === true)
+
+  // Com a caixa aberta, outra pessoa reimporta a planilha.
+  const cadastroAntes = await fetch(BASE + '/alunos?papel=portaria').then((r) => r.json())
+  const reimportou = await fetch(BASE + '/importar?papel=portaria', {
+    method: 'POST',
+    body:
+      'Nome,Turma' +
+      String.fromCharCode(10) +
+      cadastroAntes.map((a) => a.nome + ',' + a.turma).join(String.fromCharCode(10)),
+  })
+  conferir('a reimportacao acontece com a caixa aberta', reimportou.status === 200,
+    'status ' + reimportou.status)
+  await esperar(1200)
+
+  // A pessoa termina de ler e confirma.
+  await cdp.chamar('Runtime.evaluate', {
+    expression:
+      ` document.querySelectorAll('dialog.restricao button')[1].click() `,
+    userGesture: true,
+  })
+  await esperar(1200)
+
+  const depoisDoAtaque = await cdp.avaliar(`
+    (() => ({
+      emSaida: document.querySelectorAll('#ativas .linha').length,
+      aviso: document.querySelector('#aviso .aviso')?.textContent ?? '',
+    }))()
+  `)
+  conferir('a crianca NAO e chamada com a lista trocada no meio',
+    depoisDoAtaque.emSaida === 0, JSON.stringify(depoisDoAtaque))
+  conferir('e a pessoa e avisada do porque',
+    /lista mudou/i.test(depoisDoAtaque.aviso), JSON.stringify(depoisDoAtaque.aviso))
+
+  await esvaziarQuadro(outra)
+  await esperar(400)
+
+  /*
+    Devolve o cadastro COM a restricao.
+
+    O ataque acima reimportou sem a coluna, e sem isto a proxima execucao
+    encontraria o Ravi sem alerta — e a secao da restricao falharia inteira, com
+    o sintoma tres secoes longe da causa. Ja aconteceu tres vezes nesta
+    refatoracao: teste que mexe em estado compartilhado e teste que envenena os
+    outros, e a conta chega depois.
+  */
+  const paraDevolver = await fetch(BASE + '/alunos?papel=portaria').then((r) => r.json())
+  const linhas = ['Nome,Turma,Restrição']
+  for (const a of paraDevolver) {
+    const restricao = a.nome === CRIANCA_COM_RESTRICAO ? RESTRICAO_DA_SEMENTE : ''
+    linhas.push([a.nome, a.turma, restricao].join(','))
+  }
+  const devolvido = await fetch(BASE + '/importar?papel=portaria', {
+    method: 'POST',
+    body: linhas.join(String.fromCharCode(10)),
+  })
+  const conferindo = await fetch(BASE + '/alunos?papel=portaria').then((r) => r.json())
+  conferir(
+    'o cadastro volta com a restricao, para a proxima execucao',
+    devolvido.status === 200 &&
+      conferindo.some((a) => a.nome === CRIANCA_COM_RESTRICAO && a.temAlerta === true),
+    'status ' + devolvido.status,
+  )
 
   wsCdp.close()
   chrome.kill()

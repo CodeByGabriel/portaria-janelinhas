@@ -38,7 +38,30 @@ function achatar(codigo, origem) {
   return `\n/* ===== ${origem} ===== */\n` + codigo.replace(SEM_IMPORT, '').replace(SEM_EXPORT, '$1')
 }
 
-const css = ler('web/comum/tokens.css')
+/*
+  As fontes entram EMBUTIDAS, em base64.
+
+  O arquivo unico existe para a demonstracao rodar de um pen drive, com o cabo
+  da escola desconectado. Um `url('./fontes/...')` la dentro so resolve se a
+  pasta `fontes/` estiver do lado — e ela nao estara. O navegador nao reclama:
+  ele cai para a fonte de sistema em silencio, e a demonstracao mostra uma
+  identidade visual que nao e a do produto.
+
+  O custo e 33% sobre os 40 KB das duas fontes, porque base64 nao comprime. Num
+  arquivo que ninguem baixa pela rede, e o preco certo: ele sai de ~50 KB para
+  ~105 KB e continua cabendo em qualquer lugar.
+
+  O ORCAMENTO DE 120 KB NAO SE APLICA AQUI. Ele e sobre a primeira carga da
+  portaria pela rede da escola; este arquivo e copiado a mao, uma vez.
+*/
+function embutirFontes(css) {
+  return css.replace(/url\('\.\/(fontes\/[^']+)'\)/g, (_, caminho) => {
+    const bytes = readFileSync(join(raiz, "web", "comum", caminho))
+    return `url('data:font/woff2;base64,${bytes.toString('base64')}')`
+  })
+}
+
+const css = embutirFontes(ler('web/comum/tokens.css'))
 const html = ler('web/demo/index.html')
 
 const corpoDoScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)
