@@ -304,6 +304,81 @@ código de saída 0.
 ### 1.1 Evento compensatório `retornou` (M)
 Nova ação, **dona: a professora** (decidido). É linha nova na trilha, jamais remoção. `liberado → chamado` com motivo obrigatório. Teste garantindo que `liberado → aguardando` continua proibido e que `entregue` continua terminal.
 
+#### 1.1 — o desvio: `retorno` virou estado, e não voltou para `chamado`
+
+O plano aprovado dizia `liberado → chamado`. **Foi implementado como
+`liberado → retorno`, com estado próprio.** O desvio é grande o bastante para ficar
+escrito aqui, com o porquê.
+
+Uma revisão adversarial do desenho, com quatro lentes independentes sobre o código,
+derrubou o destino `chamado` por um motivo verificável: **neste sistema `chamado`
+significa literalmente "responsável chegou".** A etiqueta diz isso (`cartao.js`), a
+portaria escrevia essa frase, e a sala conta esse estado para o aviso "N responsáveis
+chegaram". Com o motivo `nao-saiu-com-o-responsavel`, as duas telas passariam a afirmar
+o contrário do fato recém-registrado — o mesmo erro que `expirar()` já se recusa a
+cometer ao não marcar `liberado` como `entregue`.
+
+E havia o dano maior: em `chamado`, a professora poderia **liberar de novo sem ninguém
+reconfirmar que há um adulto no portão**. A confirmação da portaria é a premissa inteira
+deste sistema. Por isso `retorno` só sai por ação da portaria — `chamar` (o responsável
+está lá) ou `encerrar` (não está).
+
+**O invariante 7 continua válido ao pé da letra**, e isso foi deliberado:
+
+- A cadeia principal não mudou: `aguardando → chamado → liberado → entregue`.
+- `entregue` continua terminal, testado contra **todas** as ações, inclusive as novas.
+- "cancelamento só `chamado → aguardando`" continua exato — é justamente por isso que a
+  saída de `retorno` se chama `encerrar` e não `cancelar`. `cancelar` segue com uma
+  aresta só.
+- As transições novas entram como eventos append-only, nunca como edição.
+
+O que a fase acrescentou ao redor disso:
+
+**`razao` como lista fechada de códigos**, não texto livre. A trilha não tem caminho de
+correção — `registrar()` só faz INSERT e a única remoção é a poda da linha inteira —
+então o que entrar fica os 90 dias sem conserto, e o argumento "guardamos pouco tempo"
+não está disponível. Sem categoria de saúde, por decisão registrada em `docs/lgpd.md`.
+A validação mora em `estados.ts`, não no Durable Object: o modo demonstração não passa
+pelo servidor, e regra que mora na rede é regra que a demonstração não tem.
+
+**`desde` reinicia a cada `chamar`.** Preservado através do retorno, a criança que voltou
+reapareceria no topo da fila como quem espera há mais tempo — e a 1.3 vai desenhar um
+cronômetro em cima desse campo.
+
+**`retorno` expira**, como `chamado`, e por `encerrar`. Sem isso ele seria o novo caso
+aberto eterno. `liberado` continua fora, pelo motivo de sempre.
+
+**A migração é guardada por `PRAGMA table_info`, não por número de versão.** O caminho
+tentador — coluna no `CREATE TABLE` e `ALTER` disparado por versão em `meta` — faria um
+banco novo nascer com a coluna, ler a versão ausente como antiga, disparar o `ALTER` e
+receber `duplicate column name`. Exceção dentro do `blockConcurrencyWhile` é laço de
+boot: nenhuma tela sobe e recarregar repete. Quem responde sobre o banco é o banco.
+
+**Teste de paridade entre as duas máquinas de estado.** `web/comum/estados.js` é cópia
+manual, inlinada no arquivo offline, e o cabeçalho dela sempre pediu "as duas cópias têm
+que mudar juntas". Pedido não é barreira. Agora `src/paridade.test.ts` compara aresta por
+aresta — verificado quebrando a cópia de propósito antes de confiar nele.
+
+#### 1.1 — três defeitos que só o print mostrou
+
+**A barra de aviso ficava permanentemente visível, e vazia.** `hidden` esconde por
+`display: none` vindo da folha do navegador, que é a de menor prioridade que existe;
+`.faixa.aviso { display: block }` venceu. As verificações liam a **propriedade**
+`el.hidden`, que estava correta — a tela é que mentia. Corrigido com `[hidden] { display:
+none !important }` global, e as verificações passaram a medir altura na tela.
+
+**A linha da portaria atropelava a si mesma em 430px.** A etiqueta subia por cima do nome
+e a ação transbordava para fora da tela. Estava assim desde sempre; foi o `retorno`, com
+duas ações, que tornou impossível continuar não vendo.
+
+**O `select` de volume media 43px** — um pixel abaixo do mínimo AAA, invisível em revisão.
+O mínimo de toque agora vale para todo controle, não só para `button`.
+
+E duas correções de método no ferramental: os prints passaram a clicar com gesto de
+usuário (sem ele o navegador deixa o áudio suspenso e o print anuncia um defeito que a
+professora não teria), e o fim-a-fim passou a medir **só a trilha que ele mesmo
+acrescentou** — com a trilha persistindo, ele estava somando as rodadas anteriores.
+
 ### 1.2 Busca redesenhada (M)
 Iniciais e sobrenome além do prefixo; **mensagem quando não há resultado** (defeito D); homônimos sempre com turma; chamar em ≤ 2 toques; feedback < 400 ms. Reaproveita `busca.ts` inteiro — a normalização de nome brasileiro tem mérito comprovado por 4 testes de regressão.
 

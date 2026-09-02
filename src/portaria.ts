@@ -284,8 +284,23 @@ export class Portaria {
         if (comando.alunoId.length > 64) throw new Error('alunoId longo demais')
         alunoId = comando.alunoId
 
+        /*
+          Aqui so passa FORMA. Quais razoes existem e regra, e regra mora no
+          Livro (invariante 8) — inclusive porque o modo demonstracao nao passa
+          por este arquivo.
+
+          Mas o teto de tamanho e forma, e precisa existir DESTE lado: o
+          caminho do WebSocket nao tinha nada equivalente ao limite de 1 MB do
+          /importar, e agora ele escreve em disco retido 90 dias. O valor
+          tambem nunca e interpolado na recusa, pelo mesmo motivo do alunoId.
+        */
+        if (comando.razao !== undefined) {
+          if (typeof comando.razao !== 'string') throw new Error('razao precisa ser texto')
+          if (comando.razao.length > 64) throw new Error('razao longa demais')
+        }
+
         const transicao = this.livro.aplicar(
-          { tipo: comando.tipo, alunoId },
+          { tipo: comando.tipo, alunoId, razao: comando.razao },
           Date.now(),
           sessao.papel,
           sessao.turma,
@@ -340,7 +355,16 @@ async function descartar(pedido: Request): Promise<void> {
 }
 
 function motivoDe(erro: unknown): string {
-  const permitido = /desconhecid|precisa ser|em saida|outra turma|declarar a turma|longo demais/
+  /*
+    Allowlist, nao denylist: mensagem de erro nao prevista vira "comando
+    recusado" em vez de vazar o interior do servidor para a tela da professora.
+
+    Consequencia que morde: TODO erro novo do Livro precisa entrar aqui, senao
+    a recusa vira muda. "razao invalida" nasceria como "comando recusado", e a
+    professora ficaria sem saber que faltou escolher o motivo.
+  */
+  const permitido =
+    /desconhecid|precisa ser|em saida|outra turma|declarar a turma|longo demais|raz[aã]o/
   if (erro instanceof AcaoNaoPermitida) return erro.message.slice(0, 120)
   if (erro instanceof TransicaoInvalida) return erro.message.slice(0, 120)
   if (erro instanceof Error && permitido.test(erro.message)) {

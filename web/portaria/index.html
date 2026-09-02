@@ -14,6 +14,8 @@
       font-size: 0.85rem; padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
     }
     .corte { font-size: 0.82rem; color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
+    .duasAcoes { display: flex; gap: 0.4rem; }
+    .duasAcoes button { white-space: nowrap; }
     details {
       margin-top: 2rem; border: 1px solid var(--borda);
       border-radius: var(--canto); background: var(--superficie); padding: 0.9rem 1rem;
@@ -175,6 +177,37 @@
       return b
     }
 
+    /** Monta o que a linha oferece naquele estado. Pode ser mais de um botão. */
+    function acaoPara(acao, c) {
+      if (acao === 'cancelar') {
+        return botao('Cancelar', false, () =>
+          conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId }))
+      }
+      if (acao === 'entregar') {
+        return botao('Entregar', true, () =>
+          conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId }))
+      }
+      if (acao === 'rechamar') {
+        /*
+          A criança voltou para a sala. Duas saídas, e a escolha é sobre o
+          PORTÃO: "Chamar de novo" afirma que o responsável está lá; "Encerrar"
+          afirma que não está. Nenhuma das duas afirma entrega — dizer que a
+          criança saiu com alguém sem ninguém ter recebido nada é a única coisa
+          que este sistema não pode fazer.
+        */
+        const par = document.createElement('div')
+        par.className = 'duasAcoes'
+        par.append(
+          botao('Chamar de novo', true, () =>
+            conexao.enviar({ tipo: 'chamar', alunoId: c.alunoId })),
+          botao('Encerrar', false, () =>
+            conexao.enviar({ tipo: 'encerrar', alunoId: c.alunoId })),
+        )
+        return par
+      }
+      return null
+    }
+
     /*
       Reconciliacao por chave, nos dois lados.
 
@@ -309,20 +342,26 @@
           const antiga = li.querySelector('.etiqueta')
           if (antiga) antiga.replaceWith(etiquetaDoEstado(c.estado))
         }
-        const acaoDesejada =
-          c.estado === 'chamado' ? 'cancelar' : c.estado === 'liberado' ? 'entregar' : ''
+        /*
+          A ação que cada estado pede da portaria.
+
+          `retorno` é o estado em que a criança voltou para a sala e ninguém
+          sabe mais se há alguém no portão. A saída é da portaria porque é ela
+          quem enxerga o portão: ou o responsável está lá e ela CHAMA de novo,
+          ou não está e ela ENCERRA. A professora não pode liberar de lá — seria
+          liberar sem ninguém ter reconfirmado, que é a premissa do sistema.
+
+          Duas ações num estado só, então aqui a linha ganha as duas.
+        */
+        const ACAO_DO_ESTADO = {
+          chamado: 'cancelar',
+          liberado: 'entregar',
+          retorno: 'rechamar',
+        }
+        const acaoDesejada = ACAO_DO_ESTADO[c.estado] ?? ''
         if (li.dataset.acao !== acaoDesejada) {
           li.dataset.acao = acaoDesejada
-          definirAcao(
-            li,
-            acaoDesejada === 'cancelar'
-              ? botao('Cancelar', false, () =>
-                  conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId }))
-              : acaoDesejada === 'entregar'
-                ? botao('Entregar', true, () =>
-                    conexao.enviar({ tipo: 'entregar', alunoId: c.alunoId }))
-                : null,
-          )
+          definirAcao(li, acaoPara(acaoDesejada, c))
         }
       }
       ordenar(ul, ordenadas.map((c) => c.alunoId), linhasAtivas)

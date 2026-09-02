@@ -1,6 +1,28 @@
-import { proximo, exigirDono, type Estado, type Papel, type Acao } from './estados.ts'
+import {
+  proximo,
+  exigirDono,
+  ehRazaoRetorno,
+  RAZOES_RETORNO,
+  type Estado,
+  type Papel,
+  type Acao,
+} from './estados.ts'
 import { semear, type Aluno, type Turma } from './semente.ts'
 import type { Chamada, Retrato, Comando, EventoAuditoria, Instantaneo } from './protocolo.ts'
+
+/*
+  O que expira, e pela acao de quem.
+
+  Uma tabela, e nao um `if`, para que acrescentar estado novo obrigue a decidir
+  aqui se ele fecha sozinho — em vez de herdar "nao fecha" por omissao, que foi
+  como `liberado` virou caso aberto eterno.
+
+  `liberado` esta ausente de proposito: ver `expirar()`.
+*/
+const EXPIRAVEIS: Partial<Record<Estado, Acao>> = {
+  chamado: 'cancelar',
+  retorno: 'encerrar',
+}
 
 /**
  * O estado do dia da escola. Puro: sem rede, sem relogio, sem armazenamento.
@@ -79,6 +101,31 @@ export class Livro {
     const para = proximo(de, comando.tipo)
 
     /*
+      A razao e validada AQUI, junto das outras regras, e nao no Durable Object.
+
+      O DO so confere forma (invariante 8), e nem todo caminho passa por ele: o
+      modo demonstracao chama `proximo`/`exigirDono` direto no navegador. Regra
+      que mora no servidor de rede e regra que a demonstracao nao tem.
+
+      Fail-closed como papel e turma: retorno sem razao valida nao acontece. Um
+      retorno sem razao entra na trilha para sempre e ninguem descobre depois
+      por que aconteceu.
+
+      E o campo e ZERADO em toda outra acao. Copiar `comando.razao` sem esta
+      guarda transformaria qualquer comando num canal de texto livre para dentro
+      de uma tabela que nao tem UPDATE nem DELETE por linha.
+    */
+    let razao = ''
+    if (comando.tipo === 'retornar') {
+      if (!ehRazaoRetorno(comando.razao)) {
+        throw new Error(
+          `razao invalida para o retorno; use uma de: ${RAZOES_RETORNO.join(', ')}`,
+        )
+      }
+      razao = comando.razao
+    }
+
+    /*
       'aguardando' (cancelado) e 'entregue' saem do mapa de chamadas.
 
       Entregue e terminal: o ciclo fechou, a crianca esta com o responsavel.
@@ -96,7 +143,9 @@ export class Livro {
         nome: aluno.nome,
         turma: aluno.turma,
         estado: para,
-        desde: anterior?.desde ?? agora,
+        // `desde` reinicia no `chamar`, e so nele: e "desde quando o
+        // responsavel esta no portao". Ver o campo em protocolo.ts.
+        desde: comando.tipo === 'chamar' ? agora : (anterior?.desde ?? agora),
         em: agora,
       })
     }
@@ -113,6 +162,7 @@ export class Livro {
       de,
       para,
       em: agora,
+      razao,
     }
     this.trilha.push(evento)
     return evento
@@ -148,8 +198,9 @@ export class Livro {
    * entao uma chamada esquecida de ontem tranca a secretaria fora da
    * importacao para sempre. Antes bastava reiniciar.
    *
-   * Usa a transicao que ja existe — `cancelar`, de chamado para aguardando — e
-   * grava na trilha como qualquer outra acao. Nao e remocao silenciosa.
+   * Usa as transicoes que ja existem — `cancelar` a partir de `chamado`,
+   * `encerrar` a partir de `retorno` — e grava na trilha como qualquer outra
+   * acao. Nao e remocao silenciosa.
    *
    * `papel: 'sistema'` e deliberado: dizer 'portaria' afirmaria que a porteira
    * cancelou, e ninguem cancelou. O campo e livre no evento de auditoria e
@@ -161,7 +212,13 @@ export class Livro {
    * recebido nada; devolve-lo a aguardando apagaria a confirmacao da
    * professora, que e o unico evento que este sistema existe para proteger.
    * Crianca liberada e nao entregue e caso aberto, e caso aberto e para uma
-   * pessoa fechar.
+   * pessoa fechar — e a professora agora tem `retornar` para fechar o dela.
+   *
+   * `retorno` ENTRA. Sem isso ele viraria o novo caso aberto eterno: a crianca
+   * voltou para a sala, ninguem chamou de novo, ninguem encerrou, e o quadro
+   * carrega aquilo para sempre, inclusive trancando a troca de cadastro. E
+   * fechar um `retorno` esquecido nao afirma nada falso: doze horas depois,
+   * nao ha ninguem no portao.
    */
   expirar(antesDe: number, agora: number): EventoAuditoria[] {
     const eventos: EventoAuditoria[] = []
@@ -179,19 +236,21 @@ export class Livro {
 
         `em` e o instante da ultima acao. E o que "esquecida" quer dizer.
       */
-      if (chamada.estado !== 'chamado' || chamada.em >= antesDe) continue
+      const acao = EXPIRAVEIS[chamada.estado]
+      if (!acao || chamada.em >= antesDe) continue
 
       this.chamadas.delete(chamada.alunoId)
       const evento: EventoAuditoria = {
         alunoId: chamada.alunoId,
         nome: chamada.nome,
         turma: chamada.turma,
-        acao: 'cancelar',
+        acao,
         papel: 'sistema',
         origem: 'expiracao automatica',
-        de: 'chamado',
+        de: chamada.estado,
         para: 'aguardando',
         em: agora,
+        razao: '',
       }
       this.trilha.push(evento)
       eventos.push(evento)

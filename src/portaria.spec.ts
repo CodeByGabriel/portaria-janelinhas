@@ -23,18 +23,43 @@ function portaria() {
 const pedir = (caminho: string, init?: RequestInit) =>
   portaria().fetch(new Request(`http://do${caminho}`, init))
 
-/** Abre um WebSocket contra o Durable Object e devolve o lado do cliente. */
-async function ligar(query: string) {
+type Retrato = { tipo: string; chamadas: { alunoId: string; estado: string }[] }
+type Ligacao = WebSocket & { __retratos: Retrato[] }
+
+/**
+ * Abre um WebSocket contra o Durable Object e devolve o lado do cliente.
+ *
+ * O coletor e ligado ANTES de qualquer espera, e guarda todo retrato que
+ * chegar. Sem ele havia uma corrida silenciosa: o servidor manda o retrato
+ * inicial no instante da conexao, e um `proximoRetrato` que so registra o
+ * ouvinte depois disso espera para sempre por uma mensagem que ja passou.
+ * Dava "nenhum retrato chegou" em testes cujo codigo estava certo, e passava
+ * por sorte de escalonamento nos outros.
+ */
+async function ligar(query: string): Promise<Ligacao> {
   const resposta = await portaria().fetch(
     new Request(`http://do/ws?${query}`, { headers: { Upgrade: 'websocket' } }),
   )
   const ws = resposta.webSocket
   if (!ws) throw new Error(`sem webSocket na resposta (status ${resposta.status})`)
   ws.accept()
-  return ws
+
+  const ligacao = ws as Ligacao
+  ligacao.__retratos = []
+  ws.addEventListener('message', (evento: MessageEvent) => {
+    const m = JSON.parse(String(evento.data))
+    if (m.tipo === 'retrato') ligacao.__retratos.push(m)
+  })
+  return ligacao
 }
 
-/** Espera o proximo retrato que chegar naquele socket. */
+/**
+ * Espera o PROXIMO retrato que chegar naquele socket.
+ *
+ * Semantica de evento, nao de estado: serve para "mandei um comando, quero a
+ * resposta dele". Para o primeiro retrato da conexao, use `retratoInicial` —
+ * aquele pode ja ter chegado antes de alguem estar ouvindo.
+ */
 function proximoRetrato(ws: WebSocket, msLimite = 3000): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const ouvir = (evento: MessageEvent) => {
@@ -76,6 +101,20 @@ function ateQue(
     }
     ws.addEventListener('message', ouvir)
   })
+}
+
+/**
+ * O primeiro retrato da conexao, que pode ja ter chegado.
+ *
+ * O servidor o envia no instante do accept, e um ouvinte registrado depois
+ * disso espera para sempre por uma mensagem que ja passou. Dava "nenhum retrato
+ * chegou" em teste cujo codigo estava certo, e passava por sorte de
+ * escalonamento nos demais — o coletor de `ligar` existe para isto.
+ */
+async function retratoInicial(ws: Ligacao, msLimite = 3000): Promise<Retrato> {
+  if (ws.__retratos.length) return ws.__retratos[0]
+  await proximoRetrato(ws, msLimite)
+  return ws.__retratos[0]
 }
 
 describe('gate de papel — furo C2, fail-closed', () => {
@@ -469,6 +508,205 @@ describe('chamada esquecida nao atravessa a noite', () => {
     const corpo = await r.json<{ erros: { motivo: string }[] }>()
     // Sem o nome, a secretaria fica procurando as cegas qual crianca travou.
     expect(corpo.erros[0].motivo).toMatch(/\(.+,\s*chamado\)/)
+    ws.close()
+  })
+})
+
+
+describe('a coluna nova da trilha, e o banco que nao a tem', () => {
+  beforeEach(async () => {
+    await reset()
+  })
+
+  /*
+    Fabrica um banco da VERSAO ANTERIOR — a trilha sem a coluna `razao`.
+
+    Ate aqui nada no projeto conseguia produzir esse banco: todo teste de
+    persistencia comeca com `reset()`, entao todos rodavam contra um esquema
+    recem-criado. O primeiro ALTER TABLE do projeto ia entrar sem uma linha de
+    cobertura do unico cenario que ele existe para tratar.
+  */
+  async function bancoAntigo() {
+    await runInDurableObject(portaria(), (_instancia, estado) => {
+      const sql = estado.storage.sql
+      sql.exec('DROP TABLE IF EXISTS trilha')
+      sql.exec(`
+        CREATE TABLE trilha (
+          seq     INTEGER PRIMARY KEY AUTOINCREMENT,
+          alunoId TEXT NOT NULL,
+          nome    TEXT NOT NULL,
+          turma   TEXT NOT NULL,
+          acao    TEXT NOT NULL,
+          papel   TEXT NOT NULL,
+          origem  TEXT NOT NULL,
+          de      TEXT NOT NULL,
+          para    TEXT NOT NULL,
+          em      INTEGER NOT NULL
+        )
+      `)
+      sql.exec(
+        `INSERT INTO trilha (alunoId, nome, turma, acao, papel, origem, de, para, em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        'a01', 'Crianca De Ontem', 'Pré 1', 'chamar', 'portaria', 'portaria',
+        'aguardando', 'chamado', 1_000_000,
+      )
+    })
+  }
+
+  it('a migracao acrescenta a coluna sem perder o que ja estava la', async () => {
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.close()
+
+    await bancoAntigo()
+    await derrubarInstancia()
+
+    const nova = await ligar('papel=portaria')
+    await proximoRetrato(nova)
+    const trilha = await (
+      await pedir('/registro?papel=portaria')
+    ).json<{ nome: string; razao: string }[]>()
+
+    expect(trilha.length).toBe(1)
+    expect(trilha[0].nome).toBe('Crianca De Ontem')
+    // Evento anterior a coluna existir: razao vazia, nunca undefined.
+    expect(trilha[0].razao).toBe('')
+    nova.close()
+  })
+
+  it('e o objeto continua subindo depois, sem laco de boot', async () => {
+    /*
+      O caminho errado seria disparar o ALTER a partir de um numero de versao
+      guardado: banco novo nasceria com a coluna, leria a versao ausente como
+      antiga, dispararia o ALTER e o SQLite responderia `duplicate column
+      name`. Excecao dentro do blockConcurrencyWhile e laco de boot — nenhuma
+      tela sobe e recarregar repete.
+
+      Quem decide se a coluna existe e o PRAGMA, entao rodar de novo da no
+      mesmo. Este teste derruba e sobe tres vezes.
+    */
+    await bancoAntigo()
+    for (let volta = 0; volta < 3; volta++) {
+      await derrubarInstancia()
+      const ws = await ligar('papel=portaria')
+      const retrato = await proximoRetrato(ws)
+      expect(retrato.tipo).toBe('retrato')
+      ws.close()
+    }
+
+    const trilha = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    expect(trilha.length).toBe(1)
+  })
+
+  it('a razao do retorno atravessa o disco', async () => {
+    /*
+      Migracao, INSERT e SELECT precisam andar juntos. Com `DEFAULT ''`,
+      esquecer o INSERT ou o SELECT nao da erro: o Livro guarda a trilha em RAM,
+      entao a razao aparece enquanto o objeto viver e evapora na primeira
+      hibernacao. Registro plausivelmente incompleto e o pior defeito possivel
+      numa trilha de entrega de crianca — por isso o teste passa pelo disco.
+    */
+    const portariaWs = await ligar('papel=portaria')
+    const sala = await ligar('papel=sala&turma=' + encodeURIComponent('Pré 1'))
+    await retratoInicial(portariaWs)
+    await retratoInicial(sala)
+
+    portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(portariaWs, (r) => (r.chamadas as { estado: string }[])[0]?.estado === 'chamado')
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a01' }))
+    await ateQue(portariaWs, (r) => (r.chamadas as { estado: string }[])[0]?.estado === 'liberado')
+    sala.send(JSON.stringify({
+      tipo: 'retornar', alunoId: 'a01', razao: 'esqueceu-material',
+    }))
+    await ateQue(portariaWs, (r) => (r.chamadas as { estado: string }[])[0]?.estado === 'retorno')
+
+    portariaWs.close()
+    sala.close()
+    await derrubarInstancia()
+
+    const nova = await ligar('papel=portaria')
+    const retrato = await proximoRetrato(nova)
+    expect((retrato.chamadas as { estado: string }[])[0]?.estado).toBe('retorno')
+
+    const trilha = await (
+      await pedir('/registro?papel=portaria')
+    ).json<{ acao: string; razao: string }[]>()
+    const retorno = trilha.find((e) => e.acao === 'retornar')
+    expect(retorno?.razao).toBe('esqueceu-material')
+    // E as outras acoes continuam com o campo vazio, nao ausente.
+    expect(trilha.filter((e) => e.acao !== 'retornar').every((e) => e.razao === '')).toBe(true)
+    nova.close()
+  })
+
+  it('razao invalida e RECUSADA, e a recusa diz o que aconteceu', async () => {
+    const portariaWs = await ligar('papel=portaria')
+    const sala = await ligar('papel=sala&turma=' + encodeURIComponent('Pré 1'))
+    await retratoInicial(portariaWs)
+    await retratoInicial(sala)
+
+    portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
+    await ateQue(sala, (r) => (r.chamadas as unknown[]).length === 1)
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a01' }))
+    await ateQue(sala, (r) => (r.chamadas as { estado: string }[])[0]?.estado === 'liberado')
+
+    const recusas: { motivo: string }[] = []
+    sala.addEventListener('message', (e: MessageEvent) => {
+      const m = JSON.parse(String(e.data))
+      if (m.tipo === 'recusa') recusas.push(m)
+    })
+
+    sala.send(JSON.stringify({ tipo: 'retornar', alunoId: 'a01', razao: 'inventado' }))
+    await new Promise((r) => setTimeout(r, 300))
+
+    expect(recusas.length).toBe(1)
+    // A allowlist de `motivoDe` precisa deixar este erro passar; sem isso a
+    // recusa vira "comando recusado" e a professora nao sabe o que faltou.
+    expect(recusas[0].motivo).toMatch(/raz/i)
+    // E a crianca continua liberada: nada aconteceu pela metade.
+    const retrato = await (await pedir('/registro?papel=portaria')).json<unknown[]>()
+    expect(retrato.length).toBe(2)
+
+    portariaWs.close()
+    sala.close()
+  })
+
+  it('razao mandada em outra acao nao chega ao disco', async () => {
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+    ws.send(JSON.stringify({
+      tipo: 'chamar', alunoId: 'a01', razao: 'esqueceu-material',
+    }))
+    await ateQue(ws, (r) => (r.chamadas as unknown[]).length === 1)
+    ws.close()
+    await derrubarInstancia()
+
+    const trilha = await (
+      await pedir('/registro?papel=portaria')
+    ).json<{ acao: string; razao: string }[]>()
+    expect(trilha[0].acao).toBe('chamar')
+    expect(trilha[0].razao).toBe('')
+  })
+
+  it('razao gigante e recusada pelo teto de forma', async () => {
+    // O caminho do WebSocket nao tinha nada equivalente ao limite de 1 MB do
+    // /importar, e agora ele escreve em disco retido 90 dias.
+    const ws = await ligar('papel=portaria')
+    await proximoRetrato(ws)
+
+    const recusas: { motivo: string }[] = []
+    ws.addEventListener('message', (e: MessageEvent) => {
+      const m = JSON.parse(String(e.data))
+      if (m.tipo === 'recusa') recusas.push(m)
+    })
+
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01', razao: 'x'.repeat(5000) }))
+    await new Promise((r) => setTimeout(r, 300))
+
+    expect(recusas.length).toBe(1)
+    expect(recusas[0].motivo).toMatch(/longa demais/)
+    // E o valor recebido NAO volta na mensagem: 5 mil caracteres entram, 5 mil
+    // nao saem.
+    expect(recusas[0].motivo.length).toBeLessThan(200)
     ws.close()
   })
 })

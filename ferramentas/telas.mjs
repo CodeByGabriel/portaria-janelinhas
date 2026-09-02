@@ -25,6 +25,20 @@ const PERFIL = join(RAIZ, '.telas-perfil')
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms))
 
 let falhas = 0
+/*
+  Expressao que responde se o elemento ESTA NA TELA, e nao se a propriedade
+  `hidden` esta ligada.
+
+  As duas divergem quando uma regra de CSS declara `display` no elemento: o
+  atributo `hidden` esconde por `display: none` da folha do navegador, que
+  perde para qualquer regra nossa. Foi assim que uma barra preta vazia ficou
+  atravessada na tela da sala com `el.hidden === true`, e nenhuma verificacao
+  reclamou.
+*/
+const naTela = (id) =>
+  `(() => { const e = document.getElementById(${JSON.stringify(id)});` +
+  ` return !!e && e.getBoundingClientRect().height > 0 })()`
+
 function conferir(rotulo, condicao, detalhe = '') {
   if (condicao) console.log(`  ok    ${rotulo}`)
   else {
@@ -411,8 +425,11 @@ async function principal() {
   conferir('existe aviso de som interrompido', antes.existe)
   conferir('o harness alcancou o contexto de audio da pagina',
     antes.contextos >= 1, JSON.stringify(antes))
+  const avisoNaTela = await cdp.avaliar(naTela('avisoSom'))
   conferir('com o som funcionando, o aviso fica escondido',
     antes.visivel === false, JSON.stringify(antes))
+  conferir('e escondido de verdade, nao so no atributo',
+    avisoNaTela === false, `altura na tela: ${avisoNaTela}`)
 
   // O aparelho suspende o audio. Nada muda na aplicacao; muda o ambiente.
   const suspendeu = await cdp.avaliar(`
@@ -504,6 +521,8 @@ async function principal() {
   )
   conferir('silenciar apaga o aviso de som interrompido',
     avisoDepoisDoMudo === false, String(avisoDepoisDoMudo))
+  conferir('e ele sai da tela, nao so do atributo',
+    (await cdp.avaliar(naTela('avisoSom'))) === false)
 
   // e religar traz o aviso de volta, porque o problema continua existindo
   await cdp.chamar('Runtime.evaluate', {

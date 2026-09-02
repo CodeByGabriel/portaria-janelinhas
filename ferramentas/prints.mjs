@@ -171,10 +171,25 @@ async function semear() {
     await esperar(200)
   }
   await esperar(400)
-  sala.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a17' }))
+  for (const id of ['a17', 'a18']) {
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: id }))
+    await esperar(250)
+  }
+  await esperar(300)
+
+  /*
+    Um caso de retorno no retrato.
+
+    O print existe para mostrar o produto, e desde a 1.1 o produto tem um quarto
+    caso na tela: a crianca que foi liberada e voltou para a sala. Sem isto, o
+    print continuaria mostrando um app que nao e mais este.
+  */
+  sala.send(JSON.stringify({
+    tipo: 'retornar', alunoId: 'a17', razao: 'nao-saiu-com-o-responsavel',
+  }))
   await esperar(600)
 
-  console.log('  estado: 3 chamados no 3º ano, 1 liberado')
+  console.log('  estado: 3 no 3º ano — 1 chamado, 1 liberado, 1 de volta na sala')
   return async () => {
     portaria.close()
     sala.close()
@@ -240,7 +255,19 @@ async function principal() {
     await esperar(tela.espera)
 
     if (tela.roteiro) {
-      await cdp.chamar('Runtime.evaluate', { expression: tela.roteiro, awaitPromise: true })
+      /*
+        `userGesture: true` porque o roteiro clica em "entrar na sala".
+
+        Sem ativacao do usuario o navegador deixa o AudioContext suspenso, a
+        tela mostra corretamente o aviso "o som foi interrompido", e o print sai
+        anunciando um defeito que a professora — que toca com o dedo — nao
+        teria. O print tem que mostrar o produto, nao o arranjo do teste.
+      */
+      await cdp.chamar('Runtime.evaluate', {
+        expression: tela.roteiro,
+        awaitPromise: true,
+        userGesture: true,
+      })
       await esperar(600)
     }
 

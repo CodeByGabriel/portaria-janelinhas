@@ -459,3 +459,157 @@ test('REGRESSAO: a expiracao corta por `em`, nao por `desde`', () => {
   )
   assert.equal(esquecida.retratoPara('portaria').chamadas.length, 0)
 })
+
+/*
+  O retorno visto do Livro: o que a trilha grava, e o que a fila mostra.
+*/
+
+function comCriancaLiberada() {
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 1000, 'portaria')
+  livro.aplicar({ tipo: 'liberar', alunoId: alvo.id }, 1100, 'sala', alvo.turma)
+  return { livro, alvo }
+}
+
+test('a professora devolve a crianca, com razao, e a fila mostra `retorno`', () => {
+  const { livro, alvo } = comCriancaLiberada()
+  const evento = livro.aplicar(
+    { tipo: 'retornar', alunoId: alvo.id, razao: 'esqueceu-material' },
+    1200,
+    'sala',
+    alvo.turma,
+  )
+
+  assert.equal(evento.de, 'liberado')
+  assert.equal(evento.para, 'retorno')
+  assert.equal(evento.razao, 'esqueceu-material')
+  assert.equal(evento.origem, alvo.turma)
+  assert.equal(livro.retratoPara('portaria').chamadas[0]?.estado, 'retorno')
+})
+
+test('sem razao valida, o retorno e RECUSADO', () => {
+  // Fail-closed, do mesmo jeito que papel e turma. Um retorno sem razao entra
+  // na trilha para sempre e ninguem descobre depois por que aconteceu.
+  for (const razao of [undefined, '', 'qualquer coisa', 'Esqueceu Material', 42]) {
+    const { livro, alvo } = comCriancaLiberada()
+    assert.throws(
+      () => livro.aplicar(
+        { tipo: 'retornar', alunoId: alvo.id, razao } as never,
+        1200, 'sala', alvo.turma,
+      ),
+      /raz/i,
+      `aceitou ${JSON.stringify(razao)}`,
+    )
+    // E nao deixou rastro: a crianca continua liberada.
+    assert.equal(livro.retratoPara('portaria').chamadas[0]?.estado, 'liberado')
+  }
+})
+
+test('REGRESSAO: razao mandada em OUTRA acao nao entra na trilha', () => {
+  /*
+    Se `aplicar` copiasse `comando.razao` sem zera-la fora de `retornar`,
+    qualquer sessao — e o papel vem da query string, sem autenticacao — gravaria
+    texto arbitrario numa tabela que nao tem UPDATE nem DELETE por linha.
+  */
+  const livro = new Livro()
+  const alvo = livro.alunos()[0]
+  const evento = livro.aplicar(
+    { tipo: 'chamar', alunoId: alvo.id, razao: 'esqueceu-material' } as never,
+    1000,
+    'portaria',
+  )
+  assert.equal(evento.razao, '')
+})
+
+test('so a portaria tira a crianca do retorno', () => {
+  const { livro, alvo } = comCriancaLiberada()
+  livro.aplicar(
+    { tipo: 'retornar', alunoId: alvo.id, razao: 'nao-saiu-com-o-responsavel' },
+    1200, 'sala', alvo.turma,
+  )
+
+  // A sala nao consegue liberar de novo sem alguem reconfirmar o portao.
+  assert.throws(
+    () => livro.aplicar({ tipo: 'liberar', alunoId: alvo.id }, 1300, 'sala', alvo.turma),
+    /nao e possivel/,
+  )
+  // Nem encerrar.
+  assert.throws(
+    () => livro.aplicar({ tipo: 'encerrar', alunoId: alvo.id }, 1300, 'sala', alvo.turma),
+    /da portaria/,
+  )
+
+  const volta = livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 1400, 'portaria')
+  assert.equal(volta.para, 'chamado')
+})
+
+test('`desde` reinicia quando a portaria chama de novo', () => {
+  /*
+    `desde` e "desde quando o responsavel esta no portao", e e a chave de
+    ordenacao da fila. Preservado atraves do retorno, a crianca reapareceria no
+    TOPO da fila como quem espera ha mais tempo — e a 1.3 vai desenhar um
+    cronometro em cima disso, entao a mentira viraria "esperando ha 47 min".
+  */
+  const { livro, alvo } = comCriancaLiberada()
+  const primeiraEspera = livro.retratoPara('portaria').chamadas[0].desde
+  assert.equal(primeiraEspera, 1000)
+
+  livro.aplicar(
+    { tipo: 'retornar', alunoId: alvo.id, razao: 'esqueceu-material' },
+    1200, 'sala', alvo.turma,
+  )
+  livro.aplicar({ tipo: 'chamar', alunoId: alvo.id }, 9000, 'portaria')
+
+  assert.equal(livro.retratoPara('portaria').chamadas[0].desde, 9000)
+})
+
+test('encerrar tira a crianca do quadro, e a trilha guarda tudo', () => {
+  const { livro, alvo } = comCriancaLiberada()
+  livro.aplicar(
+    { tipo: 'retornar', alunoId: alvo.id, razao: 'nao-saiu-com-o-responsavel' },
+    1200, 'sala', alvo.turma,
+  )
+  const fim = livro.aplicar({ tipo: 'encerrar', alunoId: alvo.id }, 1300, 'portaria')
+
+  assert.equal(fim.para, 'aguardando')
+  assert.equal(livro.retratoPara('portaria').chamadas.length, 0)
+
+  const trilha = livro.registro()
+  assert.deepEqual(
+    trilha.map((e) => e.acao),
+    ['chamar', 'liberar', 'retornar', 'encerrar'],
+  )
+})
+
+test('`retorno` esquecido tambem expira, pelo caminho da portaria', () => {
+  /*
+    Sem isto, o retorno viraria o novo caso aberto eterno: a crianca voltou para
+    a sala, ninguem chamou de novo, ninguem encerrou, e o quadro carrega isso
+    para sempre — inclusive trancando a troca de cadastro.
+  */
+  const { livro, alvo } = comCriancaLiberada()
+  livro.aplicar(
+    { tipo: 'retornar', alunoId: alvo.id, razao: 'outro' },
+    1200, 'sala', alvo.turma,
+  )
+
+  const agora = 1200 + 13 * UMA_HORA
+  const eventos = livro.expirar(agora - 12 * UMA_HORA, agora)
+
+  assert.equal(eventos.length, 1)
+  assert.equal(eventos[0].de, 'retorno')
+  assert.equal(eventos[0].para, 'aguardando')
+  assert.equal(eventos[0].acao, 'encerrar')
+  assert.equal(eventos[0].papel, 'sistema')
+  assert.equal(livro.retratoPara('portaria').chamadas.length, 0)
+})
+
+test('REGRESSAO: `liberado` continua NAO expirando', () => {
+  // Marca-lo como entregue seria afirmar que um adulto recebeu a crianca sem
+  // nenhum adulto ter recebido nada. Continua sendo caso para uma pessoa fechar.
+  const { livro } = comCriancaLiberada()
+  const agora = 1100 + 99 * UMA_HORA
+  assert.equal(livro.expirar(agora - 12 * UMA_HORA, agora).length, 0)
+  assert.equal(livro.retratoPara('portaria').chamadas[0]?.estado, 'liberado')
+})

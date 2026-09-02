@@ -5,7 +5,7 @@ coleta, onde guarda, por quanto tempo e quem alcança — escrito pela engenhari
 do código, para que um advogado tenha o que analisar. **Nenhum dado real de aluno deve
 entrar no sistema antes de revisão jurídica e da decisão da escola sobre a base legal.**
 
-Atualizado em 01/09/2026. Cada afirmação aponta o arquivo que a sustenta; quando o código
+Atualizado em 02/09/2026 (a coluna `razao` entrou na 1.1). Cada afirmação aponta o arquivo que a sustenta; quando o código
 mudar, este documento mente até ser atualizado junto.
 
 ---
@@ -59,7 +59,36 @@ resto da planilha (`src/importar.ts:185-203`).
 `alunoId`, `nome`, `turma`, `estado`, `desde`, `em`. Some quando o ciclo fecha.
 
 ### `trilha` — o registro do que aconteceu
-`alunoId`, `nome`, `turma`, `acao`, `papel`, `origem`, `de`, `para`, `em`.
+`alunoId`, `nome`, `turma`, `acao`, `papel`, `origem`, `de`, `para`, `em`, `razao`.
+
+**`razao` é a única coluna que descreve uma situação, e não uma transição** — por isso
+ela recebeu tratamento próprio. Ela só é preenchida na ação `retornar` (a criança foi
+liberada e voltou para a sala), e só aceita um destes quatro **códigos**, validados no
+servidor (`src/estados.ts`, `RAZOES_RETORNO`):
+
+| Código | O que significa |
+|---|---|
+| `esqueceu-material` | Voltou buscar algo |
+| `nao-saiu-com-o-responsavel` | O responsável não estava, ou não levou |
+| `a-escola-reteve` | Decisão da escola |
+| `outro` | Qualquer outra coisa — sem detalhe |
+
+Três decisões deliberadas, que precisam sobreviver a quem vier depois:
+
+**Lista fechada, nunca texto livre.** Uma professora sob pressão, com a turma esperando,
+escreveria qualquer coisa num campo aberto — inclusive informação de saúde ou de conflito
+familiar. E a trilha **não tem caminho de correção**: `registrar()` só faz INSERT, e a
+única remoção é a poda da linha inteira; zerar um campo mantendo o evento seria UPDATE,
+que o desenho append-only proíbe. O que entrar ali fica os 90 dias, sem conserto — então
+o argumento "guardamos pouco tempo" não está disponível aqui.
+
+**Código, não frase.** Renomear o rótulo na tela não pode reescrever o passado.
+
+**Não há categoria de saúde.** "A criança passou mal" foi a primeira ideia e está fora:
+seria dado sensível (art. 11) de titular criança, agrupável por aluno ao longo de 90
+dias, e o §2 deste documento já proíbe usar a trilha para avaliar aluno. O detalhe
+clínico fica no livro de ocorrência da escola, em papel. O buraco do `outro` é real e
+assumido: é o preço de não coletar.
 
 É **append-only**: não há edição nem remoção, por decisão de projeto — um registro de
 entrega de criança que pode ser reescrito não serve para nada. Correções entram como
@@ -120,6 +149,13 @@ Noventa dias cobrem um bimestre inteiro com folga — tempo de uma família cont
 entrega e a escola conseguir responder — sem virar um arquivo permanente de quem buscou
 quem, todos os dias, por anos.
 
+> ⚠️ **A `razao` herda esses 90 dias e não tem exceção.** As outras colunas descrevem uma
+> transição de estado; `razao` descreve uma situação da família ("não saiu com o
+> responsável"). Acumulada por aluno ao longo de um trimestre, ela permite exatamente o
+> tipo de leitura que o §2 proíbe. É por isso que ela é lista fechada e sem categoria de
+> saúde — a mitigação é o **domínio**, já que o prazo não pode ser menor sem quebrar o
+> append-only.
+
 **Cadastro:** vive enquanto a escola o mantiver. Sai quando a secretaria importa uma
 planilha nova sem aquele aluno (`trocarCadastro` substitui o cadastro inteiro).
 
@@ -147,7 +183,7 @@ planilha nova sem aquele aluno (`trocarCadastro` substitui o cadastro inteiro).
 
 | Quem | Alcance |
 |---|---|
-| Portaria | O cadastro **inteiro** e a trilha inteira |
+| Portaria | O cadastro **inteiro** e a trilha inteira, `razao` incluída |
 | Sala | Só as chamadas da **própria turma**, filtrado no servidor, na leitura e na escrita |
 | Qualquer um com o link | **Tudo o que a portaria alcança** — ver abaixo |
 
@@ -179,6 +215,7 @@ anonimização, portabilidade, eliminação e informação sobre compartilhament
 | Correção do nome | Nova importação da planilha corrigida | Funciona; o `id` muda junto, porque deriva do nome |
 | Eliminação do cadastro | Importar sem aquele aluno | Funciona |
 | Eliminação da trilha | **Não é possível hoje**, por projeto | Ver abaixo |
+| Eliminação só da `razao` | **Não é possível**, e não é descuido | Seria UPDATE numa tabela append-only. É a razão de ela ser lista fechada |
 | Portabilidade | Não existe exportação por aluno | `TODO(fase1)` |
 
 > ⚠️ **A trilha é append-only e isso conflita com o art. 18, VI.** É uma tensão real, não
@@ -224,6 +261,8 @@ razoável. Isso precisa estar no contrato de operador, não só aqui. `TODO(juri
 5. Aviso de privacidade específico, entregue às famílias
 6. Decisão sobre região do armazenamento (§6)
 7. Exportação antes da poda, se a escola precisar de mais de 90 dias (§5)
+8. Revisão jurídica das quatro razões de retorno (§3) — o domínio inteiro cabe numa
+   tabela e pode ser lido antes de existir uma linha, que é exatamente o ponto
 
 Os três primeiros não são recomendação. Com qualquer um deles em aberto, o sistema roda
 com a semente fictícia e mais nada.

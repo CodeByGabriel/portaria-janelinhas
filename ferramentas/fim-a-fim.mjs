@@ -54,12 +54,24 @@ const recusas = (c) => c.recebidos.filter((m) => m.tipo === 'recusa')
  * O cabecalho deste arquivo pedia um `rm -rf .wrangler/state` na mao. Ritual
  * manual antes de um portao e portao que para de rodar.
  */
+/*
+  Como a portaria fecha cada estado. Uma tabela, e nao um encadeado de ifs,
+  para que estado novo obrigue alguem a decidir aqui — foi assim que o
+   chegou e a limpeza rodou dez voltas sem conseguir esvaziar nada.
+*/
+const FECHA = {
+  chamado: 'cancelar',
+  liberado: 'entregar',
+  retorno: 'encerrar',
+}
+
 async function limparMesa(portaria) {
   for (let volta = 0; volta < 10; volta++) {
     const chamadas = ultimo(portaria)?.chamadas ?? []
     if (chamadas.length === 0) return true
     for (const c of chamadas) {
-      const tipo = c.estado === 'liberado' ? 'entregar' : 'cancelar'
+      const tipo = FECHA[c.estado]
+      if (!tipo) continue
       portaria.ws.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
     }
     await esperar(300)
@@ -80,6 +92,21 @@ async function principal() {
 
   conferir('a mesa comeca vazia', await limparMesa(portaria),
     `sobraram ${ultimo(portaria)?.chamadas.length}`)
+
+  /*
+    Marca onde a trilha estava antes desta rodada.
+
+    A trilha e append-only E persiste. As verificacoes que a percorrem inteira
+    passaram a somar as rodadas anteriores: "a trilha guarda as duas voltas"
+    encontrava seis, e "nenhuma acao recusada" tropecava em coisa de outro dia.
+    Nada disso e bug do app — e o teste medindo o historico em vez de medir o
+    que ele mesmo acabou de fazer.
+  */
+  const marcaDaTrilha = (
+    await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())
+  ).length
+  const trilhaDesta = async () =>
+    (await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())).slice(marcaDaTrilha)
 
   portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01' }))
   await esperar(400)
@@ -103,6 +130,121 @@ async function principal() {
   conferir('S1: entregar TIRA a crianca do retrato, nao acumula',
     ultimo(portaria)?.chamadas.length === 0,
     `sobraram ${ultimo(portaria)?.chamadas.length}`)
+
+  console.log('\n== a volta para a sala, e quem pode o que ==')
+
+  /*
+    Uma crianca liberada que nunca foi entregue ficava no quadro para sempre: a
+    expiracao fecha `chamado` esquecido, mas nao fecha `liberado`, porque
+    marca-la como entregue seria o sistema afirmar que um adulto recebeu a
+    crianca sem nenhum adulto ter recebido nada.
+
+    `retornar` e a primeira saida legitima desse estado. E o destino NAO e
+    `chamado`: neste sistema `chamado` significa literalmente "responsavel
+    chegou" — a etiqueta diz isso, a portaria escreve essa frase, a sala conta
+    esse estado no aviso. Com motivo "o responsavel nao chegou", as telas
+    afirmariam o contrario do fato recem-registrado. E a professora poderia
+    liberar de novo sem ninguem reconfirmar o portao.
+  */
+  /*
+    a04, e nao a02: os ataques do red team usam a02 e a05 justamente para poder
+    afirmar depois que NENHUM dos dois entrou na trilha. Reusar um deles aqui
+    tornaria essa verificacao impossivel de distinguir de um furo de verdade.
+  */
+  portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a04' }))
+  await esperar(400)
+  maternal.ws.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a04' }))
+  await esperar(400)
+  conferir('a crianca esta liberada antes de voltar',
+    ultimo(maternal)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'liberado')
+
+  maternal.ws.send(JSON.stringify({ tipo: 'retornar', alunoId: 'a04' }))
+  await esperar(400)
+  conferir('retorno SEM razao e recusado',
+    ultimo(maternal)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'liberado',
+    'a crianca mudou de estado sem razao declarada')
+  conferir('e a recusa diz que faltou a razao',
+    /raz/i.test(recusas(maternal).at(-1)?.motivo ?? ''),
+    recusas(maternal).at(-1)?.motivo)
+
+  maternal.ws.send(JSON.stringify({
+    tipo: 'retornar', alunoId: 'a04', razao: 'inventado por mim',
+  }))
+  await esperar(400)
+  conferir('razao fora da lista e recusada',
+    ultimo(maternal)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'liberado')
+
+  maternal.ws.send(JSON.stringify({
+    tipo: 'retornar', alunoId: 'a04', razao: 'nao-saiu-com-o-responsavel',
+  }))
+  await esperar(400)
+  conferir('com razao valida, a crianca vai para `retorno`',
+    ultimo(maternal)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'retorno')
+  conferir('e a portaria ve o mesmo estado',
+    ultimo(portaria)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'retorno')
+  conferir('a sala de OUTRA turma continua sem ver',
+    !ultimo(jardim)?.chamadas.some((c) => c.alunoId === 'a04'))
+
+  // A sala nao pode liberar de novo: alguem precisa reconfirmar o portao, e
+  // quem enxerga o portao e a portaria.
+  maternal.ws.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a04' }))
+  await esperar(400)
+  conferir('a sala NAO libera direto do retorno',
+    ultimo(maternal)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'retorno')
+
+  // Nem encerrar: encerrar afirma que nao ha ninguem no portao.
+  maternal.ws.send(JSON.stringify({ tipo: 'encerrar', alunoId: 'a04' }))
+  await esperar(400)
+  conferir('a sala NAO encerra o retorno',
+    ultimo(maternal)?.chamadas.find((c) => c.alunoId === 'a04')?.estado === 'retorno')
+  conferir('e a recusa diz que a acao e da portaria',
+    /portaria/.test(recusas(maternal).at(-1)?.motivo ?? ''),
+    recusas(maternal).at(-1)?.motivo)
+
+  // E a portaria nao pode devolver a crianca para a sala: quem sabe que ela
+  // voltou e quem esta com ela.
+  portaria.ws.send(JSON.stringify({
+    tipo: 'retornar', alunoId: 'a01', razao: 'esqueceu-material',
+  }))
+  await esperar(400)
+  conferir('a portaria NAO devolve a crianca para a sala',
+    /sala/.test(recusas(portaria).at(-1)?.motivo ?? ''),
+    recusas(portaria).at(-1)?.motivo)
+
+  // A portaria reconfirma o portao. `desde` reinicia: a espera e nova.
+  const antesDeRechamar = ultimo(portaria)?.chamadas.find((c) => c.alunoId === 'a04')?.desde
+  portaria.ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a04' }))
+  await esperar(400)
+  const depoisDeRechamar = ultimo(portaria)?.chamadas.find((c) => c.alunoId === 'a04')
+  conferir('a portaria chama de novo e a crianca volta para `chamado`',
+    depoisDeRechamar?.estado === 'chamado')
+  conferir('e `desde` reinicia, para a fila nao mentir sobre a espera',
+    depoisDeRechamar?.desde > antesDeRechamar,
+    `${antesDeRechamar} -> ${depoisDeRechamar?.desde}`)
+
+  // Fecha o ciclo pelo outro lado, para deixar a mesa limpa.
+  maternal.ws.send(JSON.stringify({ tipo: 'liberar', alunoId: 'a04' }))
+  await esperar(300)
+  maternal.ws.send(JSON.stringify({
+    tipo: 'retornar', alunoId: 'a04', razao: 'outro',
+  }))
+  await esperar(300)
+  portaria.ws.send(JSON.stringify({ tipo: 'encerrar', alunoId: 'a04' }))
+  await esperar(400)
+  conferir('encerrar tira a crianca do quadro',
+    !ultimo(portaria)?.chamadas.some((c) => c.alunoId === 'a04'))
+
+  const trilhaRetorno = await trilhaDesta()
+  const retornos = trilhaRetorno.filter((e) => e.acao === 'retornar' && e.alunoId === 'a04')
+  conferir('a trilha guarda as duas voltas, com a razao de cada uma',
+    retornos.length === 2 &&
+      retornos[0].razao === 'nao-saiu-com-o-responsavel' &&
+      retornos[1].razao === 'outro',
+    JSON.stringify(retornos.map((e) => e.razao)))
+  conferir('e nenhuma acao recusada entrou na trilha',
+    !trilhaRetorno.some((e) => e.razao === 'inventado por mim'))
+  conferir('as outras acoes tem razao vazia, nunca ausente',
+    trilhaRetorno.filter((e) => e.acao !== 'retornar').every((e) => e.razao === ''))
 
   console.log('\n== ataques do red team ==')
 
@@ -200,7 +342,7 @@ async function principal() {
     portaria.ws.readyState === WebSocket.OPEN)
 
   // trilha
-  const registro = await fetch(`${HTTP}/registro?papel=portaria`).then((r) => r.json())
+  const registro = await trilhaDesta()
   conferir('a trilha registra o papel de quem agiu',
     registro.every((e) => e.papel === 'portaria' || e.papel === 'sala'))
   conferir('a trilha NAO registrou nenhuma acao recusada',

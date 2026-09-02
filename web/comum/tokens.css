@@ -110,6 +110,27 @@ body {
 /* ---------- cabecalho institucional ---------- */
 
 /*
+  `hidden` tem que ganhar de qualquer `display`.
+
+  O atributo `hidden` esconde por `display: none` vindo da folha do navegador —
+  que e a de MENOR prioridade que existe. Qualquer regra nossa que declare
+  `display` na mesma elemento vence, e o elemento fica permanentemente visivel
+  com o atributo `hidden` ali, dizendo o contrario.
+
+  Foi o que aconteceu com a faixa de aviso de som: `.faixa.aviso { display:
+  block }` anulou o `hidden`, e a tela ficou com uma barra preta vazia
+  atravessada nela. As verificacoes automaticas nao pegaram porque leem a
+  PROPRIEDADE `el.hidden`, que continuava correta — a tela e que mentia.
+  Quem pegou foi olhar o print, de novo.
+
+  `!important` aqui e o uso legitimo: e uma regra de plataforma, nao de estilo,
+  e ela existe justamente para nao ser sobrescrita por descuido.
+*/
+[hidden] {
+  display: none !important;
+}
+
+/*
   Rotulo que so o leitor de tela alcanca.
 
   Nao usa `display: none` nem `visibility: hidden`: os dois tiram o elemento
@@ -276,15 +297,44 @@ body {
 
 /* ---------- linha compacta (listas da portaria) ---------- */
 
+/*
+  A linha embrulha quando nao cabe, em vez de atropelar.
+
+  A versao anterior era uma fila rigida de quatro pecas — retrato, nome,
+  etiqueta e acao. Num celular de 430px isso nunca coube: a etiqueta subia por
+  cima do nome ("Maitê Salgado" atras de "responsável chegou") e a acao
+  transbordava para fora da tela. O print da portaria mostrava isso desde
+  sempre; foi o estado `retorno`, que tem DUAS acoes, que tornou impossivel
+  continuar nao vendo.
+
+  `flex-wrap` mais uma quebra forcada antes da acao: o retrato e o nome ficam
+  na primeira linha, a etiqueta e o botao descem juntos quando precisam. Nada
+  de media query, porque o gatilho nao e a largura da tela — e o tamanho do
+  nome, que varia por crianca.
+*/
 .linha {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
   padding: 0.7rem 0.9rem;
   background: var(--superficie);
   border: 1px solid var(--borda);
   border-radius: var(--canto);
   margin-bottom: 0.5rem;
+}
+
+/*
+  A acao vai para o fim da propria linha quando a linha embrulha.
+
+  `margin-left: auto` empurra para a direita enquanto cabe tudo junto, e
+  `flex: none` impede que o botao encolha ate ficar ilegivel — encolher um
+  botao chamado "Entregar" e pior do que baixa-lo uma linha.
+*/
+.linha > button,
+.linha .duasAcoes {
+  margin-left: auto;
+  flex: none;
 }
 
 .linha .foto {
@@ -300,7 +350,9 @@ body {
 .linha .foto svg { width: 100%; height: 100%; display: block; }
 
 .linha .nome {
-  flex: 1;
+  /* `flex: 1` com base 8rem: cresce quando sobra espaco, e quebra a linha
+     inteira antes de espremer o nome de uma crianca ate o corte. */
+  flex: 1 1 8rem;
   min-width: 0;
   font-weight: 500;
   line-height: 1.3;
@@ -505,6 +557,15 @@ select,
 textarea {
   font: inherit;
   width: 100%;
+  /*
+    O alvo de 44px vale para TODO controle, nao so para botao.
+
+    So o botao tinha o minimo, e bastou o seletor de volume ganhar uma fonte um
+    pouco menor para ele cair a 43px — um pixel abaixo do nivel AAA do WCAG
+    2.5.8, invisivel em revisao e medido pela verificacao. Regra por elemento
+    vira regra que alguem esquece; aqui ela vale para todos de uma vez.
+  */
+  min-height: var(--toque-min);
   padding: 0.65rem 0.8rem;
   border-radius: var(--canto);
   border: 1px solid var(--borda-forte);

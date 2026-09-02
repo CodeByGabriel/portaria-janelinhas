@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS trilha (
   origem  TEXT NOT NULL,
   de      TEXT NOT NULL,
   para    TEXT NOT NULL,
-  em      INTEGER NOT NULL
+  em      INTEGER NOT NULL,
+  razao   TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS trilha_por_tempo ON trilha (em);
@@ -77,6 +78,37 @@ export class Deposito {
   /** Idempotente: pode rodar a cada construcao do Durable Object. */
   iniciar(): void {
     this.sql.exec(ESQUEMA)
+    this.migrar()
+  }
+
+  /*
+    Migracao de esquema, e por que ela e assim.
+
+    `iniciar()` roda em TODA construcao do Durable Object, dentro do
+    `blockConcurrencyWhile`. Uma excecao aqui e deterministica: nenhuma tela
+    sobe, e recarregar repete o erro. Entao a regra e uma so — quem decide se a
+    coluna existe e o BANCO, nunca um numero de versao que a gente acha que
+    escreveu.
+
+    O caminho errado, e tentador: por a coluna no ESQUEMA e disparar o ALTER a
+    partir de uma versao guardada em `meta`. Banco novo nasceria com a coluna,
+    leria a versao ausente como antiga, dispararia o ALTER e o SQLite
+    responderia `duplicate column name` — laco de boot na primeira subida.
+
+    `PRAGMA table_info` responde sobre o banco de verdade, entao vale igual num
+    banco novo, num banco antigo e numa segunda passagem. E fica sincrono, sem
+    `await` no meio: e assim que as escritas do Durable Object coalescem numa
+    transacao so.
+  */
+  private migrar(): void {
+    if (!this.temColuna('trilha', 'razao')) {
+      this.sql.exec(`ALTER TABLE trilha ADD COLUMN razao TEXT NOT NULL DEFAULT ''`)
+    }
+  }
+
+  private temColuna(tabela: string, coluna: string): boolean {
+    const colunas = this.sql.exec(`PRAGMA table_info(${tabela})`).toArray()
+    return colunas.some((c) => String((c as { name: unknown }).name) === coluna)
   }
 
   private meta(chave: string): string | null {
@@ -115,7 +147,16 @@ export class Deposito {
 
     const trilha = this.sql
       .exec(
-        'SELECT alunoId, nome, turma, acao, papel, origem, de, para, em FROM trilha ORDER BY seq',
+        /*
+          Migracao, INSERT e SELECT sao UM passo so.
+
+          Com `DEFAULT ''`, esquecer o INSERT ou o SELECT nao da erro: o Livro
+          guarda a trilha em RAM, entao a razao continua aparecendo enquanto o
+          objeto viver, e evapora na primeira hibernacao. Registro plausivelmente
+          incompleto e o pior defeito possivel numa trilha de entrega de crianca.
+        */
+        'SELECT alunoId, nome, turma, acao, papel, origem, de, para, em, razao' +
+          ' FROM trilha ORDER BY seq',
       )
       .toArray() as unknown as EventoAuditoria[]
 
@@ -130,8 +171,8 @@ export class Deposito {
   /** Append-only. Nao existe atualizacao nem remocao individual de evento. */
   registrar(evento: EventoAuditoria): void {
     this.sql.exec(
-      `INSERT INTO trilha (alunoId, nome, turma, acao, papel, origem, de, para, em)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO trilha (alunoId, nome, turma, acao, papel, origem, de, para, em, razao)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       evento.alunoId,
       evento.nome,
       evento.turma,
@@ -141,6 +182,7 @@ export class Deposito {
       evento.de,
       evento.para,
       evento.em,
+      evento.razao,
     )
   }
 

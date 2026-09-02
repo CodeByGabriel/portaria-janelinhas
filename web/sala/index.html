@@ -31,7 +31,36 @@
     .contagem { font-size: 0.82rem; color: var(--tinta-media); margin-left: auto; }
     .tela-apaga { font-size: 0.82rem; color: var(--estado-chamado); font-weight: 500; }
     /* Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`. */
-    .volume { width: auto; min-width: 6.5rem; margin: 0; }
+    /*
+      Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`.
+      Fundo translúcido em vez de branco sólido: no cabeçalho verde, uma caixa
+      branca pesa mais que o nome da escola.
+    */
+    .volume {
+      width: auto; min-width: 7.5rem; margin: 0;
+      background: rgba(255, 255, 255, 0.14);
+      color: var(--tinta-clara);
+      border-color: rgba(255, 255, 255, 0.45);
+      font-size: 0.85rem;
+    }
+    .volume option { color: var(--tinta); }
+    .recusa {
+      background: var(--estado-retorno-fundo);
+      border-bottom: 1px solid var(--estado-retorno);
+      color: var(--estado-retorno);
+      font-weight: 600;
+    }
+    /* A volta para a sala é ação secundária: não disputa o eixo do botão que
+       libera a criança. Ver o comentário em desenhar(). */
+    .cartao .secundaria {
+      width: auto;
+      margin: 0.5rem auto 0;
+      display: block;
+      font-size: 0.85rem;
+    }
+    .razoes { margin-top: 0.75rem; border-top: 1px solid var(--borda); padding-top: 0.7rem; }
+    /* Nome de razão é longo; sem isto o `select` corta no meio da palavra. */
+    .razoes select { margin: 0 0 0.45rem; width: 100%; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -85,6 +114,13 @@
     -->
     <button class="faixa aviso" id="avisoSom" aria-live="polite" hidden></button>
 
+    <!--
+      Recusa do servidor. Fica separada do aviso de som porque as duas podem
+      valer ao mesmo tempo e dizem coisas diferentes: uma é "não te ouvi", a
+      outra é "não fiz o que você pediu".
+    -->
+    <p class="faixa recusa" id="recusa" role="alert" hidden></p>
+
     <main class="palco">
       <p class="vazio" id="vazio">Nenhuma chamada agora.</p>
       <div class="grade" id="grade"></div>
@@ -119,6 +155,24 @@
     import { manterTelaAcesa, aoMudarTelaAcesa } from '../comum/tela-acesa.js'
 
     const TURMA_LEMBRADA = 'janelinhas:turma'
+
+    /*
+      O código vai para a trilha; a frase fica aqui.
+
+      Renomear um rótulo na tela não pode reescrever o passado — e a trilha não
+      tem caminho de correção, então o que entra fica os 90 dias. Por isso o
+      servidor só aceita os códigos, e a lista viva está em `src/estados.ts`.
+
+      Não há razão de saúde: seria dado sensível de uma criança, agrupável por
+      aluno ao longo do trimestre, e `docs/lgpd.md` já proíbe usar a trilha para
+      avaliar aluno. O detalhe clínico fica no livro de ocorrência da escola.
+    */
+    const ROTULO_RAZAO = [
+      ['esqueceu-material', 'Esqueceu material'],
+      ['nao-saiu-com-o-responsavel', 'Não saiu com o responsável'],
+      ['a-escola-reteve', 'A escola reteve'],
+      ['outro', 'Outro motivo'],
+    ]
 
     const TURMAS = [
       ['Educação Infantil', ['Pré 1', 'Pré 2']],
@@ -215,10 +269,12 @@
     }
 
     const seletorVolume = document.getElementById('volume')
+    // O codigo do degrau e interno; o que a professora le e uma palavra.
+    const ROTULO_VOLUME = { baixo: 'Som baixo', medio: 'Som médio', alto: 'Som alto' }
     for (const degrau of degraus()) {
       const opcao = document.createElement('option')
       opcao.value = degrau
-      opcao.textContent = degrau
+      opcao.textContent = ROTULO_VOLUME[degrau] ?? degrau
       seletorVolume.append(opcao)
     }
     seletorVolume.value = volumeAtual()
@@ -266,6 +322,17 @@
           rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'
         },
         aoRetrato: desenhar,
+        /*
+          A sala nunca teve canal de recusa.
+
+          `ligacao.js` chama `aoRecusa?.(dado)` — sem o retorno, toda recusa
+          enviada a sala sumia. Era quase inofensivo enquanto a unica acao dela
+          era `liberar`, porque o retrato seguinte desmentia a tela. `retornar`
+          e a acao cuja falha significa crianca num lugar e registro em outro:
+          a professora aperta "voltou", o servidor recusa, e sem isto ela nao
+          fica sabendo.
+        */
+        aoRecusa: (recusa) => mostrarRecusa(recusa.motivo),
       })
     }
 
@@ -279,14 +346,26 @@
 
       Som que toca quando nada aconteceu ensina a professora a ignorar o som.
     */
+    const faixaRecusa = document.getElementById('recusa')
+    let apagarRecusa = null
+
+    function mostrarRecusa(texto) {
+      faixaRecusa.textContent = texto
+      faixaRecusa.hidden = false
+      clearTimeout(apagarRecusa)
+      apagarRecusa = setTimeout(() => { faixaRecusa.hidden = true }, 8000)
+    }
+
     let jaDesenhou = false
 
     function desenhar(retrato) {
       const primeiro = !jaDesenhou
       jaDesenhou = true
 
+      // `retorno` entra: a criança voltou para esta sala e a professora precisa
+      // continuar vendo o caso aberto até a portaria fechá-lo.
       const ativas = retrato.chamadas
-        .filter((c) => c.estado === 'chamado' || c.estado === 'liberado')
+        .filter((c) => c.estado !== 'entregue')
         .sort((a, b) => a.desde - b.desde)
 
       const presentes = new Set(ativas.map((c) => c.alunoId))
@@ -308,7 +387,45 @@
           botao.onclick = () =>
             conexao.enviar({ tipo: 'liberar', alunoId: chamada.alunoId })
           cartao.acrescentar(botao)
+
+          /*
+            "Voltou para a sala" é ação SECUNDÁRIA, fora do eixo do botão
+            principal.
+
+            No estado `liberado` o botão principal fica desabilitado com
+            "Aguardando no portão": o gesto habitual da professora sobre aquele
+            cartão é um no-op seguro. Pôr a volta ali transformaria a mesma
+            área num botão que rebobina o estado — e o efeito colateral cai na
+            porteira, do outro lado da escola.
+          */
+          const volta = document.createElement('div')
+          volta.className = 'razoes'
+          volta.hidden = true
+
+          const porque = document.createElement('select')
+          porque.setAttribute('aria-label', 'Por que a criança voltou')
+          for (const [codigo, rotulo] of ROTULO_RAZAO) {
+            const o = document.createElement('option')
+            o.value = codigo
+            o.textContent = rotulo
+            porque.append(o)
+          }
+
+          const botaoVolta = document.createElement('button')
+          botaoVolta.className = 'secundaria'
+          botaoVolta.textContent = 'Voltou para a sala'
+          botaoVolta.onclick = () =>
+            conexao.enviar({
+              tipo: 'retornar',
+              alunoId: chamada.alunoId,
+              razao: porque.value,
+            })
+
+          volta.append(porque, botaoVolta)
+          cartao.acrescentar(volta)
+
           cartao.__botao = botao
+          cartao.__volta = volta
           cartao.__estado = null
           cartoes.set(chamada.alunoId, cartao)
           grade.append(cartao)
@@ -320,9 +437,22 @@
           if (chamada.estado === 'liberado' && !primeiro) tocarEntrega()
           cartao.__estado = chamada.estado
         }
-        cartao.__botao.disabled = chamada.estado === 'liberado'
+        /*
+          Em `retorno`, a professora não pode liberar de novo: alguém precisa
+          reconfirmar que há um adulto no portão, e quem enxerga o portão é a
+          portaria. O botão diz isso em vez de sumir — um botão que some leva a
+          professora a achar que perdeu a criança de vista.
+        */
+        cartao.__botao.disabled = chamada.estado !== 'chamado'
         cartao.__botao.textContent =
-          chamada.estado === 'liberado' ? 'Aguardando no portão' : 'Liberar saída'
+          chamada.estado === 'liberado'
+            ? 'Aguardando no portão'
+            : chamada.estado === 'retorno'
+              ? 'Aguardando a portaria chamar de novo'
+              : 'Liberar saída'
+
+        // A volta só existe enquanto a criança está liberada e ainda não saiu.
+        cartao.__volta.hidden = chamada.estado !== 'liberado'
       }
 
       const aguardando = ativas.filter((c) => c.estado === 'chamado').length

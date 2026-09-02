@@ -7,10 +7,17 @@ export interface Chamada {
   turma: Turma
   estado: Estado
   /**
-   * Quando o responsavel chegou. NAO muda nas transicoes seguintes.
-   * E por este campo que a fila e ordenada: a portaria precisa ver quem
-   * espera ha mais tempo, e a lista nao pode reordenar embaixo do dedo da
-   * professora no instante em que ela toca em "liberar".
+   * Desde quando o responsavel esta no portao. Reinicia a cada `chamar`, e so
+   * a cada `chamar` — as demais transicoes do ciclo preservam.
+   *
+   * E por este campo que a fila e ordenada: a portaria precisa ver quem espera
+   * ha mais tempo, e a lista nao pode reordenar embaixo do dedo da professora
+   * no instante em que ela toca em "liberar".
+   *
+   * O reinicio no `chamar` importa por causa do retorno: preservado atraves
+   * dele, a crianca que voltou reapareceria no TOPO da fila como quem espera
+   * ha mais tempo, e o cronometro da 1.3 anunciaria "esperando ha 47 min" para
+   * alguem que acabou de ser chamado.
    */
   desde: number
   /** Quando o estado mudou pela ultima vez. */
@@ -34,6 +41,14 @@ export interface Retrato {
 export interface Comando {
   tipo: Acao
   alunoId: string
+  /**
+   * So faz sentido em `retornar`, e so um codigo de `RAZOES_RETORNO` passa.
+   *
+   * O Livro ZERA este campo em toda outra acao. Sem isso, qualquer sessao —
+   * e o papel ainda vem da query string, sem autenticacao — gravaria texto
+   * arbitrario numa tabela sem UPDATE nem DELETE por linha.
+   */
+  razao?: string
 }
 
 export interface Recusa {
@@ -67,4 +82,11 @@ export interface EventoAuditoria {
   de: Estado
   para: Estado
   em: number
+  /**
+   * Codigo de `RAZOES_RETORNO`, e vazio em toda acao que nao seja `retornar`.
+   *
+   * Codigo, nunca frase: renomear o rotulo na tela nao pode reescrever o
+   * passado, e a trilha nao tem caminho de correcao.
+   */
+  razao: string
 }

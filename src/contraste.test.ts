@@ -152,6 +152,15 @@ test('o alvo de toque declarado atende o nivel AAA', () => {
   assert.ok(Number.parseInt(v!, 10) >= 44, `--toque-min e ${v}, abaixo de 44px`)
   assert.match(CSS, /button\s*\{[^}]*min-height:\s*var\(--toque-min\)/,
     'button nao aplica min-height: var(--toque-min)')
+  // Vale para todo controle, nao so para o botao: bastou o seletor de volume
+  // ganhar uma fonte menor para cair a 43px, um pixel abaixo do minimo, o que
+  // ninguem ve em revisao.
+  const bloco = CSS.slice(CSS.indexOf('select,'))
+  assert.match(
+    bloco.slice(0, bloco.indexOf('}')),
+    /min-height:\s*var\(--toque-min\)/,
+    'os campos e selects nao aplicam min-height: var(--toque-min)',
+  )
 })
 
 test('REGRESSAO: nenhum estado fica sem rotulo textual', () => {
