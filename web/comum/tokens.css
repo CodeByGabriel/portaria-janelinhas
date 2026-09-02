@@ -184,6 +184,36 @@ body {
   font-weight: 500;
 }
 
+/*
+  Aviso de som interrompido.
+
+  E um <button> porque reativar audio exige gesto do usuario: um aviso que so
+  informasse deixaria a professora sabendo do problema e sem o que fazer. Mas
+  ocupa a largura toda como faixa, e nao parece um botao de acao comum, porque
+  nao e uma escolha dela — e o aparelho avisando que falhou.
+
+  Se destaca por LUMINANCIA, nao por matiz: barra escura com texto claro, entre
+  faixas palidas. Nao empresta a cor de nenhum estado de aluno — `chamado` fica
+  logo acima e ficariam iguais; `retorno` chega na Fase 1 e o significado dele
+  e outro. E, por ser inversao e nao cor, continua saltando em qualquer
+  simulacao de daltonismo.
+
+  Herda de `button` o min-height de 44px, entao ja nasce dentro do alvo AAA.
+*/
+.faixa.aviso {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: var(--tinta);
+  color: var(--tinta-clara);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.7rem 1.15rem;
+  cursor: pointer;
+}
+
 /* ---------- cartao do aluno ---------- */
 
 .cartao {

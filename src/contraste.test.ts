@@ -68,6 +68,11 @@ export function contraste(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
 
+/** Remove comentarios de bloco e de linha, para asserções sobre CODIGO. */
+function semComentarios(fonte: string): string {
+  return fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
 const TEXTO = 4.5 // WCAG 1.4.3
 const NAO_TEXTO = 3.0 // WCAG 1.4.11
 
@@ -221,4 +226,57 @@ test('REGRESSAO: a faixa de cada estado tem desenho proprio, nao so cor', () => 
     )
     vistos.set(desenho, e)
   }
+})
+
+test('o aviso de som interrompido le sobre o proprio fundo', () => {
+  // Ele se destaca por luminancia, nao por matiz — nao empresta a cor de
+  // nenhum estado de aluno. Mas inversao so vale se o texto continuar legivel.
+  const r = contraste(cor('--tinta-clara'), cor('--tinta'))
+  assert.ok(r >= TEXTO, `aviso de som: ${r.toFixed(2)} < ${TEXTO}`)
+  assert.match(
+    CSS,
+    /\.faixa\.aviso\s*\{[^}]*background:\s*var\(--tinta\)/,
+    '.faixa.aviso deixou de usar o fundo escuro',
+  )
+})
+
+test('REGRESSAO: o som confere o ESTADO do contexto, nao so a existencia', () => {
+  /*
+    `tocarAbertura()` testava `!contexto`. Depois do primeiro gesto o objeto
+    existe para sempre, mas o sistema pode suspende-lo — aba em segundo plano,
+    ligacao, tela bloqueada. A funcao rodava inteira, agendava as notas num
+    contexto parado, e nao saia som nenhum, sem nada na tela dizendo isso.
+    A professora ficava esperando o aviso com o responsavel parado no portao.
+  */
+  // Sem os comentarios: o texto que EXPLICA a guarda antiga cita a guarda
+  // antiga, e a primeira versao deste teste reprovou o proprio comentario.
+  const som = semComentarios(
+    readFileSync(join(RAIZ, 'web', 'comum', 'som.js'), 'utf8'),
+  )
+  assert.match(som, /contexto\.state === 'running'/,
+    'som.js nao confere se o contexto esta rodando antes de agendar')
+  assert.match(som, /contexto\.resume\(\)/,
+    'som.js nao tenta reativar um contexto suspenso')
+  assert.doesNotMatch(som, /if \(mudo \|\| !contexto\) return/,
+    'a guarda cega `mudo || !contexto` voltou')
+})
+
+test('REGRESSAO: o mudo sobrevive ao recarregamento', () => {
+  // Sem isto a professora silenciava a sala e o proximo F5 devolvia o som,
+  // no meio do turno, com a turma inteira em aula.
+  const som = semComentarios(
+    readFileSync(join(RAIZ, 'web', 'comum', 'som.js'), 'utf8'),
+  )
+  assert.match(som, /localStorage\.setItem/, 'o mudo nao e guardado')
+  assert.match(som, /localStorage\.getItem/, 'o mudo nao e lido na abertura')
+  // localStorage lanca em aba com armazenamento bloqueado; o padrao de falha
+  // tem que ser SOM LIGADO, nunca uma sala que emudece sozinha.
+  assert.match(som, /catch \{\s*\n\s*return false/,
+    'a falha de localStorage nao cai em som ligado')
+})
+
+test('REGRESSAO: o botao de mudo diz o estado para leitor de tela', () => {
+  const sala = readFileSync(join(RAIZ, 'web', 'sala', 'index.html'), 'utf8')
+  assert.match(sala, /id="mudo"[^>]*aria-pressed/, 'o botao de mudo nao tem aria-pressed')
+  assert.match(sala, /setAttribute\('aria-pressed'/, 'aria-pressed nunca e atualizado')
 })

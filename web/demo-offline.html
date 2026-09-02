@@ -37,22 +37,61 @@
   /* texto */
   --tinta: #16211c;
   --tinta-media: #4a5852;
-  --tinta-fraca: #78857f;
+  /*
+    Era #78857f: 3,54 sobre o fundo e 3,85 sobre o cartao — reprovava o
+    minimo de 4,5 do WCAG 1.4.3. Carrega a turma no cartao, o detalhe na
+    linha e o aviso de truncamento da busca, entao nao e texto decorativo.
+  */
+  --tinta-fraca: #5f6b66;
   --tinta-clara: #ffffff;
 
-  /* estados da saida */
-  --chamado-fundo: #fdf1de;
-  --chamado-borda: #f0d4a3;
-  --chamado-tinta: #8a5209;
-  --liberado-fundo: var(--marca-clara);
-  --liberado-borda: var(--marca-borda);
-  --liberado-tinta: var(--marca-escura);
+  /*
+    ESTADOS.
+
+    Regra de uso: nenhum destes tokens aparece sozinho. Cada estado se
+    apresenta por quatro canais ao mesmo tempo — cor, icone, rotulo textual e
+    faixa lateral. O componente monta o conjunto (web/comum/cartao.js); a tela
+    nao escolhe.
+
+    Todos os pares foram medidos: cada cor passa 4,5 como texto sobre o fundo
+    e sobre o cartao, e passa 3,0 como faixa. src/contraste.test.ts trava isso.
+  */
+  --estado-aguardando: #736c67;
+  --estado-chamado: #c2410c;
+  --estado-liberado: #15803d;
+  --estado-entregue: #1d4ed8;
+  --estado-retorno: #86198f;
+
+  --estado-aguardando-fundo: #f7f6f5;
+  --estado-chamado-fundo: #fef6e9;
+  --estado-liberado-fundo: #f2f9f5;
+  --estado-entregue-fundo: #e7edfc;
+  --estado-retorno-fundo: #f8e9f8;
+
   --alerta: #a4302a;
   --alerta-fundo: #fbeceb;
+
+  /* Botao desabilitado: par proprio, nunca opacity. Ver a regra la embaixo. */
+  --apagado-fundo: #dfe4e1;
+  --apagado-tinta: #3f4b45;
+
+  /* nomes antigos, mantidos para nao quebrar telas que ainda os usam */
+  --chamado-fundo: var(--estado-chamado-fundo);
+  --chamado-borda: #f0d4a3;
+  --chamado-tinta: var(--estado-chamado);
+  --liberado-fundo: var(--estado-liberado-fundo);
+  --liberado-borda: var(--marca-borda);
+  --liberado-tinta: var(--estado-liberado);
 
   /* medidas */
   --canto: 8px;
   --canto-g: 12px;
+  /*
+    Alvo de toque. 44px e o nivel AAA (WCAG 2.5.5), acima do minimo AA de 24.
+    A baseline mediu 6 de 9 acoes primarias em 40,1px, e o summary da
+    importacao em 18,7 — abaixo ate do minimo AA.
+  */
+  --toque-min: 44px;
   --transicao: 180ms cubic-bezier(0.2, 0, 0.2, 1);
   --sombra: 0 1px 2px rgba(22, 33, 28, 0.06), 0 1px 3px rgba(22, 33, 28, 0.04);
   --sombra-alta: 0 2px 4px rgba(22, 33, 28, 0.08), 0 4px 12px rgba(22, 33, 28, 0.06);
@@ -152,6 +191,36 @@ body {
   font-weight: 500;
 }
 
+/*
+  Aviso de som interrompido.
+
+  E um <button> porque reativar audio exige gesto do usuario: um aviso que so
+  informasse deixaria a professora sabendo do problema e sem o que fazer. Mas
+  ocupa a largura toda como faixa, e nao parece um botao de acao comum, porque
+  nao e uma escolha dela — e o aparelho avisando que falhou.
+
+  Se destaca por LUMINANCIA, nao por matiz: barra escura com texto claro, entre
+  faixas palidas. Nao empresta a cor de nenhum estado de aluno — `chamado` fica
+  logo acima e ficariam iguais; `retorno` chega na Fase 1 e o significado dele
+  e outro. E, por ser inversao e nao cor, continua saltando em qualquer
+  simulacao de daltonismo.
+
+  Herda de `button` o min-height de 44px, entao ja nasce dentro do alvo AAA.
+*/
+.faixa.aviso {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: var(--tinta);
+  color: var(--tinta-clara);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.7rem 1.15rem;
+  cursor: pointer;
+}
+
 /* ---------- cartao do aluno ---------- */
 
 .cartao {
@@ -167,9 +236,6 @@ body {
   box-shadow: var(--sombra);
   transition: box-shadow var(--transicao), border-color var(--transicao);
 }
-
-.cartao[data-estado='chamado'] { border-color: var(--chamado-borda); }
-.cartao[data-estado='liberado'] { border-color: var(--liberado-borda); }
 
 .cartao .foto {
   width: 96px;
@@ -235,7 +301,74 @@ body {
   color: var(--tinta-fraca);
 }
 
+
+/* ---------- faixa lateral de estado ---------- */
+
+/*
+  O quarto canal, junto de cor, icone e rotulo.
+
+  A primeira versao deste bloco so trocava a COR da faixa, e o comentario
+  afirmava que quem nao distingue matiz ainda leria a posicao e a espessura.
+  Era falso: as cinco faixas tinham a mesma posicao e a mesma espessura. A
+  captura em `docs/prints/fase-0/deuteranopia/sala.png` mostra o resultado —
+  a faixa verde de `liberado` e a terracota de `chamado` viram o mesmo oliva,
+  lado a lado, e a faixa nao separa nada. Nao era um quarto canal; era o
+  primeiro canal desenhado maior.
+
+  Agora cada estado tem um DESENHO proprio de traco, que sobrevive a qualquer
+  simulacao porque nao depende de cor nenhuma:
+
+    aguardando  3px pontilhado  — traco fino e interrompido, o estado quieto
+    chamado     6px solido      — a barra cheia, o unico que pede acao agora
+    liberado    6px duplo       — duas barras, "passou por duas maos"
+    entregue    6px tracejado   — traco largo e interrompido, ciclo fechado
+    retorno     6px pontilhado  — pontilhado grosso, distinto do aguardando
+                                  pela espessura
+
+  A cor continua ali por cima, e continua util para quem a enxerga: a faixa
+  usa a cor cheia do estado, que passa 3:1 como nao-texto, contra 1,43 da
+  borda de 1px que existia antes.
+
+  Fica DEPOIS de .cartao e .linha de proposito: as duas declaram `border` no
+  atalho, e o atalho reescreve border-left-width. Colocado antes, este bloco
+  era silenciosamente anulado.
+*/
+.cartao,
+.linha {
+  border-left-width: 6px;
+  border-left-style: solid;
+  border-left-color: var(--borda);
+}
+
+.cartao[data-estado='aguardando'],
+.linha[data-estado='aguardando'] {
+  border-left-color: var(--estado-aguardando);
+  border-left-style: dotted;
+  border-left-width: 3px;
+}
+.cartao[data-estado='chamado'],
+.linha[data-estado='chamado'] {
+  border-left-color: var(--estado-chamado);
+  border-left-style: solid;
+}
+.cartao[data-estado='liberado'],
+.linha[data-estado='liberado'] {
+  border-left-color: var(--estado-liberado);
+  border-left-style: double;
+}
+.cartao[data-estado='entregue'],
+.linha[data-estado='entregue'] {
+  border-left-color: var(--estado-entregue);
+  border-left-style: dashed;
+}
+.cartao[data-estado='retorno'],
+.linha[data-estado='retorno'] {
+  border-left-color: var(--estado-retorno);
+  border-left-style: dotted;
+}
+
 /* ---------- etiqueta de estado ---------- */
+
 
 .etiqueta {
   display: inline-block;
@@ -250,16 +383,47 @@ body {
   white-space: nowrap;
 }
 
+.etiqueta[data-estado='aguardando'] {
+  background: var(--estado-aguardando-fundo);
+  color: var(--estado-aguardando);
+  border-color: var(--estado-aguardando);
+}
+
 .etiqueta[data-estado='chamado'] {
-  background: var(--chamado-fundo);
-  color: var(--chamado-tinta);
-  border-color: var(--chamado-borda);
+  background: var(--estado-chamado-fundo);
+  color: var(--estado-chamado);
+  border-color: var(--estado-chamado);
 }
 
 .etiqueta[data-estado='liberado'] {
-  background: var(--liberado-fundo);
-  color: var(--liberado-tinta);
-  border-color: var(--liberado-borda);
+  background: var(--estado-liberado-fundo);
+  color: var(--estado-liberado);
+  border-color: var(--estado-liberado);
+}
+
+.etiqueta[data-estado='entregue'] {
+  background: var(--estado-entregue-fundo);
+  color: var(--estado-entregue);
+  border-color: var(--estado-entregue);
+}
+
+.etiqueta[data-estado='retorno'] {
+  background: var(--estado-retorno-fundo);
+  color: var(--estado-retorno);
+  border-color: var(--estado-retorno);
+}
+
+/* O icone vive dentro da etiqueta e herda a cor do estado. */
+.etiqueta svg {
+  width: 0.95em;
+  height: 0.95em;
+  vertical-align: -0.15em;
+  margin-right: 0.3em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- controles ---------- */
@@ -268,6 +432,7 @@ button {
   font: inherit;
   font-size: 0.92rem;
   font-weight: 500;
+  min-height: var(--toque-min);
   padding: 0.5rem 0.9rem;
   border-radius: var(--canto);
   border: 1px solid var(--borda-forte);
@@ -279,7 +444,6 @@ button {
 
 button:hover:not(:disabled) { background: var(--superficie-2); }
 button:active:not(:disabled) { transform: translateY(1px); }
-button:disabled { opacity: 0.45; cursor: default; }
 
 button.principal {
   background: var(--marca);
@@ -298,6 +462,30 @@ button.fantasma {
 }
 
 button.fantasma:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+
+/*
+  Desabilitado com par proprio, NUNCA com opacity.
+
+  A versao anterior usava opacity: 0.45 no elemento inteiro, o que compunha
+  texto E fundo contra a pagina e derrubava o contraste para 2,12 — menos da
+  metade do minimo. E era justamente o estado "Aguardando no portao", o que
+  confirma a professora que ela ja fez a parte dela.
+
+  Fica DEPOIS de .principal e .fantasma de proposito. Colocado antes, tinha a
+  mesma especificidade que elas e perdia por ordem: o botao desabilitado
+  continuava verde-cheio na tela, e o teste de tokens nao pegava porque ele
+  mede as cores declaradas, nao qual regra vence a cascata. Quem pegou foi
+  olhar o print.
+*/
+button:disabled,
+button.principal:disabled,
+button.fantasma:disabled,
+button.larga:disabled {
+  background: var(--apagado-fundo);
+  color: var(--apagado-tinta);
+  border-color: var(--borda-forte);
+  cursor: default;
+}
 
 input[type='text'],
 input:not([type]),
@@ -545,15 +733,59 @@ function retratoDe(nome) {
   Os dois formatos em que um aluno aparece.
 
   Nada aqui usa innerHTML com o nome: nome vem de planilha colada pela
-  secretaria, e interpolar isso em template transforma um nome com marcacao
-  em codigo executando na tela. textContent nao interpreta marcacao.
+  secretaria, e interpolar isso em template transforma um nome com marcacao em
+  codigo executando na tela. textContent nao interpreta marcacao.
+
+  REGRA DOS ESTADOS. Nenhum estado se apresenta so por cor. Cada um traz
+  quatro canais ao mesmo tempo:
+
+    cor      — token --estado-*, todos medidos contra as superficies
+    rotulo   — texto em portugues corrido, nunca jargao
+    icone    — forma distinta, para quem nao distingue matiz
+    faixa    — posicao e espessura na lateral (o CSS cuida, via data-estado)
+
+  O componente monta o conjunto. A tela nao escolhe partes dele — foi assim
+  que `aguardando` acabou sem rotulo nenhum, comunicado apenas pela AUSENCIA
+  da etiqueta.
 */
 
 const ROTULO = {
-  aguardando: '',
+  aguardando: 'aguardando',
   chamado: 'responsável chegou',
   liberado: 'liberado',
   entregue: 'entregue',
+  retorno: 'retornou à sala',
+}
+
+/*
+  Icones desenhados a mao, em SVG inline.
+
+  Sem biblioteca e sem CDN: o app tem que subir com o cabo da escola
+  desconectado, e uma fonte de icone remota seria a unica dependencia externa
+  do projeto inteiro. Cada glifo e um punhado de tracos num viewBox de 24.
+*/
+const ICONE = {
+  aguardando: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
+  chamado: ['M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7', 'M13.7 21a2 2 0 0 1-3.4 0'],
+  liberado: ['M20 6 9 17l-5-5'],
+  entregue: ['M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8', 'M17 16l4-4-4-4', 'M21 12H10'],
+  retorno: ['M9 14 4 9l5-5', 'M4 9h11a5 5 0 0 1 0 10h-4'],
+}
+
+const NS = 'http://www.w3.org/2000/svg'
+
+function icone(estado) {
+  const tracos = ICONE[estado]
+  if (!tracos) return null
+  const svg = document.createElementNS(NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('aria-hidden', 'true')
+  for (const d of tracos) {
+    const caminho = document.createElementNS(NS, 'path')
+    caminho.setAttribute('d', d)
+    svg.append(caminho)
+  }
+  return svg
 }
 
 function foto(nome, classe) {
@@ -561,6 +793,26 @@ function foto(nome, classe) {
   caixa.className = classe
   caixa.append(retratoDe(nome))
   return caixa
+}
+
+/** Etiqueta completa: icone + rotulo + cor, os tres sempre juntos. */
+function etiquetaDe(texto, estado) {
+  const span = document.createElement('span')
+  span.className = 'etiqueta'
+  if (estado) {
+    span.dataset.estado = estado
+    const glifo = icone(estado)
+    if (glifo) span.append(glifo)
+  }
+  span.append(document.createTextNode(texto))
+  return span
+}
+
+/** Monta a etiqueta a partir do estado, com o rotulo que lhe pertence. */
+function etiquetaDoEstado(estado) {
+  const texto = ROTULO[estado]
+  if (!texto) return null
+  return etiquetaDe(texto, estado)
 }
 
 /**
@@ -580,22 +832,21 @@ function criarCartao({ nome, turma }) {
   turmaEl.className = 'turma'
   turmaEl.textContent = turma
 
-  const etiqueta = document.createElement('span')
-  etiqueta.className = 'etiqueta'
-  etiqueta.hidden = true
-
   const textos = document.createElement('div')
   textos.append(nomeEl, turmaEl)
 
-  raiz.append(foto(nome, 'foto'), textos, etiqueta)
+  const lugarDaEtiqueta = document.createElement('div')
+  lugarDaEtiqueta.className = 'lugar-etiqueta'
+
+  raiz.append(foto(nome, 'foto'), textos, lugarDaEtiqueta)
 
   raiz.definirEstado = (estado) => {
     raiz.dataset.estado = estado
-    const texto = ROTULO[estado] ?? ''
-    etiqueta.textContent = texto
-    etiqueta.dataset.estado = estado
-    etiqueta.hidden = texto === ''
+    lugarDaEtiqueta.replaceChildren()
+    const etiqueta = etiquetaDoEstado(estado)
+    if (etiqueta) lugarDaEtiqueta.append(etiqueta)
   }
+  raiz.definirEstado('aguardando')
 
   raiz.acrescentar = (no) => {
     raiz.append(no)
@@ -609,6 +860,8 @@ function criarCartao({ nome, turma }) {
 function criarLinha({ nome, turma, estado }) {
   const raiz = document.createElement('li')
   raiz.className = 'linha'
+  // Alimenta a faixa lateral do CSS. Sem isto a linha fica sem o quarto canal.
+  if (estado) raiz.dataset.estado = estado
 
   const bloco = document.createElement('div')
   bloco.className = 'nome'
@@ -621,24 +874,10 @@ function criarLinha({ nome, turma, estado }) {
 
   raiz.append(foto(nome, 'foto'), bloco)
 
-  if (estado && ROTULO[estado]) {
-    const etiqueta = document.createElement('span')
-    etiqueta.className = 'etiqueta'
-    etiqueta.dataset.estado = estado
-    etiqueta.textContent = ROTULO[estado]
-    raiz.append(etiqueta)
-  }
+  const etiqueta = estado ? etiquetaDoEstado(estado) : null
+  if (etiqueta) raiz.append(etiqueta)
 
   return raiz
-}
-
-/** Etiqueta solta, para quando so o estado precisa aparecer. */
-function etiquetaDe(texto, estado) {
-  const span = document.createElement('span')
-  span.className = 'etiqueta'
-  if (estado) span.dataset.estado = estado
-  span.textContent = texto
-  return span
 }
 
 
@@ -651,18 +890,109 @@ function etiquetaDe(texto, estado) {
   destravar() precisa ser chamado de dentro de um clique — senao a primeira
   chamada da apresentacao sai muda, que e exatamente o momento que precisa
   funcionar.
+
+  E DEPOIS DO PRIMEIRO GESTO O CONTEXTO PODE SUSPENDER DE NOVO. Aba em segundo
+  plano, chamada telefonica, tela bloqueada, economia de bateria: o sistema
+  suspende, e a versao anterior deste arquivo so testava `!contexto`. O objeto
+  continuava existindo, entao tocarAbertura() executava inteira, agendava as
+  notas num contexto parado, e nao saia som — sem nada na tela dizendo isso.
+  A professora ficava esperando um aviso que nunca vinha, com o responsavel
+  parado no portao.
+
+  Este modulo nao toca no DOM: quem quiser avisar registra um retorno em
+  `aoFalharSom`. Assim ele continua servindo a sala, a portaria e a demo, que
+  desenham o aviso cada uma do seu jeito.
 */
 
+const CHAVE_MUDO = 'janelinhas:mudo'
+
 let contexto = null
-let mudo = false
+let mudo = mudoGuardado()
+let avisar = () => {}
+
+/*
+  localStorage lanca excecao em aba anonima com armazenamento bloqueado, e o
+  padrao de falha aqui e SOM LIGADO: um app que emudece sozinho por causa de
+  uma configuracao de privacidade e pior que um que fala demais.
+*/
+function mudoGuardado() {
+  try {
+    return localStorage.getItem(CHAVE_MUDO) === 'sim'
+  } catch {
+    return false
+  }
+}
+
+function guardarMudo(valor) {
+  try {
+    localStorage.setItem(CHAVE_MUDO, valor ? 'sim' : 'nao')
+  } catch {
+    /* sem armazenamento: vale so para esta sessao */
+  }
+}
+
+/**
+ * Registra quem recebe o aviso de que o som nao saiu.
+ * Chamado com uma mensagem quando falha, e com null quando volta a funcionar.
+ */
+function aoFalharSom(retorno) {
+  avisar = typeof retorno === 'function' ? retorno : () => {}
+}
+
+const AVISO_SUSPENSO = 'O som foi interrompido pelo aparelho. Toque aqui para reativar.'
 
 function destravar() {
   if (!contexto) {
     const Contexto = window.AudioContext || window.webkitAudioContext
-    if (!Contexto) return
+    if (!Contexto) {
+      avisar('Este navegador não toca som.')
+      return
+    }
     contexto = new Contexto()
+    /*
+      A unica notificacao CONFIAVEL de que o contexto voltou.
+
+      Ver o comentario de acordar(): a promessa do resume() nao serve para
+      saber quando ele volta, porque ela pode nunca resolver. O statechange
+      dispara de verdade quando o navegador libera o audio — inclusive quando
+      a liberacao vem de um gesto em outro lugar da tela, que a promessa
+      daquela chamada especifica jamais veria.
+    */
+    contexto.onstatechange = () => {
+      avisar(contexto.state === 'running' ? null : AVISO_SUSPENSO)
+    }
   }
-  if (contexto.state === 'suspended') contexto.resume()
+  acordar()
+}
+
+/*
+  Tenta acordar o contexto e RESPONDE NA HORA se ele nao estiver rodando.
+
+  A primeira versao disto fazia `contexto.resume().then(conferir, avisar)`, o
+  que parecia certo e nao era: no Chrome, resume() num contexto sem ativacao do
+  usuario devolve uma promessa que fica PENDENTE — nao resolve nem rejeita, e
+  espera indefinidamente por um gesto. Nenhum dos dois ramos rodava, nenhum
+  aviso aparecia, e a tela ficava exatamente tao calada quanto antes da
+  correcao. A verificacao em `ferramentas/telas.mjs` pegou isso.
+
+  Por isso o estado e lido de forma sincrona e o aviso sai imediatamente. O
+  resume continua sendo tentado, e quem desfaz o aviso e o onstatechange.
+
+  Devolve se o som pode sair agora.
+*/
+function acordar() {
+  if (!contexto) return false
+  if (contexto.state === 'running') {
+    avisar(null)
+    return true
+  }
+  avisar(AVISO_SUSPENSO)
+  try {
+    contexto.resume().catch(() => {})
+  } catch {
+    /* alguns navegadores lancam em vez de rejeitar */
+  }
+  return false
 }
 
 function estaMudo() {
@@ -671,6 +1001,7 @@ function estaMudo() {
 
 function alternarMudo() {
   mudo = !mudo
+  guardarMudo(mudo)
   return mudo
 }
 
@@ -688,17 +1019,40 @@ function nota(frequencia, atraso, duracao, volume) {
   osc.stop(comeco + duracao + 0.05)
 }
 
+/*
+  Toca, ou diz por que nao tocou.
+
+  Nao ha caminho em que esta funcao termine sem som E sem aviso — era isso que
+  acontecia antes, quando a guarda era `if (mudo || !contexto) return`: depois
+  do primeiro gesto o objeto existe para sempre, entao a guarda passava, as
+  notas eram agendadas num contexto parado, e a sala ficava muda sem sinal.
+
+  Quando o contexto nao esta rodando as notas NAO sao agendadas para depois:
+  `nota()` marca o comeco a partir de `currentTime`, que num contexto parado
+  nao anda, e um toque que sai tres minutos atrasado chama a professora para
+  uma crianca que ja saiu. Melhor o aviso na tela.
+*/
+function tocar(notas) {
+  if (mudo) return
+  if (!contexto) {
+    avisar('O som ainda não foi ligado nesta tela. Toque aqui para ligar.')
+    return
+  }
+  if (!acordar()) return
+  for (const n of notas) nota(...n)
+}
+
 /** Duas notas quentes, subindo. A janelinha abriu. */
 function tocarAbertura() {
-  if (mudo || !contexto) return
-  nota(587.33, 0, 0.34, 0.16)
-  nota(880.0, 0.15, 0.46, 0.13)
+  tocar([
+    [587.33, 0, 0.34, 0.16],
+    [880.0, 0.15, 0.46, 0.13],
+  ])
 }
 
 /** Toque seco e curto. O ciclo fechou. */
 function tocarEntrega() {
-  if (mudo || !contexto) return
-  nota(392.0, 0, 0.16, 0.11)
+  tocar([[392.0, 0, 0.16, 0.11]])
 }
 
 /* ===== web/demo/index.html ===== */

@@ -266,6 +266,163 @@ async function principal() {
   const sumiu = await cdp.avaliar(`document.getElementById('semResultado').hidden`)
   conferir('e some quando a busca volta a achar', sumiu === true)
 
+  console.log('\n== o som nao falha calado ==')
+
+  /*
+    Suspende o contexto DE VERDADE, que e o defeito C exato.
+
+    A primeira tentativa foi entrar na sala sem ativacao do usuario, na
+    esperanca de que o contexto nascesse suspenso. Nao nasce: medido, o Chrome
+    headless devolve `running` mesmo com --autoplay-policy=user-gesture-required
+    e `navigator.userActivation.hasBeenActive === false`. Sem alto-falante nao
+    ha o que a politica proteja. A verificacao passava por nao reproduzir nada.
+
+    Entao o harness instrumenta o AMBIENTE, e nao a aplicacao: um script
+    injetado antes do carregamento guarda os contextos criados, e daqui a gente
+    chama suspend() neles. E o mesmo que o sistema faz quando a aba vai para
+    segundo plano, entra uma ligacao ou a tela bloqueia. A pagina sob teste
+    continua sendo a pagina de producao, sem gancho nenhum.
+  */
+  const instrumentacao = await cdp.chamar('Page.addScriptToEvaluateOnNewDocument', {
+    source: `
+      (() => {
+        const Original = window.AudioContext
+        if (!Original) return
+        window.__contextos = []
+        window.AudioContext = class extends Original {
+          constructor(...args) {
+            super(...args)
+            window.__contextos.push(this)
+          }
+        }
+      })()
+    `,
+  })
+
+  const turmaDoAluno = forasteiro.turma
+  await cdp.chamar('Page.navigate', {
+    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+  })
+  await esperar(2000)
+
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('entrar').click()`,
+    userGesture: true,
+  })
+  await esperar(1000)
+
+  const entrou = await cdp.avaliar(`document.getElementById('app').hidden === false`)
+  conferir('a sala entrou', entrou === true)
+
+  const antes = await cdp.avaliar(`
+    (() => {
+      const el = document.getElementById('avisoSom')
+      return { existe: !!el, visivel: el ? el.hidden === false : null,
+               contextos: (window.__contextos || []).length,
+               estado: (window.__contextos || [])[0]?.state ?? null }
+    })()
+  `)
+  conferir('existe aviso de som interrompido', antes.existe)
+  conferir('o harness alcancou o contexto de audio da pagina',
+    antes.contextos >= 1, JSON.stringify(antes))
+  conferir('com o som funcionando, o aviso fica escondido',
+    antes.visivel === false, JSON.stringify(antes))
+
+  // O aparelho suspende o audio. Nada muda na aplicacao; muda o ambiente.
+  const suspendeu = await cdp.avaliar(`
+    (async () => {
+      await window.__contextos[0].suspend()
+      return window.__contextos[0].state
+    })()
+  `)
+  await esperar(400)
+  conferir('o contexto ficou suspenso', suspendeu === 'suspended', String(suspendeu))
+
+  const durante = await cdp.avaliar(`
+    (() => {
+      const el = document.getElementById('avisoSom')
+      return { visivel: el.hidden === false, texto: (el.textContent || '').trim(),
+               clicavel: el.tagName === 'BUTTON' }
+    })()
+  `)
+  conferir('o som suspenso VIRA aviso na tela, nao silencio',
+    durante.visivel === true, JSON.stringify(durante))
+  conferir('o aviso diz o que fazer, e da para agir nele',
+    durante.texto.length > 0 && durante.clicavel === true, JSON.stringify(durante))
+
+  /*
+    E uma chamada chegando com o som parado nao pode explodir nem apagar o
+    aviso: a crianca ainda precisa aparecer na tela, que e o canal que sobrou.
+  */
+  outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
+  await esperar(1500)
+  const comChamada = await cdp.avaliar(`
+    (() => ({
+      cartoes: document.querySelectorAll('.cartao').length,
+      aviso: document.getElementById('avisoSom').hidden === false,
+    }))()
+  `)
+  conferir('a crianca aparece mesmo com o som parado',
+    comChamada.cartoes >= 1, JSON.stringify(comChamada))
+  conferir('e o aviso continua de pe', comChamada.aviso === true,
+    JSON.stringify(comChamada))
+
+  // A professora toca no aviso. O som volta e o aviso some sozinho.
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('avisoSom').click()`,
+    userGesture: true,
+  })
+  await esperar(700)
+  const depois = await cdp.avaliar(`
+    (() => ({
+      estado: window.__contextos[0].state,
+      aviso: document.getElementById('avisoSom').hidden === false,
+    }))()
+  `)
+  conferir('tocar no aviso reativa o som', depois.estado === 'running',
+    JSON.stringify(depois))
+  conferir('e o aviso some sozinho quando o som volta', depois.aviso === false,
+    JSON.stringify(depois))
+
+  /*
+    O mudo tem que atravessar o F5. Sem isto a professora silenciava a sala e o
+    proximo recarregamento devolvia o som, no meio do turno, com a turma toda
+    em aula.
+  */
+  await cdp.chamar('Runtime.evaluate', {
+    expression: `document.getElementById('mudo').click()`,
+    userGesture: true,
+  })
+  await esperar(300)
+  const mudouRotulo = await cdp.avaliar(`
+    (() => {
+      const b = document.getElementById('mudo')
+      return { texto: b.textContent.trim(), pressed: b.getAttribute('aria-pressed') }
+    })()
+  `)
+  conferir('o botao de mudo anuncia o estado para leitor de tela',
+    mudouRotulo.pressed === 'true', JSON.stringify(mudouRotulo))
+
+  await cdp.chamar('Page.navigate', {
+    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+  })
+  await esperar(2000)
+  const depoisDoF5 = await cdp.avaliar(`
+    (() => {
+      const b = document.getElementById('mudo')
+      return { texto: b.textContent.trim(), pressed: b.getAttribute('aria-pressed') }
+    })()
+  `)
+  conferir('o mudo sobrevive ao recarregamento',
+    depoisDoF5.pressed === 'true' && depoisDoF5.texto === 'Som desligado',
+    JSON.stringify(depoisDoF5))
+
+  // devolve o perfil ao estado limpo para a proxima rodada
+  await cdp.avaliar(`localStorage.removeItem('janelinhas:mudo')`)
+  await cdp.chamar('Page.removeScriptToEvaluateOnNewDocument', {
+    identifier: instrumentacao.identifier,
+  })
+
   // limpa o estado
   for (const a of [forasteiro, segundo]) {
     outra.send(JSON.stringify({ tipo: 'cancelar', alunoId: a.id }))

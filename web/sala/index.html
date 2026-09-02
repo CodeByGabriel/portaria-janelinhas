@@ -42,11 +42,22 @@
         <p class="subtitulo" id="turmaAtual"></p>
       </div>
       <div class="direita">
-        <button class="fantasma" id="mudo">Som ligado</button>
+        <button class="fantasma" id="mudo" aria-pressed="false">Som ligado</button>
       </div>
     </header>
 
     <p class="faixa" id="faixa" hidden></p>
+
+    <!--
+      Aviso de som interrompido.
+
+      Fica FORA da faixa de "N responsáveis chegaram" de propósito: as duas
+      podem estar valendo ao mesmo tempo, e é justamente quando as duas valem
+      que o aviso importa — tem gente esperando no portão e a sala não ouviu.
+      É um botão, não um texto, porque reativar áudio exige gesto do usuário;
+      um aviso que só informa deixaria a professora sem o que fazer.
+    -->
+    <button class="faixa aviso" id="avisoSom" aria-live="polite" hidden></button>
 
     <main class="palco">
       <p class="vazio" id="vazio">Nenhuma chamada agora.</p>
@@ -62,7 +73,14 @@
   <script type="module">
     import { criarCartao } from '../comum/cartao.js'
     import { ligar } from '../comum/ligacao.js'
-    import { destravar, tocarAbertura, tocarEntrega, alternarMudo } from '../comum/som.js'
+    import {
+      destravar,
+      tocarAbertura,
+      tocarEntrega,
+      alternarMudo,
+      estaMudo,
+      aoFalharSom,
+    } from '../comum/som.js'
 
     const TURMAS = [
       ['Educação Infantil', ['Pré 1', 'Pré 2']],
@@ -96,8 +114,36 @@
     let conexao = null
     const cartoes = new Map()
 
+    /*
+      O rótulo carrega o estado e `aria-pressed` também.
+
+      É redundante de propósito. Trocar o rótulo por um nome fixo ("Silenciar")
+      e deixar só o aria-pressed dizer o estado quebraria a 2.5.3 do WCAG para
+      quem comanda por voz, que precisa falar o texto que está vendo.
+    */
+    const avisoSom = document.getElementById('avisoSom')
+
+    function desenharMudo() {
+      const mudo = estaMudo()
+      botaoMudo.textContent = mudo ? 'Som desligado' : 'Som ligado'
+      botaoMudo.setAttribute('aria-pressed', String(mudo))
+    }
+    desenharMudo()
+
+    /*
+      O som pode parar sozinho depois do primeiro gesto — aba em segundo plano,
+      ligação, tela bloqueada. Sem isto a sala continuava desenhando o cartão e
+      nada mais: a professora só descobria pelo responsável reclamando no portão.
+    */
+    aoFalharSom((mensagem) => {
+      avisoSom.hidden = !mensagem
+      if (mensagem) avisoSom.textContent = mensagem
+    })
+    avisoSom.onclick = () => destravar()
+
     botaoMudo.onclick = () => {
-      botaoMudo.textContent = alternarMudo() ? 'Som desligado' : 'Som ligado'
+      alternarMudo()
+      desenharMudo()
     }
 
     document.getElementById('entrar').onclick = () => {
