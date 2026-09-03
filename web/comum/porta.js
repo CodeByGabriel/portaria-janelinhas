@@ -139,19 +139,71 @@ function desenharPorta(aoEntrar) {
   campo.focus()
 }
 
+/*
+  Aparelho autorizado NAO e aparelho certo.
+
+  Um tablet da portaria abrindo /sala/ passava pela porta — ele TEM aparelho — e
+  a tela montava com `turma` indefinida. Como a sessao era de portaria, o
+  retrato vinha com a escola inteira, e a tela da sala listava criancas de todas
+  as turmas. O servidor estava certo o tempo todo: ele respondeu ao papel que
+  perguntou. Quem estava errado era a pagina, que perguntou de um jeito e
+  desenhou de outro.
+
+  Este aviso e definitivo de proposito: nao ha campo para colar outro codigo. O
+  aparelho ja tem um, valido, e o problema e que ele e de outro lugar — quem
+  resolve isso e a secretaria, no aparelho certo.
+*/
+function desenharPapelErrado(quem, esperado) {
+  const caixa = document.createElement('div')
+  caixa.className = 'porta'
+
+  const titulo = document.createElement('h2')
+  titulo.textContent = 'Este aparelho não é desta tela'
+
+  const explicacao = document.createElement('p')
+  explicacao.textContent =
+    quem.papel === 'portaria'
+      ? 'Este tablet foi autorizado como PORTARIA, e esta é a tela de uma sala. ' +
+        'Abra a tela da portaria neste aparelho.'
+      : `Este tablet foi autorizado como sala (${quem.turma ?? 'sem turma'}), ` +
+        'e esta é a tela da portaria.'
+
+  const onde = document.createElement('p')
+  onde.className = 'porta-erro'
+  onde.textContent = `Esperado: ${esperado}. Autorizado: ${quem.papel}.`
+
+  const link = document.createElement('a')
+  link.className = 'principal larga'
+  link.href = quem.papel === 'portaria' ? '/portaria/' : '/sala/'
+  link.textContent = 'Ir para a tela deste aparelho'
+  link.style.textAlign = 'center'
+
+  caixa.append(titulo, explicacao, onde, link)
+  document.body.prepend(caixa)
+}
+
 /**
- * Garante um aparelho autorizado antes de a tela existir.
+ * Garante um aparelho autorizado — e do PAPEL certo — antes de a tela existir.
  *
- * Devolve uma promessa que so resolve quando ha sessao — e enquanto nao ha, a
- * porta fica na frente. Nenhuma tela precisa saber disto: ela pede quem e, e
- * recebe quando existir.
+ * Devolve uma promessa que so resolve quando ha sessao valida para esta tela.
+ * Enquanto nao ha, a porta fica na frente; se o aparelho e de outro papel, a
+ * promessa nunca resolve e a tela nunca monta. E o comportamento correto:
+ * melhor uma tela que nao abre do que uma tela que abre mostrando o que nao
+ * deveria.
  */
-export function exigirAparelho() {
+export function exigirAparelho(papelEsperado) {
   marcarModo()
   return new Promise((resolve) => {
+    const conferir = (quem) => {
+      if (papelEsperado && quem.papel !== papelEsperado) {
+        desenharPapelErrado(quem, papelEsperado)
+        return
+      }
+      resolve(quem)
+    }
     quemSou().then((quem) => {
-      if (quem) return resolve(quem)
-      desenharPorta(resolve)
+      if (quem) return conferir(quem)
+      desenharPorta(conferir)
     })
   })
 }

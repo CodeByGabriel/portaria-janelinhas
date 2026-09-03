@@ -201,7 +201,21 @@ async function esvaziarQuadro(ws) {
 
     for (const c of chamadas) {
       const tipo = FECHA_ESTADO[c.estado]
-      if (tipo) ws.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
+      if (!tipo) continue
+      /*
+        Entregar exige dizer A QUEM desde a 2.1. Sem isto a limpeza era recusada
+        em silencio, o quadro nunca esvaziava, e a secao seguinte falhava
+        contando o que a anterior deixou — tres telas longe da causa.
+      */
+      let responsavelId
+      if (tipo === 'entregar') {
+        const podem = await fetch(
+          BASE + '/responsaveis?alunoId=' + encodeURIComponent(c.alunoId),
+          comoAparelho(TOKEN.portaria),
+        ).then((r) => (r.ok ? r.json() : []))
+        responsavelId = podem.find((x) => !x.impedido)?.id
+      }
+      ws.send(JSON.stringify({ tipo, alunoId: c.alunoId, responsavelId }))
       await esperar(200)
     }
     await esperar(500)
@@ -662,8 +676,9 @@ async function principal() {
   })
 
   const turmaDoAluno = forasteiro.turma
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
   await cdp.chamar('Page.navigate', {
-    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+    url: `${BASE}/sala/`,
   })
   await esperar(2000)
 
@@ -825,8 +840,9 @@ async function principal() {
   conferir('o botao de mudo anuncia o estado para leitor de tela',
     mudouRotulo.pressed === 'true', JSON.stringify(mudouRotulo))
 
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
   await cdp.chamar('Page.navigate', {
-    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+    url: `${BASE}/sala/`,
   })
   await esperar(2000)
   const depoisDoF5 = await cdp.avaliar(`
@@ -863,8 +879,9 @@ async function principal() {
   outra.send(JSON.stringify({ tipo: 'chamar', alunoId: forasteiro.id }))
   await esperar(800)
 
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
   await cdp.chamar('Page.navigate', {
-    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+    url: `${BASE}/sala/`,
   })
   await esperar(1800)
   await cdp.chamar('Runtime.evaluate', {
@@ -942,8 +959,9 @@ async function principal() {
   conferir('escolher o volume guarda a escolha', guardadoVolume === 'baixo',
     String(guardadoVolume))
 
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
   await cdp.chamar('Page.navigate', {
-    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+    url: `${BASE}/sala/`,
   })
   await esperar(1800)
   const voltou = await cdp.avaliar(`document.getElementById('volume').value`)
@@ -960,8 +978,9 @@ async function principal() {
     junto. Os dois canais caem ao mesmo tempo, e a professora nao fica sabendo
     de nada.
   */
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
   await cdp.chamar('Page.navigate', {
-    url: `${BASE}/sala/?turma=${encodeURIComponent(turmaDoAluno)}`,
+    url: `${BASE}/sala/`,
   })
   await esperar(1800)
 
@@ -1041,6 +1060,7 @@ async function principal() {
   */
   const salaDoTeste = TOKEN.sala(turmaDoAluno)
   await autorizarNavegador(cdp, salaDoTeste)
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
   await cdp.chamar('Page.navigate', { url: `${BASE}/sala/` })
   await esperar(2000)
 
@@ -1592,6 +1612,77 @@ async function principal() {
 
   salaDaAlice.close()
   await esperar(300)
+
+  console.log('\n== aparelho autorizado NAO e aparelho certo ==')
+
+  /*
+    Um tablet da PORTARIA abrindo /sala/ passava pela porta — ele tem aparelho —
+    e a tela montava com a turma indefinida. Como a sessao era de portaria, o
+    retrato vinha com a escola inteira, e a tela da sala listava criancas de
+    todas as turmas, para uma professora que so pode ver a dela.
+
+    O servidor estava certo o tempo todo: respondeu ao papel que perguntou. Quem
+    estava errado era a pagina, que perguntou de um jeito e desenhou de outro.
+
+    Nao apareceu em teste nenhum: as verificacoes sempre abriram cada tela com o
+    aparelho correspondente. Apareceu no PRINT, que por acidente estava sendo
+    capturado com o cookie errado — e mostrou a Alice, do Pré 1, numa sala do
+    3º ano.
+  */
+  await autorizarNavegador(cdp, TOKEN.portaria)
+  await cdp.chamar('Page.navigate', { url: BASE + '/sala/' })
+  await esperar(2200)
+
+  const salaComPortaria = await cdp.avaliar(`
+    (() => ({
+      barrou: !!document.querySelector('.porta'),
+      titulo: document.querySelector('.porta h2')?.textContent ?? '',
+      explica: document.querySelector('.porta p')?.textContent ?? '',
+      criancas: document.querySelectorAll('.cartao').length,
+      appAberto: document.getElementById('app')?.hidden === false,
+    }))()
+  `)
+
+  conferir('a tela da sala BARRA um aparelho de portaria',
+    salaComPortaria.barrou === true, JSON.stringify(salaComPortaria))
+  conferir('e diz que o aparelho e de outra tela',
+    /n[aã]o [eé] desta tela/i.test(salaComPortaria.titulo),
+    JSON.stringify(salaComPortaria.titulo))
+  conferir('e explica qual papel ele tem',
+    /PORTARIA/.test(salaComPortaria.explica), JSON.stringify(salaComPortaria.explica))
+  conferir('REGRESSAO: nenhuma crianca aparece na tela barrada',
+    salaComPortaria.criancas === 0 && salaComPortaria.appAberto === false,
+    JSON.stringify(salaComPortaria))
+
+  // E o contrario tambem: um aparelho de sala nao abre a portaria.
+  await autorizarNavegador(cdp, TOKEN.sala(turmaDoAluno))
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+
+  const portariaComSala = await cdp.avaliar(`
+    (() => ({
+      barrou: !!document.querySelector('.porta'),
+      linhas: document.querySelectorAll('#ativas .linha').length,
+    }))()
+  `)
+  conferir('a tela da portaria BARRA um aparelho de sala',
+    portariaComSala.barrou === true && portariaComSala.linhas === 0,
+    JSON.stringify(portariaComSala))
+
+  // E a sala com o aparelho CERTO continua funcionando.
+  await cdp.chamar('Page.navigate', { url: BASE + '/sala/' })
+  await esperar(2200)
+  const salaCerta = await cdp.avaliar(`
+    (() => ({
+      barrou: !!document.querySelector('.porta'),
+      turma: document.getElementById('turmaDoAparelho')?.textContent ?? '',
+    }))()
+  `)
+  conferir('mas a sala com o aparelho certo abre normalmente',
+    salaCerta.barrou === false && salaCerta.turma.includes(turmaDoAluno),
+    JSON.stringify(salaCerta))
+
+  await autorizarNavegador(cdp, TOKEN.portaria)
 
   wsCdp.close()
   chrome.kill()

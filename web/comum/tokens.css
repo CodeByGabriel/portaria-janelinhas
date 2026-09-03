@@ -232,13 +232,27 @@ body {
   border: 0;
 }
 
+/*
+  O cabecalho embrulha, em vez de empurrar o conteudo para fora da tela.
+
+  Em 320px — o iPhone SE, que ainda esta em muita mao — o glifo, o nome da
+  escola, o seletor de som e o botao de mudo somavam 360px numa tela de 320. O
+  resultado nao era so feio: `.direita` saia para fora do lado direito, e o
+  botao de mudo ficava inalcancavel sem descobrir que dava para arrastar a
+  pagina de lado. Ninguem descobre.
+
+  `flex-wrap` mais `margin-left: auto` no bloco da direita: enquanto cabe, ele
+  fica encostado na direita como sempre; quando nao cabe, desce inteiro para a
+  linha de baixo em vez de vazar.
+*/
 .cabecalho {
   background: var(--marca);
   color: var(--tinta-clara);
   padding: 0.85rem 1.15rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
 }
 
 .cabecalho .marca-glifo {
@@ -705,7 +719,25 @@ body {
   flex: none;
 }
 
-.cartao .foto svg { width: 100%; height: 100%; display: block; }
+/*
+  A foto que ainda nao existe.
+
+  O espaco fica reservado — mesma caixa, mesma altura — para que o dia em que a
+  escola subir as fotos de matricula nao mexa em layout nenhum: o cartao nao
+  muda de tamanho, a linha nao reflui, nada precisa ser redesenhado.
+
+  Vazio DISCRETO, e nao um buraco. Um contorno tracejado leve diz "aqui vem uma
+  foto" sem competir com o nome, que hoje e a unica coisa que identifica a
+  crianca. Um placeholder chamativo roubaria atencao do que importa agora.
+*/
+.foto[data-sem-foto] {
+  border-style: dashed;
+  border-color: var(--borda-forte);
+  background: var(--superficie-2);
+}
+
+.cartao .foto img,
+.cartao .foto svg { width: 100%; height: 100%; display: block; object-fit: cover; }
 
 .cartao .nome {
   font-size: var(--t-nome);
@@ -772,7 +804,8 @@ body {
   flex: none;
 }
 
-.linha .foto svg { width: 100%; height: 100%; display: block; }
+.linha .foto img,
+.linha .foto svg { width: 100%; height: 100%; display: block; object-fit: cover; }
 
 .linha .nome {
   /* `flex: 1` com base 8rem: cresce quando sobra espaco, e quebra a linha
@@ -864,8 +897,21 @@ body {
 /* ---------- etiqueta de estado ---------- */
 
 
+/*
+  A etiqueta nao empurra a tela.
+
+  `white-space: nowrap` mantinha "retornou à sala" numa linha so — bonito, e em
+  430px o cartao inteiro passava 2px da borda direita e a pagina ganhava rolagem
+  horizontal. Dois pixels bastam: a pessoa arrasta a tela sem querer no meio da
+  saida, e a lista se mexe embaixo do dedo dela.
+
+  `max-width: 100%` prende a etiqueta ao cartao, e a quebra normal de palavra
+  cuida do resto. Perder uma linha e melhor do que empurrar a pagina.
+*/
 .etiqueta {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
   padding: 0.13rem 0.55rem;
   border-radius: 999px;
   font-size: var(--t-etiqueta);
@@ -874,7 +920,6 @@ body {
   background: var(--superficie-2);
   color: var(--tinta-media);
   border: 1px solid var(--borda);
-  white-space: nowrap;
 }
 
 .etiqueta[data-estado='aguardando'] {
@@ -1032,9 +1077,17 @@ textarea:focus {
   padding: 0.8rem 0;
 }
 
+/*
+  `min(180px, 100%)`, e nao `180px` seco.
+
+  Numa tela de 320px com o padding do palco, a coluna minima de 180px ainda
+  cabe — mas o conteudo dentro dela nem sempre, e uma coluna de grade nunca
+  encolhe abaixo do minimo declarado. `min()` diz "180, ou a largura toda, o
+  que for menor", e ai a grade cede em vez de empurrar a pagina.
+*/
 .grade {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
   gap: 0.9rem;
 }
 

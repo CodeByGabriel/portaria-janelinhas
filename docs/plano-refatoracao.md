@@ -667,6 +667,79 @@ Portões: `npm test` **183 + 74**, `typecheck`, `fim-a-fim` (**66**), `telas` (*
 
 ---
 
+## 6.5 Apresentável: retratos fora, responsividade medida
+
+Fora do plano original, pedido depois: deixar o app em estado de mostrar ao cliente.
+
+### Os retratos saíram, o espaço ficou
+
+Os avatares vetoriais gerados do nome serviram à vitrine e cumpriam o invariante 4 — nada
+fotorrealista de criança. Mas eram ilustração inventada ocupando o lugar da informação
+real, e a escola vai subir as fotos de matrícula com consentimento.
+
+**A caixa continua**, e é o ponto: o mesmo elemento que hoje está vazio recebe a foto
+depois, com contorno tracejado discreto. O cartão não muda de altura, a linha não reflui,
+e nenhuma tela precisa ser redesenhada quando as imagens chegarem. Tirar a caixa junto com
+o desenho seria economizar hoje para refazer depois. `web/comum/avatar.js` deixou de
+existir — 2,6 KB a menos.
+
+### `npm run responsivo`, o sexto portão
+
+"Conferi no celular" é uma frase, não uma medida. Este app roda no celular da porteira, no
+tablet velho da sala, no notebook da secretaria e, na apresentação, num projetor.
+
+Cinco telas × nove larguras — **45 combinações**, medidas no navegador de verdade, de
+320px a 1920px. As larguras não são redondas: são aparelhos. Uma tela que passa em 320 e em
+1440 mas quebra em 390 quebrou para metade dos celulares do Brasil.
+
+Ele cobra rolagem horizontal, vazamento para fora da tela, alvo de toque abaixo de 44px,
+texto cortado e sobreposição de texto. Não substitui olhar o print: **o print pega o que
+fica feio, este pega o que fica errado**, e os dois erram coisas diferentes.
+
+### O que ele encontrou
+
+**Dois falsos positivos meus, corrigidos antes de qualquer outra coisa.** Um portão que
+grita sempre é um portão que ninguém lê — e um falso positivo é o jeito mais rápido de
+ensinar alguém a ignorar o portão.
+
+O primeiro: `getBoundingClientRect` de um elemento em linha que quebra devolve a caixa que
+une todas as linhas dele, uma área onde não há tinta nos cantos. Dois spans irmãos na mesma
+frase, um quebrando, "se sobrepunham" sempre. Agora a comparação é por `getClientRects`,
+linha a linha. O segundo: rótulo só-para-leitor-de-tela não está cortado — está recortado
+de propósito.
+
+**O cabeçalho da sala vazava em 320px.** Glifo, nome da escola, seletor de som e botão de
+mudo somavam 360px numa tela de 320. O botão de mudo ficava fora da tela, alcançável só
+arrastando a página de lado — e ninguém descobre que dá.
+
+**A etiqueta empurrava a página em 430px.** Dois pixels. Basta: a pessoa arrasta a tela sem
+querer no meio da saída e a lista se mexe embaixo do dedo dela.
+
+### E o defeito que só o print mostrou
+
+**Um tablet da portaria abrindo `/sala/` via a escola inteira.** Ele passava pela porta —
+tem aparelho autorizado — e a tela montava com a turma indefinida. Como a sessão era de
+portaria, o retrato vinha completo, e a tela da professora listava crianças de todas as
+turmas.
+
+O servidor esteve certo o tempo todo: respondeu ao papel que perguntou. Quem estava errado
+era a página, que perguntou de um jeito e desenhou de outro. **Nenhum teste pegou**, porque
+todos sempre abriram cada tela com o aparelho correspondente. Apareceu porque a captura de
+print estava, por acidente, usando o cookie errado — e mostrou a Alice, do Pré 1, numa sala
+do 3º ano.
+
+Agora `exigirAparelho(papel)` exige o papel certo, e a tela **nunca monta** quando ele não
+bate: melhor uma tela que não abre do que uma que abre mostrando o que não deveria. O aviso
+é definitivo, sem campo para colar outro código — o aparelho já tem um, válido, e o
+problema é que ele é de outro lugar.
+
+### Portões
+
+`npm test` **183 + 74** · `typecheck` · `fim-a-fim` **66** · `telas` **105** · `peso`
+**71,1 / 120 KB** · `responsivo` **45** — todos com código de saída 0.
+
+---
+
 ## 7. Fase 3 — Ecossistema (esboço de interfaces apenas)
 
 Cadastro por API substituindo a planilha; exportação da trilha no formato `LogAuditoria`; delegação "hoje a avó busca" via portal de pais; push só com fallback e só quando o portal existir.

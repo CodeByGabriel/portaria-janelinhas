@@ -1,4 +1,3 @@
-import { retratoDe } from './avatar.js'
 
 /*
   Os dois formatos em que um aluno aparece.
@@ -59,10 +58,27 @@ function icone(estado) {
   return svg
 }
 
-function foto(nome, classe) {
+/*
+  O lugar da foto, vazio ate a escola trazer as fotos.
+
+  Ate aqui isto desenhava um retrato vetorial gerado do nome. Servia para a
+  vitrine e cumpria o invariante 4 (nada fotorrealista de crianca), mas era
+  ilustracao inventada ocupando o lugar da informacao real — e a escola vai
+  subir as fotos de matricula, com consentimento, na Fase 3.
+
+  O ESPACO CONTINUA RESERVADO, e isso e o ponto. Um lugar vazio hoje e a mesma
+  caixa que recebe a foto amanha: o cartao nao muda de altura, a linha nao
+  reflui, e nenhuma tela precisa ser redesenhada quando as imagens chegarem.
+  Tirar a caixa junto com o desenho seria economizar hoje para refazer depois.
+
+  Fica com `aria-hidden`: e decoracao ate ter conteudo, e um leitor de tela
+  anunciando "imagem" numa caixa vazia so atrapalha quem depende dele.
+*/
+function foto(_nome, classe) {
   const caixa = document.createElement('div')
   caixa.className = classe
-  caixa.append(retratoDe(nome))
+  caixa.dataset.semFoto = 'sim'
+  caixa.setAttribute('aria-hidden', 'true')
   return caixa
 }
 

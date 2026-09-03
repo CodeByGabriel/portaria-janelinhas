@@ -85,7 +85,7 @@ function fontesDe(css) {
 /*
   Segue os imports em CADEIA, e nao so os da pagina.
 
-  `cartao.js` importa `avatar.js`, que a pagina nunca menciona. Contar so o que
+  `cartao.js` importa outros modulos que a pagina nunca menciona. Contar so o que
   o HTML cita deixaria de fora exatamente o caminho por onde uma dependencia
   pesada entra: alguem importa uma biblioteca dentro de um modulo que ja
   existia, e o orcamento nao vê. Contado assim, o teto so protege o que ja

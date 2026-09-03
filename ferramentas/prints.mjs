@@ -113,8 +113,18 @@ const TELAS = [
     espera: 1800,
     roteiro: `
       (async () => {
+        /*
+          Pela CRIANCA, e nao pelo primeiro liberado da lista.
+
+          Ha mais de um liberado no quadro, e so a Alice tem responsaveis
+          cadastrados na semente. Clicando no primeiro, o print caia numa
+          crianca sem responsavel — onde a caixa nem aparece, de proposito — e
+          a captura falhava sem dizer que estava mirando errado.
+        */
         const alvo = [...document.querySelectorAll('#ativas .linha')].find(
-          (li) => li.dataset.estado === 'liberado',
+          (li) =>
+            li.dataset.estado === 'liberado' &&
+            (li.querySelector('.nome')?.textContent ?? '').includes('Alice'),
         )
         const b = [...(alvo?.querySelectorAll('button') ?? [])].find(
           (x) => x.textContent.trim() === 'Entregar',
@@ -162,6 +172,9 @@ const TELAS = [
   },
   {
     arquivo: 'sala-entrada.png',
+    // O aparelho da SALA. Capturada com o cookie da portaria, esta tela
+    // montava com a turma indefinida e listava a escola inteira.
+    aparelho: TOKEN.sala('3º ano'),
     url: `${BASE}/sala/`,
     largura: 900,
     altura: 560,
@@ -170,7 +183,10 @@ const TELAS = [
   },
   {
     arquivo: 'sala.png',
-    url: `${BASE}/sala/?turma=3%C2%BA%20ano`,
+    aparelho: TOKEN.sala('3º ano'),
+    // Sem `?turma=`: desde a 2.2 a turma vem do aparelho, e o parametro nao
+    // significa mais nada.
+    url: `${BASE}/sala/`,
     largura: 1100,
     // A variante Painel deixou o cartao mais alto: 700px cortava o botao
     // "voltou para a sala" no print, e print que corta acao mostra um
@@ -307,7 +323,21 @@ async function semear() {
     if (chamadas.length === 0) break
     for (const c of chamadas) {
       const tipo = FECHA_ESTADO[c.estado]
-      if (tipo) portaria.send(JSON.stringify({ tipo, alunoId: c.alunoId }))
+      if (!tipo) continue
+      /*
+        Entregar exige dizer A QUEM desde a 2.1. Sem isto a limpeza era
+        recusada em silencio, o quadro nunca esvaziava, e o print seguinte
+        falhava tres telas adiante — sem relacao aparente com a causa.
+      */
+      let responsavelId
+      if (tipo === 'entregar') {
+        const podem = await fetch(
+          `${BASE}/responsaveis?alunoId=${encodeURIComponent(c.alunoId)}`,
+          comoAparelho(TOKEN.portaria),
+        ).then((r) => (r.ok ? r.json() : []))
+        responsavelId = podem.find((x) => !x.impedido)?.id
+      }
+      portaria.send(JSON.stringify({ tipo, alunoId: c.alunoId, responsavelId }))
       await esperar(180)
     }
     await esperar(400)
@@ -443,8 +473,16 @@ async function principal() {
       entrada, por exemplo, so existe quando o aparelho NAO esta autorizado, e
       o cookie precisa sair antes de a pagina carregar.
     */
+    /*
+      O aparelho de cada tela, e nao "o da portaria para todas".
+
+      A tela da sala estava sendo capturada com o cookie da PORTARIA — e o print
+      mostrou criancas de todas as turmas na tela de uma sala. Nao era falha do
+      servidor: ele respondeu ao papel que perguntou. Era a captura pedindo com
+      o aparelho errado, e foi assim que o defeito da propria pagina apareceu.
+    */
     if (tela.antes) await tela.antes(cdp)
-    else await autorizarNavegador(cdp, TOKEN.portaria)
+    else await autorizarNavegador(cdp, tela.aparelho ?? TOKEN.portaria)
 
     await cdp.chamar('Emulation.setDeviceMetricsOverride', {
       width: tela.largura,

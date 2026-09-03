@@ -19,7 +19,8 @@
     "telas": "node ferramentas/telas.mjs",
     "baseline": "node ferramentas/baseline.mjs",
     "peso": "node ferramentas/peso.mjs",
-    "fontes": "node ferramentas/subsetar-fontes.mjs"
+    "fontes": "node ferramentas/subsetar-fontes.mjs",
+    "responsivo": "node ferramentas/responsivo.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.1.3",

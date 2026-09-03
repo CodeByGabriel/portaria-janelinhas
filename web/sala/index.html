@@ -205,7 +205,7 @@
       A porta fica na frente ate o codigo ser aceito; so entao sabemos qual sala
       esta e podemos escrever a turma na tela.
     */
-    const aparelho = await exigirAparelho()
+    const aparelho = await exigirAparelho('sala')
     const turmaDoAparelho = aparelho.turma
 
     const rotuloTurma = document.getElementById('turmaDoAparelho')

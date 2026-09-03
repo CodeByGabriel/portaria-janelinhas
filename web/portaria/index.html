@@ -203,7 +203,7 @@
       descobrir que ninguem pode ve-la seria mostrar nome de crianca a quem o
       servidor vai recusar em seguida.
     */
-    await exigirAparelho()
+    await exigirAparelho('portaria')
 
     const conexao = ligar({
       aoEstadoDaRede: (estado) => {
