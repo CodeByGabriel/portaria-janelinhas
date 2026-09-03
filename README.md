@@ -2,16 +2,33 @@
 
 App de saída de alunos da escola **Janelinhas do Saber** — do Pré 1 ao 9º ano. O responsável
 chega no portão, a portaria digita o nome, e **só a sala daquele aluno** é avisada: faixa de
-aviso, som curto e o cartão do aluno com retrato.
+aviso, som curto e o cartão da criança.
 
 Troca o microfone que grita o nome da criança para a escola inteira por uma chamada
-silenciosa e dirigida. E deixa registrado quem entregou qual criança, e quando.
+silenciosa e dirigida. E deixa registrado **quem entregou qual criança, a quem, e quando**.
 
-> ## Estado: vitrine funcional
+> ## Estado: funcional, faltando a decisão jurídica
 >
-> Roda de verdade e está pronto para mostrar à escola. **Não está pronto para produção** —
-> falta autenticação, consentimento LGPD e persistência. O que existe já nasceu no formato
-> certo para virar produção sem reescrita. Ver "O que falta" no fim.
+> Roda de verdade. Autenticação por aparelho, persistência, responsáveis autorizados e
+> restrição de guarda estão **feitos**. O que impede subir a lista real da escola não é
+> código: é a base legal do art. 14 e o contrato de operador. Ver "O que falta" no fim, e
+> `docs/lgpd.md` para o inventário completo.
+
+> ## Se você veio olhar o DESIGN
+>
+> Comece por `web/comum/tokens.css` — é o sistema inteiro, com o porquê de cada escolha
+> escrito ao lado. Depois `docs/prints/fase-2/`, que são capturas reais do app rodando.
+>
+> **Os retratos das crianças foram removidos de propósito.** O espaço continua reservado,
+> com contorno tracejado: a escola vai subir as fotos de matrícula, e elas entram naquela
+> caixa sem mexer em layout nenhum.
+>
+> A direção se chama "Pátio" e é institucional, não lúdica — a escola vai até o 9º ano, e
+> uma tela infantilizada envelhece mal numa sala de adolescentes. As restrições que a
+> moldaram: nada de framework nem CDN (wifi de escola), tudo self-hosted, contraste medido
+> por teste automático, alvo de toque de 44px, e **cada estado comunicado por quatro canais
+> ao mesmo tempo** — cor, rótulo, ícone e traço da faixa lateral — para funcionar sem cor
+> nenhuma. Há capturas em simulação de daltonismo em `docs/prints/fase-0-deuteranopia/`.
 
 ## Rodar
 
@@ -23,9 +40,29 @@ npm run dev
 | Tela | Endereço | Quem usa |
 |---|---|---|
 | Portaria | `http://localhost:8787/portaria/` | celular de quem fica no portão |
-| Sala | `http://localhost:8787/sala/` | tela ou tablet da professora (escolhe a turma ao entrar) |
+| Sala | `http://localhost:8787/sala/` | tela ou tablet da professora |
 | Demo | `http://localhost:8787/demo/` | as duas lado a lado, sem rede |
-| Oficina | `http://localhost:8787/comum/oficina.html` | cartão e linha, nos quatro estados |
+| Oficina | `http://localhost:8787/comum/oficina.html` | cartão e linha, em todos os estados |
+
+### O código do aparelho
+
+Cada tela pede um código na primeira vez — a escola emite um por tablet, e ele fica
+guardado num cookie. **Em desenvolvimento os códigos são conhecidos**, e as telas mostram
+uma tarja vermelha permanente dizendo isso:
+
+| Tela | Código para colar |
+|---|---|
+| Portaria | `demonstracao-portaria-0000` |
+| Sala do 3º ano | `demonstracao-sala-3o-ano` |
+| Sala do Pré 1 | `demonstracao-sala-pre-1` |
+
+O padrão é `demonstracao-sala-` + a turma sem acento, em minúsculas, com hífen no lugar do
+espaço. Eles só existem porque `MODO_DEMO` está ligado em `.dev.vars` — um arquivo que o
+`wrangler dev` lê e o `wrangler deploy` **não envia**. Em produção não há nenhum código
+conhecido, e sem a chave de administração ninguém emite aparelho novo.
+
+**Um aparelho de portaria não abre a tela da sala, e vice-versa.** A tela recusa em vez de
+montar mostrando o que não deveria.
 
 **11 turmas**, agrupadas por segmento: `Pré 1` e `Pré 2` (Educação Infantil), `1º` a `5º ano`
 (Fundamental I), `6º` a `9º ano` (Fundamental II). A semente traz 4 alunos em cada.
@@ -63,10 +100,22 @@ Uma criança percorre no máximo quatro estados por dia, e cada transição tem 
 
 | De | Para | Quem faz | O que acontece |
 |---|---|---|---|
-| `aguardando` | `chamado` | Portaria | **O cartão aparece** na sala: faixa, som, retrato, nome |
+| `aguardando` | `chamado` | Portaria | **O cartão aparece** na sala: faixa, som, nome |
 | `chamado` | `liberado` | Professora | Ela confirma. A criança sai da sala |
-| `liberado` | `entregue` | Portaria | Criança chegou no portão. Ciclo fechado |
+| `liberado` | `entregue` | Portaria | Criança entregue **a um responsável nomeado**. Ciclo fechado |
 | `chamado` | `aguardando` | Portaria | Cancelamento: nome errado, responsável desistiu |
+| `liberado` | `retorno` | Professora | A criança voltou para a sala. Exige um motivo de uma lista fechada |
+| `retorno` | `chamado` | Portaria | O responsável está lá: chama de novo |
+| `retorno` | `aguardando` | Portaria | Não está: encerra |
+
+`retorno` tem estado próprio, e não volta para `chamado`, porque neste app `chamado`
+significa literalmente "responsável chegou" — mandar a criança de volta para lá faria as
+duas telas afirmarem o contrário do que acabou de ser registrado. E sair de `retorno` é uma
+afirmação sobre o portão, então é da portaria.
+
+**Entregar exige dizer A QUEM**, quando a criança tem responsáveis cadastrados. Um adulto
+marcado como impedido aparece na lista, marcado e intocável — "não consta" e "não pode"
+pedem condutas opostas.
 
 **Quem pode fazer o quê é regra, não convenção**, e ela tem dois eixos. Por **papel**: a sala
 não chama, a portaria não libera. Por **turma**: a sala do Pré 1 não age sobre um aluno do 9º
@@ -82,19 +131,27 @@ Um Worker do Cloudflare com **um Durable Object para a escola inteira** (`ADR-A1
 
 ```
 src/
-  estados.ts    a maquina de estados. Pura: sem rede, sem relogio, sem armazenamento
-  livro.ts      o estado do dia: chamadas ativas, cadastro, trilha de auditoria
-  busca.ts      normalizacao e busca de nome brasileiro
-  importar.ts   analisador da planilha da escola
-  semente.ts    44 alunos ficticios em 11 turmas
-  protocolo.ts  os tipos que trafegam no WebSocket
-  portaria.ts   o Durable Object: rede e conexoes. Nenhuma regra mora aqui
-  index.ts      roteamento
+  estados.ts       a maquina de estados. Pura: sem rede, sem relogio, sem armazenamento
+  livro.ts         o estado do dia: chamadas, cadastro, responsaveis, trilha
+  sessao.ts        quem e o aparelho. O UNICO lugar que decide identidade
+  deposito.ts      a unica casa do SQL: esquema, migracoes, poda
+  responsaveis.ts  quem pode levar cada crianca, e quem nao pode
+  busca.ts         normalizacao e busca de nome brasileiro
+  importar.ts      analisador da planilha da escola
+  semente.ts       44 alunos ficticios, com homonimos e familias de proposito
+  protocolo.ts     os tipos que trafegam no WebSocket
+  portaria.ts      o Durable Object: rede e disco. Nenhuma regra mora aqui
+  index.ts         roteamento
 web/
-  comum/        tokens.css, cartao.js, avatar.js, som.js, ligacao.js, busca.js, estados.js
+  comum/           tokens.css (o sistema visual), cartao, porta, entrega, alerta,
+                   som, tela-acesa, ligacao, busca, estados
   portaria/ sala/ demo/
 ferramentas/
-  fim-a-fim.mjs      30 verificacoes contra o servidor rodando
+  fim-a-fim.mjs      66 verificacoes contra o servidor rodando
+  telas.mjs          105 verificacoes no navegador, dirigindo o Chrome
+  responsivo.mjs     45 combinacoes de tela e largura, de 320px a 1920px
+  peso.mjs           orcamento de bytes transferidos
+  prints.mjs         capturas reais, com simulacao de daltonismo
   construir-demo.mjs gera o arquivo unico offline
 ```
 
@@ -113,8 +170,12 @@ Não são detalhes de conformidade; são decisões de arquitetura, caras de acre
   leitura e escrita.
 - **Papel fail-closed.** Papel inválido não conecta. Errar dá erro visível, nunca acesso
   ampliado em silêncio.
-- **Retratos são ilustrações planas**, geradas do nome. Não geramos rosto fotorrealista de
-  aluno. Em produção, a escola sobe a foto que já tem na matrícula.
+- **Não há retrato de criança.** O espaço fica reservado, vazio, até a escola subir as fotos
+  de matrícula com consentimento. Nunca houve rosto fotorrealista gerado.
+- **O texto da restrição de guarda nunca sai em lote.** `/alunos` entrega a lista inteira ao
+  navegador; a anotação sai por uma rota própria, uma criança por vez, no instante em que
+  alguém está prestes a agir. Um tablet esquecido no balcão não carrega a situação familiar
+  de 292 famílias.
 - **Toda ação registra a origem** — de qual sala partiu, ou da portaria. Sem isso, um
   "liberar" indevido não tem de onde ser rastreado depois do incidente.
 - **Nenhum dado real de aluno no repositório.** A semente é ficção declarada.
@@ -122,9 +183,12 @@ Não são detalhes de conformidade; são decisões de arquitetura, caras de acre
 ## Verificar
 
 ```bash
-npm test          # 113 testes de unidade
+npm test           # 183 testes puros + 74 no runtime do Cloudflare
 npm run typecheck
-npm run fim-a-fim # 30 verificacoes contra o servidor (precisa do npm run dev)
+npm run fim-a-fim  # 66 verificacoes contra o servidor  (precisa do npm run dev)
+npm run telas      # 105 verificacoes no navegador       (precisa do npm run dev)
+npm run responsivo # 45 telas x larguras, 320 a 1920px   (precisa do npm run dev)
+npm run peso       # orcamento: 71 KB de 120 na rede     (precisa do npm run dev)
 ```
 
 O `fim-a-fim` inclui os ataques que as duas passagens de red team reproduziram ao vivo: sala
@@ -158,21 +222,24 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='workerd.exe'" |
 
 Nada disto é bug — é escopo deliberadamente adiado, e cada item precisa da visita à escola.
 
-- **Autenticação de verdade.** Hoje o papel vem da query string. Antes de qualquer dado real,
-  isso precisa ser login. É o item que sozinho impede subir a lista da escola — ver
-  `docs/lgpd.md` §6.
 - **Base legal e contrato de operador.** Quem é controladora, quem é operador, e sob qual
   artigo o tratamento se sustenta. `docs/lgpd.md` §1 e §4, os dois com `TODO(juridico)`.
-- **Foto real da criança**, se a escola quiser: hoje o retrato é ilustração gerada do nome.
+  **São os dois únicos bloqueios que restam para dado real, e nenhum é código.**
+- **Foto da criança**, se a escola quiser: o espaço já está reservado no cartão e na linha.
+- **Limitador de tentativas no `/entrar`.** Com 32 bytes de entropia por token, força bruta é
+  inviável — mas o Durable Object é de fila única, então marteladas atrasam o resto. Risco de
+  disponibilidade, não de acesso.
 - **Nomes exatos das turmas.** A faixa Pré 1–9º ano veio da escola; os rótulos ainda não.
   Todo `conteudo/institucional/` do repo é `TODO(visita)`.
 - **Busca no servidor.** Hoje `/alunos` entrega o cadastro inteiro ao navegador e a busca
   roda no cliente — minimização ao contrário. `docs/lgpd.md` §6.
 - **Exportação da trilha antes da poda**, se a escola precisar guardar mais de 90 dias.
 
-**Fechado desde então:** a persistência existe (a trilha e o cadastro sobrevivem ao
-reinício, e o cadastro importado não volta mais para a semente), e a importação, as
-sessões e a trilha têm teto — 1 MB, 200 conexões e 90 dias de retenção.
+**Fechado desde então:** persistência (a trilha e o cadastro sobrevivem ao reinício, e o
+cadastro importado não volta mais para a semente); tetos de 1 MB, 200 conexões e 90 dias de
+retenção; **autenticação por aparelho**, com revogação imediata; **responsáveis
+autorizados**, com a entrega registrando a quem; e a restrição de guarda, que virou barreira
+em vez de alerta.
 
 ## Documentos
 
