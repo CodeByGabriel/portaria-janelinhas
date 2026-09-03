@@ -386,8 +386,8 @@ async function principal() {
       nome: 'portaria com importacao aberta',
       url: BASE + '/portaria/',
       cookie: TOKEN.portaria,
-      antes: "document.getElementById('painelImportar').open = true",
-      pronto: "document.getElementById('painelImportar').open === true",
+      antes: "document.getElementById('painelImportar')?.setAttribute('open', '')",
+      pronto: "document.getElementById('painelImportar')?.open === true",
     },
     {
       nome: 'sala',
@@ -426,6 +426,19 @@ async function principal() {
       })
       await cdp.chamar('Page.navigate', { url: tela.url })
       await esperar(1400)
+
+      /*
+        Espera o documento ficar PRONTO antes de mexer nele.
+
+        A versao anterior rodava o preparo depois de um tempo fixo, e com o
+        servidor lento a pagina ainda nao existia: `getElementById` devolvia
+        null e a ferramenta morria com "Cannot read properties of null" — um
+        erro sobre a MEDICAO, que parece um erro do app.
+      */
+      for (let i = 0; i < 40; i++) {
+        if ((await cdp.avaliar('document.readyState')) === 'complete') break
+        await esperar(250)
+      }
 
       if (tela.antes) {
         await cdp.chamar('Runtime.evaluate', { expression: tela.antes, userGesture: true })
