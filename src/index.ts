@@ -14,6 +14,10 @@ const DO_PORTARIA = new Set([
   '/responsaveis',
   '/irmaos',
   '/importar-responsaveis',
+  // Fase 3: o backend fala com o satelite por aqui, com a chave de administracao.
+  '/cadastro',
+  '/trilha',
+  '/delegacoes',
 ])
 
 export default {

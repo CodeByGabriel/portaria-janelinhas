@@ -81,6 +81,32 @@ export interface Instantaneo {
   /** Quem pode levar cada crianca. Ausente em bancos anteriores a 2.1. */
   responsaveis?: import('./responsaveis.ts').Responsavel[]
   vinculos?: import('./responsaveis.ts').Vinculo[]
+  /** Autorizacoes temporarias (fase 3). Ausente em bancos anteriores. */
+  delegacoes?: Delegacao[]
+}
+
+/**
+ * Autorizacao TEMPORARIA para levar uma crianca — "hoje a avo busca".
+ *
+ * Nasce no portal de pais, chega pelo backend (`POST /delegacoes`) e mora aqui
+ * ja convertida, com a janela em milissegundos. O Livro so a considera dentro
+ * de [validoDe, validoAte], e quem diz que horas sao e quem chama, por
+ * parametro: o Livro continua sem relogio.
+ *
+ * O id do titular que autorizou vai para a trilha. O NOME dele tambem fica
+ * guardado, pelo mesmo motivo do nome do responsavel no evento: a trilha e um
+ * registro historico e precisa continuar legivel depois que o cadastro mudar.
+ */
+export interface Delegacao {
+  id: string
+  alunoId: string
+  nome: string
+  vinculo: string
+  telefone: string
+  validoDe: number
+  validoAte: number
+  autorizadoPor: string
+  autorizadoPorNome: string
 }
 
 export interface EventoAuditoria {

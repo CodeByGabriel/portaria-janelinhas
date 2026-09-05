@@ -1565,3 +1565,401 @@ describe('red team da fase 2', () => {
     expect(certa.status).toBe(200)
   })
 })
+
+/* ---------- fase 3: o backend fala com o satelite ---------- */
+
+describe('fase 3 — cadastro por API, trilha por cursor, delegacao', () => {
+  const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+  const UMA_HORA = 60 * 60 * 1000
+  const iso = (ms: number) => new Date(ms).toISOString()
+
+  /* Sem cookie de aparelho — e um sistema, nao um tablet — e com a chave. */
+  const comoBackend = (extras: Record<string, string> = {}) => ({
+    token: null as string | null,
+    headers: {
+      Authorization: `Bearer ${CHAVE}`,
+      'content-type': 'application/json',
+      ...extras,
+    },
+  })
+
+  const cadastro = (versao: number) => ({
+    versao,
+    alunos: [
+      { id: 'b1', nome: 'Alice Prado', turma: 'Pré 1' },
+      { id: 'b2', nome: 'Bento Prado', turma: '3º ano', alerta: 'guarda: so a mae' },
+    ],
+    responsaveis: [
+      { id: 'r1', nome: 'Marta Prado', vinculo: 'mãe', telefone: '11 90000-0001' },
+      { id: 'r2', nome: 'Ricardo Prado', vinculo: 'pai', telefone: '11 90000-0002' },
+    ],
+    vinculos: [
+      { alunoId: 'b1', responsavelId: 'r1' },
+      { alunoId: 'b2', responsavelId: 'r1' },
+      { alunoId: 'b2', responsavelId: 'r2', impedido: true },
+    ],
+  })
+
+  const enviarCadastro = (corpo: unknown) =>
+    pedir('/cadastro', { method: 'PUT', body: JSON.stringify(corpo), ...comoBackend() })
+
+  const delegacao = (extras: Record<string, unknown> = {}) => ({
+    id: 'd1',
+    alunoId: 'b1',
+    quemBusca: { nome: 'Helena Prado', vinculo: 'avó', telefone: '11 90000-0009' },
+    validoAte: iso(Date.now() + 3 * UMA_HORA),
+    autorizadoPor: 'r1',
+    ...extras,
+  })
+
+  const criarDelegacao = (corpo: unknown) =>
+    pedir('/delegacoes', { method: 'POST', body: JSON.stringify(corpo), ...comoBackend() })
+
+  beforeEach(async () => {
+    await reset()
+  })
+
+  it('sem a chave, nada: 401 em /cadastro, /trilha e /delegacoes — cookie de portaria nao basta', async () => {
+    expect((await pedir('/cadastro', { method: 'PUT', body: '{}', token: null })).status).toBe(401)
+    expect((await pedir('/cadastro', { method: 'PUT', body: '{}' })).status).toBe(401)
+    expect((await pedir('/trilha', { token: null })).status).toBe(401)
+    expect((await pedir('/trilha')).status).toBe(401)
+    expect(
+      (await pedir('/delegacoes', { method: 'POST', body: '{}', token: null })).status,
+    ).toBe(401)
+    const errada = await pedir('/cadastro', {
+      method: 'PUT',
+      body: '{}',
+      token: null,
+      headers: { Authorization: 'Bearer chave-errada-chave-errada' },
+    })
+    expect(errada.status).toBe(401)
+  })
+
+  it('PUT /cadastro substitui alunos, responsaveis e vinculos, com os ids do backend', async () => {
+    const r = await enviarCadastro(cadastro(1))
+    expect(r.status).toBe(200)
+    const corpo = await r.json<{ trocado: boolean; versao: number; alunos: number; vinculos: number }>()
+    expect(corpo.trocado).toBe(true)
+    expect(corpo.versao).toBe(1)
+    expect(corpo.alunos).toBe(2)
+    expect(corpo.vinculos).toBe(3)
+
+    const alunos = await (
+      await pedir('/alunos')
+    ).json<{ id: string; nome: string; temAlerta: boolean }[]>()
+    expect(alunos.map((a) => a.id).sort()).toEqual(['b1', 'b2'])
+    expect(alunos.find((a) => a.id === 'b2')!.temAlerta).toBe(true)
+
+    // O texto do alerta continua saindo um por vez, e nunca em /alunos.
+    expect(JSON.stringify(alunos)).not.toContain('guarda')
+    const alerta = await (await pedir('/alerta?alunoId=b2')).json<{ texto: string }>()
+    expect(alerta.texto).toBe('guarda: so a mae')
+
+    const podem = await (
+      await pedir('/responsaveis?alunoId=b2')
+    ).json<{ id: string; impedido: boolean }[]>()
+    expect(podem.map((p) => [p.id, p.impedido])).toEqual([
+      ['r1', false],
+      ['r2', true],
+    ])
+
+    const versao = await (
+      await pedir('/cadastro', comoBackend())
+    ).json<{ versao: number | null; alunos: number }>()
+    expect(versao.versao).toBe(1)
+    expect(versao.alunos).toBe(2)
+  })
+
+  it('a mesma versao e idempotente; uma menor e 409; uma maior aplica', async () => {
+    expect((await enviarCadastro(cadastro(5))).status).toBe(200)
+
+    const repetida = await enviarCadastro(cadastro(5))
+    expect(repetida.status).toBe(200)
+    expect((await repetida.json<{ trocado: boolean }>()).trocado).toBe(false)
+
+    const antiga = await enviarCadastro(cadastro(4))
+    expect(antiga.status).toBe(409)
+    expect((await antiga.json<{ erros: { motivo: string }[] }>()).erros[0].motivo).toMatch(
+      /anterior/,
+    )
+
+    const nova = cadastro(6)
+    nova.alunos.push({ id: 'b3', nome: 'Caio Prado', turma: 'Pré 2' })
+    const r = await enviarCadastro(nova)
+    expect(r.status).toBe(200)
+    expect((await r.json<{ trocado: boolean; alunos: number }>()).alunos).toBe(3)
+  })
+
+  it('corpo com erro e recusado INTEIRO, e o cadastro vigente nao muda', async () => {
+    const antes = (await (await pedir('/alunos')).json<unknown[]>()).length
+    const ruim = cadastro(1)
+    ruim.alunos.push({ id: 'b9', nome: 'Ninguem', turma: '13º ano' })
+    const r = await enviarCadastro(ruim)
+    expect(r.status).toBe(422)
+    const corpo = await r.json<{ trocado: boolean; erros: { linha: number; motivo: string }[] }>()
+    expect(corpo.trocado).toBe(false)
+    expect(corpo.erros[0].motivo).toMatch(/turma desconhecida/)
+    expect((await (await pedir('/alunos')).json<unknown[]>()).length).toBe(antes)
+
+    const naoJson = await pedir('/cadastro', { method: 'PUT', body: '{nao', ...comoBackend() })
+    expect(naoJson.status).toBe(400)
+  })
+
+  it('com crianca em saida, 409 — o mesmo da planilha, pelo mesmo motivo', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'b1' }))
+    await ateQue(ws, (r) => r.chamadas.some((c) => c.alunoId === 'b1'))
+
+    const r = await enviarCadastro(cadastro(2))
+    expect(r.status).toBe(409)
+    expect((await r.json<{ erros: { motivo: string }[] }>()).erros[0].motivo).toMatch(/em saida/)
+    ws.close()
+
+    const versao = await (await pedir('/cadastro', comoBackend())).json<{ versao: number | null }>()
+    expect(versao.versao).toBe(1)
+  })
+
+  it('a planilha, quando importada, limpa a versao externa — e o proximo envio vale', async () => {
+    expect((await enviarCadastro(cadastro(3))).status).toBe(200)
+    const imp = await pedir('/importar', { method: 'POST', body: 'Nome,Turma\nDuda Lima,Pré 1\n' })
+    expect(imp.status).toBe(200)
+
+    const versao = await (await pedir('/cadastro', comoBackend())).json<{ versao: number | null }>()
+    expect(versao.versao).toBeNull()
+
+    const r = await enviarCadastro(cadastro(3))
+    expect((await r.json<{ trocado: boolean }>()).trocado).toBe(true)
+  })
+
+  it('GET /trilha pagina por seq e devolve o cursor', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'b1' }))
+    await ateQue(ws, (r) => r.chamadas.some((c) => c.alunoId === 'b1' && c.estado === 'chamado'))
+    ws.send(JSON.stringify({ tipo: 'cancelar', alunoId: 'b1' }))
+    await ateQue(ws, (r) => !r.chamadas.some((c) => c.alunoId === 'b1'))
+    ws.close()
+
+    type Pagina = {
+      eventos: { seq: number; acao: string; de: string; para: string; quando: string; sistema: string }[]
+      proximo: number | null
+    }
+    const tudo = await (await pedir('/trilha', comoBackend())).json<Pagina>()
+    expect(tudo.eventos.map((e) => e.acao)).toEqual(['chamar', 'cancelar'])
+    expect(tudo.eventos[0].seq).toBeLessThan(tudo.eventos[1].seq)
+    expect(tudo.eventos[0].sistema).toBe('portaria-janelinhas')
+    expect(tudo.eventos[0].quando).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(tudo.eventos[1]).toMatchObject({ de: 'chamado', para: 'aguardando' })
+    expect(tudo.proximo).toBe(tudo.eventos[1].seq)
+
+    const primeira = await (await pedir('/trilha?limite=1', comoBackend())).json<Pagina>()
+    expect(primeira.eventos.length).toBe(1)
+    const segunda = await (
+      await pedir(`/trilha?apos=${primeira.proximo}&limite=1`, comoBackend())
+    ).json<Pagina>()
+    expect(segunda.eventos[0].acao).toBe('cancelar')
+    const fim = await (await pedir(`/trilha?apos=${segunda.proximo}`, comoBackend())).json<Pagina>()
+    expect(fim.eventos).toEqual([])
+    expect(fim.proximo).toBeNull()
+
+    expect((await pedir('/trilha?limite=0', comoBackend())).status).toBe(400)
+    expect((await pedir('/trilha?apos=abc', comoBackend())).status).toBe(400)
+  })
+
+  it('POST /delegacoes: a avo aparece em /responsaveis como "hoje", e a sala nao ve o telefone', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    const r = await criarDelegacao(delegacao())
+    expect(r.status).toBe(201)
+    const corpo = await r.json<{ responsavelId: string; autorizadoPor: string }>()
+    expect(corpo.responsavelId).toBe('delegacao:d1')
+    expect(corpo.autorizadoPor).toBe('Marta Prado')
+
+    type Quem = {
+      id: string
+      nome: string
+      temporario?: boolean
+      autorizadoPor?: string
+      telefone?: string
+      impedido: boolean
+    }
+    const podem = await (await pedir('/responsaveis?alunoId=b1')).json<Quem[]>()
+    const avo = podem.find((p) => p.id === 'delegacao:d1')!
+    expect(avo.nome).toBe('Helena Prado')
+    expect(avo.temporario).toBe(true)
+    expect(avo.autorizadoPor).toBe('Marta Prado')
+    expect(avo.impedido).toBe(false)
+    expect(avo.telefone).toBe('11 90000-0009')
+
+    const salaVe = await (
+      await pedir('/responsaveis?alunoId=b1', { token: TOKEN.sala('Pré 1') })
+    ).json<Quem[]>()
+    const avoNaSala = salaVe.find((p) => p.id === 'delegacao:d1')!
+    expect(avoNaSala.temporario).toBe(true)
+    expect(avoNaSala.telefone).toBeUndefined()
+  })
+
+  it('entregar pela delegacao grava delegacao:<id> e o nome na trilha — e na exportacao', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    expect((await criarDelegacao(delegacao())).status).toBe(201)
+
+    const portariaWs = await ligar(TOKEN.portaria)
+    const sala = await ligar(TOKEN.sala('Pré 1'))
+    await retratoInicial(portariaWs)
+    await retratoInicial(sala)
+    portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: 'b1' }))
+    await ateQue(sala, (r) => r.chamadas.some((c) => c.alunoId === 'b1'))
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: 'b1' }))
+    await ateQue(portariaWs, (r) =>
+      r.chamadas.some((c) => c.alunoId === 'b1' && c.estado === 'liberado'),
+    )
+    portariaWs.send(
+      JSON.stringify({ tipo: 'entregar', alunoId: 'b1', responsavelId: 'delegacao:d1' }),
+    )
+    expect(await ateQue(portariaWs, (r) => !r.chamadas.some((c) => c.alunoId === 'b1'))).toBe(true)
+    portariaWs.close()
+    sala.close()
+
+    const trilha = await (
+      await pedir('/registro')
+    ).json<{ acao: string; responsavelId: string; responsavelNome: string }[]>()
+    const entrega = trilha.find((e) => e.acao === 'entregar')!
+    expect(entrega.responsavelId).toBe('delegacao:d1')
+    expect(entrega.responsavelNome).toBe('Helena Prado')
+
+    const exportada = await (
+      await pedir('/trilha', comoBackend())
+    ).json<{ eventos: { acao: string; responsavel: { id: string; nome: string } | null }[] }>()
+    expect(exportada.eventos.find((e) => e.acao === 'entregar')!.responsavel).toEqual({
+      id: 'delegacao:d1',
+      nome: 'Helena Prado',
+    })
+  })
+
+  it('DELETE /delegacoes revoga, e revogar de novo continua 204', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    expect((await criarDelegacao(delegacao())).status).toBe(201)
+    expect(
+      (await pedir('/delegacoes?id=d1', { method: 'DELETE', ...comoBackend() })).status,
+    ).toBe(204)
+    const podem = await (await pedir('/responsaveis?alunoId=b1')).json<{ id: string }[]>()
+    expect(podem.some((p) => p.id === 'delegacao:d1')).toBe(false)
+    expect(
+      (await pedir('/delegacoes?id=d1', { method: 'DELETE', ...comoBackend() })).status,
+    ).toBe(204)
+  })
+
+  it('as tres regras: impedido vence, quem autoriza precisa poder levar, a janela faz sentido', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+
+    // b2 tem o pai impedido: delegar para "ricardo prado" (mesmo nome, outra caixa) e recusado.
+    const paraImpedido = await criarDelegacao(
+      delegacao({ id: 'd2', alunoId: 'b2', quemBusca: { nome: 'ricardo prado', vinculo: 'pai' } }),
+    )
+    expect(paraImpedido.status).toBe(422)
+    expect(
+      (await paraImpedido.json<{ erros: { motivo: string }[] }>()).erros[0].motivo,
+    ).toMatch(/impedido de levar/)
+
+    // O impedido nao autoriza ninguem.
+    const doImpedido = await criarDelegacao(delegacao({ id: 'd3', alunoId: 'b2', autorizadoPor: 'r2' }))
+    expect(doImpedido.status).toBe(422)
+    expect((await doImpedido.json<{ erros: { motivo: string }[] }>()).erros[0].motivo).toMatch(
+      /quem autoriza/,
+    )
+
+    // Quem nao e responsavel DESTA crianca tambem nao: r2 nao tem vinculo com b1.
+    expect((await criarDelegacao(delegacao({ id: 'd4', autorizadoPor: 'r2' }))).status).toBe(422)
+    // Aluno que nao existe.
+    expect((await criarDelegacao(delegacao({ id: 'd5', alunoId: 'b9' }))).status).toBe(422)
+    // Vencida, e longa demais.
+    expect(
+      (await criarDelegacao(delegacao({ id: 'd6', validoAte: iso(Date.now() - UMA_HORA) }))).status,
+    ).toBe(422)
+    expect(
+      (await criarDelegacao(delegacao({ id: 'd7', validoAte: iso(Date.now() + 9 * 24 * UMA_HORA) })))
+        .status,
+    ).toBe(422)
+
+    // E nada disso deixou rastro.
+    for (const alunoId of ['b1', 'b2']) {
+      const podem = await (await pedir(`/responsaveis?alunoId=${alunoId}`)).json<{ id: string }[]>()
+      expect(podem.some((p) => p.id.startsWith('delegacao:'))).toBe(false)
+    }
+  })
+
+  it('a delegacao e a versao externa sobrevivem ao reinicio do Durable Object', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    expect((await criarDelegacao(delegacao())).status).toBe(201)
+    await derrubarInstancia()
+
+    const podem = await (
+      await pedir('/responsaveis?alunoId=b1')
+    ).json<{ id: string; autorizadoPor?: string }[]>()
+    const avo = podem.find((p) => p.id === 'delegacao:d1')
+    expect(avo).toBeDefined()
+    expect(avo!.autorizadoPor).toBe('Marta Prado')
+
+    const versao = await (await pedir('/cadastro', comoBackend())).json<{ versao: number | null }>()
+    expect(versao.versao).toBe(1)
+  })
+
+  it('trocar o cadastro sem a crianca leva a delegacao dela junto — e ela nao ressuscita', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    expect((await criarDelegacao(delegacao())).status).toBe(201)
+
+    const semAlice = cadastro(2)
+    semAlice.alunos = semAlice.alunos.filter((a) => a.id !== 'b1')
+    semAlice.vinculos = semAlice.vinculos.filter((v) => v.alunoId !== 'b1')
+    expect((await enviarCadastro(semAlice)).status).toBe(200)
+
+    expect((await enviarCadastro(cadastro(3))).status).toBe(200)
+    const podem = await (await pedir('/responsaveis?alunoId=b1')).json<{ id: string }[]>()
+    expect(podem.some((p) => p.id === 'delegacao:d1')).toBe(false)
+  })
+})
+
+describe('tentativas de entrar tem teto', () => {
+  beforeEach(async () => {
+    await reset()
+  })
+
+  const tentar = (token: string, ip: string) =>
+    pedir('/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+      token: null,
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': ip },
+    })
+
+  it('dez falhas da mesma origem e a decima primeira espera; outra origem nao', async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await tentar(`token-inventado-numero-${i}-xxxxxxxx`, '10.0.0.1')).status).toBe(401)
+    }
+    const bloqueada = await tentar('token-inventado-numero-10-xxxxxxxx', '10.0.0.1')
+    expect(bloqueada.status).toBe(429)
+    expect(Number(bloqueada.headers.get('Retry-After'))).toBeGreaterThan(0)
+
+    // Nem o token certo passa enquanto a origem esta bloqueada.
+    expect((await tentar(TOKEN.portaria, '10.0.0.1')).status).toBe(429)
+
+    // Outra origem segue normal, inclusive acertando.
+    expect((await tentar('token-inventado-numero-0-xxxxxxxx', '10.0.0.2')).status).toBe(401)
+    expect((await tentar(TOKEN.portaria, '10.0.0.2')).status).toBe(200)
+  })
+
+  it('acertar zera as falhas da origem', async () => {
+    for (let i = 0; i < 9; i++) {
+      expect((await tentar(`token-inventado-numero-${i}-xxxxxxxx`, '10.0.0.3')).status).toBe(401)
+    }
+    expect((await tentar(TOKEN.portaria, '10.0.0.3')).status).toBe(200)
+    for (let i = 0; i < 9; i++) {
+      expect((await tentar(`token-inventado-numero-${i}-xxxxxxxx`, '10.0.0.3')).status).toBe(401)
+    }
+    // 9 + 9 falhas com um acerto no meio: ainda nao bloqueou.
+    expect((await tentar(TOKEN.portaria, '10.0.0.3')).status).toBe(200)
+  })
+})

@@ -5,7 +5,13 @@ import { analisar, decodificar } from './importar.ts'
 import { analisarResponsaveis } from './responsaveis.ts'
 import { analisarCsv, separadorDo } from './importar.ts'
 import { Deposito } from './deposito.ts'
-import type { Comando, EventoAuditoria } from './protocolo.ts'
+import {
+  analisarCadastroExterno,
+  analisarDelegacaoExterna,
+  comoLogAuditoria,
+  idDeDelegacao,
+} from './ecossistema.ts'
+import type { Comando, EventoAuditoria, Delegacao } from './protocolo.ts'
 import {
   NOME_DO_COOKIE,
   cookieApagado,
@@ -33,6 +39,27 @@ const LIMITE_CORPO = 1_000_000
 
 /** Teto de conexoes simultaneas. Uma escola tem uma portaria e 11 salas. */
 const LIMITE_SESSOES = 200
+
+/** Corpo de uma delegacao. Um adulto, uma crianca, duas datas: cabe em bem menos. */
+const LIMITE_CORPO_PEQUENO = 64 * 1024
+
+/** Pagina da trilha exportada (3.2). */
+const PAGINA_PADRAO = 500
+const PAGINA_MAXIMA = 1000
+
+/*
+  Tentativas de entrar, por origem.
+
+  `/entrar` e a unica rota que aceita o token cru, e nao tinha teto: um script
+  varria tokens na velocidade da rede. Dez falhas em quinze minutos e a origem
+  espera. E memoria do objeto — um reinicio zera — e isso basta: o espaco de
+  tokens tem 256 bits, e o que o teto compra e tempo e ruido no log, nao
+  impossibilidade matematica. O que ele NAO pode fazer e trancar a escola: uma
+  origem que acerta volta a zero na hora.
+*/
+const JANELA_DE_TENTATIVAS = 15 * 60 * 1000
+const MAXIMO_DE_FALHAS = 10
+const MAXIMO_DE_ORIGENS = 10_000
 
 /** Quantos dias a trilha guarda antes da poda diaria. */
 const DIAS_DE_RETENCAO = 90
@@ -66,6 +93,7 @@ export class Portaria {
   private readonly deposito: Deposito
   private livro!: Livro
   private readonly sessoes = new Set<Conexao>()
+  private readonly falhasDeEntrada = new Map<string, { falhas: number; desde: number }>()
 
   constructor(estado: DurableObjectState, env: { CHAVE_ADMIN?: string; MODO_DEMO?: string }) {
     this.estado = estado
@@ -138,6 +166,9 @@ export class Portaria {
    */
   async alarm(): Promise<void> {
     this.deposito.podar(Date.now() - DIAS_DE_RETENCAO * UM_DIA)
+    // Delegacao vencida ja nao contava na leitura; aqui ela sai do disco.
+    this.deposito.podarDelegacoes(Date.now())
+    this.livro.substituirDelegacoes(this.deposito.listarDelegacoes())
     this.expirarEsquecidas()
     await this.estado.storage.setAlarm(Date.now() + UM_DIA)
   }
@@ -202,6 +233,16 @@ export class Portaria {
       return new Response('use POST', { status: 405 })
     }
 
+    const origem = origemDe(pedido)
+    const espera = this.esperaDe(origem)
+    if (espera > 0) {
+      await descartar(pedido)
+      return new Response('tentativas demais; aguarde', {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil(espera / 1000)) },
+      })
+    }
+
     let token = ''
     try {
       const bytes = await pedido.arrayBuffer()
@@ -216,12 +257,17 @@ export class Portaria {
     }
 
     if (token.length < 16 || token.length > 128) {
+      this.anotarFalha(origem)
       return new Response('token nao reconhecido', { status: 401 })
     }
 
     const quem = sessaoDe(this.deposito.dispositivoPor(await impressaoDe(token)))
-    if (!quem) return new Response('token nao reconhecido', { status: 401 })
+    if (!quem) {
+      this.anotarFalha(origem)
+      return new Response('token nao reconhecido', { status: 401 })
+    }
 
+    this.falhasDeEntrada.delete(origem)
     return Response.json(
       { papel: quem.papel, turma: quem.turma ?? null, apelido: quem.apelido },
       { headers: { 'Set-Cookie': cookieDeSessao(token, ehSeguro(pedido)) } },
@@ -244,20 +290,13 @@ export class Portaria {
     um aparelho perdido que continua valendo, nao.
   */
   private async dispositivos(pedido: Request): Promise<Response> {
-    const chaveConfigurada = this.env.CHAVE_ADMIN
-    const chaveDada = pedido.headers.get('X-Chave-Admin')
-
     if (pedido.method === 'POST') {
       /*
         Sem chave configurada, ninguem emite. Fail-closed do lado certo: uma
         instancia mal configurada nao aceita aparelho novo, em vez de aceitar
         qualquer um.
       */
-      if (
-        !chaveConfigurada ||
-        !chaveDada ||
-        !iguaisEmTempoConstante(chaveDada, chaveConfigurada)
-      ) {
+      if (!this.chaveAdminConfere(pedido)) {
         await descartar(pedido)
         return new Response('chave de administracao invalida', { status: 401 })
       }
@@ -334,6 +373,262 @@ export class Portaria {
     return new Response('metodo nao suportado', { status: 405 })
   }
 
+  /*
+    A chave de administracao, por cabecalho.
+
+    Aceita `Authorization: Bearer` — o jeito do backend, fase 3 — e
+    `X-Chave-Admin`, que /dispositivos ja usava. Sem chave configurada, nada
+    confere: fail-closed do lado certo. Comparacao em tempo constante, como
+    sempre foi.
+  */
+  private chaveAdminConfere(pedido: Request): boolean {
+    const configurada = this.env.CHAVE_ADMIN
+    if (!configurada) return false
+    const autorizacao = pedido.headers.get('Authorization') ?? ''
+    const portadora = autorizacao.startsWith('Bearer ') ? autorizacao.slice(7).trim() : ''
+    const dada = portadora || (pedido.headers.get('X-Chave-Admin') ?? '')
+    if (!dada) return false
+    return iguaisEmTempoConstante(dada, configurada)
+  }
+
+  /** Quanto uma origem ainda precisa esperar para tentar entrar; 0 se pode. */
+  private esperaDe(origem: string): number {
+    const registro = this.falhasDeEntrada.get(origem)
+    if (!registro) return 0
+    const restante = registro.desde + JANELA_DE_TENTATIVAS - Date.now()
+    if (restante <= 0) {
+      this.falhasDeEntrada.delete(origem)
+      return 0
+    }
+    return registro.falhas >= MAXIMO_DE_FALHAS ? restante : 0
+  }
+
+  private anotarFalha(origem: string): void {
+    const agora = Date.now()
+    const registro = this.falhasDeEntrada.get(origem)
+    if (!registro || registro.desde + JANELA_DE_TENTATIVAS <= agora) {
+      // Sem teto no mapa, uma varredura com origens falsas enche a memoria do
+      // objeto. Esvaziar tudo e grosseiro, mas e limitado — e quem estava
+      // bloqueado so ganha, no pior caso, mais dez tentativas.
+      if (this.falhasDeEntrada.size >= MAXIMO_DE_ORIGENS) this.falhasDeEntrada.clear()
+      this.falhasDeEntrada.set(origem, { falhas: 1, desde: agora })
+      return
+    }
+    registro.falhas++
+  }
+
+  /*
+    3.1 — o cadastro vindo do backend, no lugar da planilha.
+
+    Substituicao completa e atomica, como a planilha: nao ha PATCH por aluno.
+    A diferenca que importa e que o id do aluno e o do BACKEND, estavel — e por
+    isso o caminho da API nao orfana vinculo nenhum.
+
+    `versao` e do backend e monotonica: repetir a mesma e idempotente (200,
+    trocado: false); mandar uma menor e 409. A planilha, quando importada,
+    LIMPA a versao externa, para que o proximo envio do backend sempre valha.
+    Tudo sincrono depois da validacao: uma transacao so.
+  */
+  private async cadastro(pedido: Request): Promise<Response> {
+    if (!this.chaveAdminConfere(pedido)) {
+      await descartar(pedido)
+      return new Response('chave de administracao invalida', { status: 401 })
+    }
+
+    if (pedido.method === 'GET') {
+      return Response.json({
+        versao: this.deposito.versaoExterna(),
+        interna: this.livro.versao(),
+        alunos: this.livro.alunos().length,
+      })
+    }
+    if (pedido.method !== 'PUT') {
+      await descartar(pedido)
+      return new Response('use PUT', { status: 405 })
+    }
+
+    const recusar = (status: number, erros: { linha: number; motivo: string }[]) =>
+      Response.json(
+        {
+          trocado: false,
+          versao: this.deposito.versaoExterna(),
+          alunos: 0,
+          responsaveis: 0,
+          vinculos: 0,
+          erros,
+          errosTotal: erros.length,
+        },
+        { status },
+      )
+
+    let corpo: unknown
+    try {
+      const bytes = await pedido.arrayBuffer()
+      if (bytes.byteLength > LIMITE_CORPO) {
+        return recusar(413, [
+          {
+            linha: 0,
+            motivo: `cadastro grande demais (${Math.round(bytes.byteLength / 1024)} KB; o limite e ${LIMITE_CORPO / 1024} KB)`,
+          },
+        ])
+      }
+      corpo = JSON.parse(new TextDecoder().decode(bytes))
+    } catch {
+      return recusar(400, [{ linha: 0, motivo: 'corpo nao e JSON valido' }])
+    }
+
+    const analise = analisarCadastroExterno(corpo)
+    if (!analise.ok) {
+      return Response.json(
+        {
+          trocado: false,
+          versao: this.deposito.versaoExterna(),
+          alunos: 0,
+          responsaveis: 0,
+          vinculos: 0,
+          erros: analise.erros,
+          errosTotal: analise.errosTotal,
+        },
+        { status: 422 },
+      )
+    }
+
+    const contagens = {
+      alunos: analise.alunos.length,
+      responsaveis: analise.responsaveis.length,
+      vinculos: analise.vinculos.length,
+    }
+    const vigente = this.deposito.versaoExterna()
+    if (vigente !== null) {
+      if (analise.versao === vigente) {
+        return Response.json({ trocado: false, versao: vigente, ...contagens, erros: [], errosTotal: 0 })
+      }
+      if (analise.versao < vigente) {
+        return recusar(409, [
+          { linha: 0, motivo: `versao ${analise.versao} e anterior a vigente (${vigente})` },
+        ])
+      }
+    }
+
+    try {
+      // Recusa com crianca em saida — o mesmo 409 da planilha, pelo mesmo motivo.
+      this.livro.substituirCadastro(analise.alunos)
+    } catch (erro) {
+      return recusar(409, [{ linha: 0, motivo: motivoDe(erro) }])
+    }
+    this.deposito.trocarCadastro(analise.alunos, this.livro.versao(), analise.alertas)
+    this.deposito.trocarResponsaveis(analise.responsaveis, analise.vinculos)
+    this.deposito.podarDelegacoesOrfas()
+    this.deposito.gravarVersaoExterna(analise.versao)
+    this.livro.substituirResponsaveis(analise.responsaveis, analise.vinculos)
+    this.livro.substituirDelegacoes(this.deposito.listarDelegacoes())
+
+    this.transmitir()
+    return Response.json({ trocado: true, versao: analise.versao, ...contagens, erros: [], errosTotal: 0 })
+  }
+
+  /*
+    3.2 — a trilha por cursor, para o backend puxar.
+
+    Nao passa pelo Livro: o cursor e o `seq` do disco, e o Livro nao o conhece
+    de proposito — ele e detalhe de armazenamento. `/registro` continua sendo a
+    leitura da portaria; esta e a do backend.
+  */
+  private async trilha(pedido: Request): Promise<Response> {
+    if (!this.chaveAdminConfere(pedido)) {
+      await descartar(pedido)
+      return new Response('chave de administracao invalida', { status: 401 })
+    }
+    if (pedido.method !== 'GET') {
+      await descartar(pedido)
+      return new Response('use GET', { status: 405 })
+    }
+    const url = new URL(pedido.url)
+    const apos = inteiroDe(url.searchParams.get('apos'), 0, 0, Number.MAX_SAFE_INTEGER)
+    const limite = inteiroDe(url.searchParams.get('limite'), PAGINA_PADRAO, 1, PAGINA_MAXIMA)
+    if (apos === null || limite === null) {
+      return new Response(
+        `apos precisa ser inteiro nao negativo; limite, inteiro entre 1 e ${PAGINA_MAXIMA}`,
+        { status: 400 },
+      )
+    }
+    const eventos = this.deposito.trilhaDepois(apos, limite).map((e) => comoLogAuditoria(e.seq, e))
+    return Response.json({
+      eventos,
+      proximo: eventos.length > 0 ? eventos[eventos.length - 1].seq : null,
+    })
+  }
+
+  /*
+    3.3 — delegacao "hoje a avo busca".
+
+    O backend cria e revoga; as regras (quem autoriza, impedido vence, janela)
+    estao no Livro. Revogar e idempotente: um retry do backend nao pode falhar
+    por ter funcionado da primeira vez.
+  */
+  private async delegacoes(pedido: Request): Promise<Response> {
+    if (!this.chaveAdminConfere(pedido)) {
+      await descartar(pedido)
+      return new Response('chave de administracao invalida', { status: 401 })
+    }
+
+    if (pedido.method === 'DELETE') {
+      const id = new URL(pedido.url).searchParams.get('id') ?? ''
+      if (id.length === 0 || id.length > 64) return new Response('id invalido', { status: 400 })
+      this.livro.removerDelegacao(id)
+      this.deposito.removerDelegacao(id)
+      return new Response(null, { status: 204 })
+    }
+    if (pedido.method !== 'POST') {
+      await descartar(pedido)
+      return new Response('use POST ou DELETE', { status: 405 })
+    }
+
+    let corpo: unknown
+    try {
+      const bytes = await pedido.arrayBuffer()
+      if (bytes.byteLength > LIMITE_CORPO_PEQUENO) {
+        return Response.json(
+          { erros: [{ linha: 0, motivo: 'corpo grande demais' }], errosTotal: 1 },
+          { status: 413 },
+        )
+      }
+      corpo = JSON.parse(new TextDecoder().decode(bytes))
+    } catch {
+      return Response.json(
+        { erros: [{ linha: 0, motivo: 'corpo nao e JSON valido' }], errosTotal: 1 },
+        { status: 400 },
+      )
+    }
+
+    const agora = Date.now()
+    const analise = analisarDelegacaoExterna(corpo, agora)
+    if (!analise.ok) {
+      return Response.json({ erros: analise.erros, errosTotal: analise.errosTotal }, { status: 422 })
+    }
+
+    let completa: Delegacao
+    try {
+      completa = this.livro.adicionarDelegacao(analise.delegacao, agora)
+    } catch (erro) {
+      return Response.json(
+        { erros: [{ linha: 0, motivo: motivoDe(erro) }], errosTotal: 1 },
+        { status: 422 },
+      )
+    }
+    this.deposito.salvarDelegacao(completa, agora)
+
+    return Response.json(
+      {
+        id: completa.id,
+        responsavelId: idDeDelegacao(completa.id),
+        autorizadoPor: completa.autorizadoPorNome,
+        validoAte: new Date(completa.validoAte).toISOString(),
+      },
+      { status: 201 },
+    )
+  }
+
   /**
    * Quem e este aparelho — a UNICA fonte de identidade do sistema.
    *
@@ -363,6 +658,15 @@ export class Portaria {
       })
     }
     if (url.pathname === '/dispositivos') return this.dispositivos(pedido)
+
+    /*
+      Fase 3: o backend fala com o satelite por aqui. Sem cookie de aparelho —
+      e um sistema, nao um tablet — e com a chave de administracao, que ja era
+      o segredo entre a escola e este servico.
+    */
+    if (url.pathname === '/cadastro') return this.cadastro(pedido)
+    if (url.pathname === '/trilha') return this.trilha(pedido)
+    if (url.pathname === '/delegacoes') return this.delegacoes(pedido)
 
     /*
       Se este servidor esta em modo demonstracao.
@@ -493,7 +797,8 @@ export class Portaria {
         exatamente a minimizacao ao contrario que o `docs/lgpd.md` ja registra
         para `/alunos`. Aqui da para nao repetir o erro, entao nao se repete.
       */
-      const podem = this.livro.responsaveisDe(alunoId)
+      // Com o relogio, para a delegacao de hoje entrar — e a de ontem, nao.
+      const podem = this.livro.responsaveisDe(alunoId, Date.now())
       if (quem.papel === 'portaria') return Response.json(podem)
       return Response.json(podem.map(({ telefone: _telefone, ...resto }) => resto))
     }
@@ -575,6 +880,8 @@ export class Portaria {
 
       this.livro.substituirResponsaveis(resultado.responsaveis, resultado.vinculos)
       this.deposito.trocarResponsaveis(resultado.responsaveis, resultado.vinculos)
+      // A planilha e a ultima a chegar: o proximo envio do backend precisa valer.
+      this.deposito.limparVersaoExterna()
       this.transmitir()
 
       return Response.json({
@@ -667,6 +974,11 @@ export class Portaria {
         orfaos = this.deposito.podarVinculosOrfaos()
         const restantes = this.deposito.responsaveisEVinculos()
         this.livro.substituirResponsaveis(restantes.responsaveis, restantes.vinculos)
+        // Delegacao de crianca que saiu do cadastro sai junto, do disco e da
+        // memoria; e a planilha passa a mandar sobre a versao do backend.
+        this.deposito.podarDelegacoesOrfas()
+        this.livro.substituirDelegacoes(this.deposito.listarDelegacoes())
+        this.deposito.limparVersaoExterna()
       } catch (erro) {
         // Ha crianca em saida agora. Trocar o cadastro sumiria com ela de
         // todas as telas e deixaria a trilha com um liberar sem entregar.
@@ -823,6 +1135,23 @@ export class Portaria {
  * o cliente ja apareceu como "Cannot read properties of null" na tela da
  * professora — texto que nao ajuda ninguem e conta como o servidor e por dentro.
  */
+/**
+ * De onde veio o pedido, para o teto de tentativas. `CF-Connecting-IP` e o que
+ * a Cloudflare poe; fora dela (wrangler dev, testes) tudo cai num balde so —
+ * o que e conservador, e nao permissivo.
+ */
+function origemDe(pedido: Request): string {
+  return pedido.headers.get('CF-Connecting-IP') ?? 'desconhecida'
+}
+
+/** Inteiro de query string, com padrao para ausente e `null` para invalido. */
+function inteiroDe(bruto: string | null, padrao: number, minimo: number, maximo: number): number | null {
+  if (bruto === null || bruto === '') return padrao
+  if (!/^\d{1,16}$/.test(bruto)) return null
+  const n = Number(bruto)
+  return n >= minimo && n <= maximo ? n : null
+}
+
 /** Consome e joga fora o corpo, para nao deixar fluxo aberto ao responder cedo. */
 async function descartar(pedido: Request): Promise<void> {
   try {
@@ -853,6 +1182,10 @@ function motivoDe(erro: unknown): string {
       // 2.1: quem esta levando a crianca, e quem NAO pode leva-la.
       'escolha um respons',
       'impedido de levar',
+      // 3.3: as recusas da delegacao, que saem por HTTP com o mesmo filtro.
+      'vencid',
+      'invertida',
+      'quem autoriza',
     ].join('|'),
   )
   if (erro instanceof AcaoNaoPermitida) return erro.message.slice(0, 120)

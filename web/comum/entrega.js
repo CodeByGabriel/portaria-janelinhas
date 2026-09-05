@@ -111,9 +111,20 @@ export async function escolherResponsavel({ alunoId, nome }) {
 
       const detalhe = document.createElement('span')
       detalhe.className = 'detalhe'
+      /*
+        A autorizacao temporaria (fase 3) aparece na MESMA lista, dita como
+        tal: a porteira precisa saber que e "hoje", e por quem — e a trilha
+        vai guardar isso. O impedido continua vencendo, inclusive aqui.
+      */
       detalhe.textContent = r.impedido
         ? `${r.vinculo || 'responsável'} — NÃO PODE LEVAR`
-        : [r.vinculo, r.telefone].filter(Boolean).join(' · ')
+        : [
+            r.vinculo,
+            r.temporario ? `hoje, autorizado por ${r.autorizadoPor}` : '',
+            r.telefone,
+          ]
+            .filter(Boolean)
+            .join(' · ')
 
       linha.append(nomeEl, detalhe)
 

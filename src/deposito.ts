@@ -6,7 +6,7 @@ import {
 } from './semente.ts'
 import type { Dispositivo } from './sessao.ts'
 import type { Responsavel, Vinculo } from './responsaveis.ts'
-import type { Chamada, EventoAuditoria, Instantaneo } from './protocolo.ts'
+import type { Chamada, EventoAuditoria, Instantaneo, Delegacao } from './protocolo.ts'
 
 /*
   A UNICA casa do SQL neste projeto.
@@ -92,6 +92,26 @@ CREATE TABLE IF NOT EXISTS vinculos (
 );
 
 CREATE INDEX IF NOT EXISTS vinculos_por_responsavel ON vinculos (responsavelId);
+
+/*
+  Autorizacao temporaria (fase 3). Tabela nova, e nao coluna: nasce com
+  CREATE IF NOT EXISTS, entao um banco antigo ganha a tabela vazia na primeira
+  subida sem nenhuma migracao por ALTER.
+*/
+CREATE TABLE IF NOT EXISTS delegacoes (
+  id                TEXT PRIMARY KEY,
+  alunoId           TEXT NOT NULL,
+  nome              TEXT NOT NULL,
+  vinculo           TEXT NOT NULL DEFAULT '',
+  telefone          TEXT NOT NULL DEFAULT '',
+  validoDe          INTEGER NOT NULL,
+  validoAte         INTEGER NOT NULL,
+  autorizadoPor     TEXT NOT NULL,
+  autorizadoPorNome TEXT NOT NULL DEFAULT '',
+  criadoEm          INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS delegacoes_por_aluno ON delegacoes (alunoId);
 
 CREATE TABLE IF NOT EXISTS dispositivos (
   impressao  TEXT PRIMARY KEY,
@@ -264,6 +284,7 @@ export class Deposito {
       trilha,
       responsaveis,
       vinculos,
+      delegacoes: this.listarDelegacoes(),
       versaoCadastro: Number(this.meta('versaoCadastro') ?? '1'),
     }
   }
@@ -471,6 +492,119 @@ export class Deposito {
         v.impedido ? 1 : 0,
       )
     }
+  }
+
+  /* ---------- fase 3: trilha por cursor, versao externa, delegacoes ---------- */
+
+  /**
+   * Eventos DEPOIS de um `seq`, em ordem, ate `limite`.
+   *
+   * E o cursor que o backend usa para puxar a trilha (3.2). Append-only mais
+   * `seq` monotonico dao entrega at-least-once com deduplicacao exata: receber
+   * duas vezes e inofensivo, pular e impossivel.
+   */
+  trilhaDepois(apos: number, limite: number): (EventoAuditoria & { seq: number })[] {
+    return this.sql
+      .exec(
+        'SELECT seq, alunoId, nome, turma, acao, papel, origem, de, para, em, razao,' +
+          ' responsavelId, responsavelNome FROM trilha WHERE seq > ? ORDER BY seq LIMIT ?',
+        apos,
+        limite,
+      )
+      .toArray()
+      .map((l) => ({ ...(l as unknown as EventoAuditoria), seq: Number(l.seq), em: Number(l.em) }))
+  }
+
+  /**
+   * A versao do cadastro segundo o BACKEND (3.1).
+   *
+   * `null` quando o cadastro vigente veio de planilha ou da semente — e por
+   * isso a planilha LIMPA este valor ao importar: senao o backend repetiria a
+   * mesma versao depois de uma importacao manual, receberia "ja vigente", e a
+   * planilha ficaria valendo para sempre sem ninguem perceber.
+   */
+  versaoExterna(): number | null {
+    const v = this.meta('versaoExterna')
+    return v === null ? null : Number(v)
+  }
+
+  gravarVersaoExterna(versao: number): void {
+    this.gravarMeta('versaoExterna', String(versao))
+  }
+
+  limparVersaoExterna(): void {
+    this.sql.exec("DELETE FROM meta WHERE chave = 'versaoExterna'")
+  }
+
+  listarDelegacoes(): Delegacao[] {
+    return this.sql
+      .exec(
+        'SELECT id, alunoId, nome, vinculo, telefone, validoDe, validoAte,' +
+          ' autorizadoPor, autorizadoPorNome FROM delegacoes ORDER BY validoAte',
+      )
+      .toArray()
+      .map((l) => ({
+        id: String(l.id),
+        alunoId: String(l.alunoId),
+        nome: String(l.nome),
+        vinculo: String(l.vinculo ?? ''),
+        telefone: String(l.telefone ?? ''),
+        validoDe: Number(l.validoDe),
+        validoAte: Number(l.validoAte),
+        autorizadoPor: String(l.autorizadoPor),
+        autorizadoPorNome: String(l.autorizadoPorNome ?? ''),
+      }))
+  }
+
+  /** Repetir o mesmo id substitui: o backend pode reenviar sem medo. */
+  salvarDelegacao(d: Delegacao, criadoEm: number): void {
+    this.sql.exec(
+      `INSERT INTO delegacoes
+         (id, alunoId, nome, vinculo, telefone, validoDe, validoAte,
+          autorizadoPor, autorizadoPorNome, criadoEm)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         alunoId = excluded.alunoId, nome = excluded.nome, vinculo = excluded.vinculo,
+         telefone = excluded.telefone, validoDe = excluded.validoDe,
+         validoAte = excluded.validoAte, autorizadoPor = excluded.autorizadoPor,
+         autorizadoPorNome = excluded.autorizadoPorNome`,
+      d.id,
+      d.alunoId,
+      d.nome,
+      d.vinculo,
+      d.telefone,
+      d.validoDe,
+      d.validoAte,
+      d.autorizadoPor,
+      d.autorizadoPorNome,
+      criadoEm,
+    )
+  }
+
+  removerDelegacao(id: string): boolean {
+    const antes = Number(
+      this.sql.exec('SELECT COUNT(*) AS n FROM delegacoes WHERE id = ?', id).one().n,
+    )
+    this.sql.exec('DELETE FROM delegacoes WHERE id = ?', id)
+    return antes > 0
+  }
+
+  /** Vencidas saem do disco. Na leitura elas ja nao contavam; isto e higiene. */
+  podarDelegacoes(antesDe: number): number {
+    const antes = this.contarDelegacoes()
+    this.sql.exec('DELETE FROM delegacoes WHERE validoAte < ?', antesDe)
+    return antes - this.contarDelegacoes()
+  }
+
+  /** Delegacao de crianca que saiu do cadastro nao tem mais a quem servir. */
+  podarDelegacoesOrfas(): number {
+    const antes = this.contarDelegacoes()
+    this.sql.exec('DELETE FROM delegacoes WHERE alunoId NOT IN (SELECT id FROM cadastro)')
+    return antes - this.contarDelegacoes()
+  }
+
+  contarDelegacoes(): number {
+    return Number(this.sql.exec('SELECT COUNT(*) AS n FROM delegacoes').one().n)
   }
 
   /**

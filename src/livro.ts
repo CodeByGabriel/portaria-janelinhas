@@ -8,8 +8,30 @@ import {
   type Acao,
 } from './estados.ts'
 import { semear, type Aluno, type Turma } from './semente.ts'
+import { normalizar } from './busca.ts'
+import { idDeDelegacao } from './ecossistema.ts'
 import type { Responsavel, Vinculo } from './responsaveis.ts'
-import type { Chamada, Retrato, Comando, EventoAuditoria, Instantaneo } from './protocolo.ts'
+import type {
+  Chamada,
+  Retrato,
+  Comando,
+  EventoAuditoria,
+  Instantaneo,
+  Delegacao,
+} from './protocolo.ts'
+
+/**
+ * Um adulto que pode (ou nao) levar uma crianca, como a portaria o ve.
+ *
+ * `temporario` so existe na autorizacao vinda do portal (fase 3): a tela
+ * precisa dizer "hoje", e por quem, e a trilha vai guardar isso.
+ */
+export type QuemPodeLevar = Responsavel & {
+  impedido: boolean
+  temporario?: true
+  autorizadoPor?: string
+  validoAte?: number
+}
 
 /*
   O que expira, e pela acao de quem.
@@ -39,6 +61,8 @@ export class Livro {
   /* Quem pode levar cada crianca. Ver `responsaveis.ts`. */
   private readonly responsaveis = new Map<string, Responsavel>()
   private readonly vinculos = new Map<string, Vinculo[]>()
+  /* Autorizacoes temporarias, por id. Ver `adicionarDelegacao`. */
+  private readonly temporarias = new Map<string, Delegacao>()
   /** Sobe a cada troca de cadastro. O cliente usa para saber que a lista dele venceu. */
   private versaoCadastro = 1
 
@@ -65,6 +89,7 @@ export class Livro {
       lista.push(v)
       this.vinculos.set(v.alunoId, lista)
     }
+    for (const d of dados.delegacoes ?? []) this.temporarias.set(d.id, d)
     this.versaoCadastro = dados.versaoCadastro
   }
 
@@ -140,7 +165,8 @@ export class Livro {
     let responsavelId = ''
     let responsavelNome = ''
     if (comando.tipo === 'entregar') {
-      const podem = this.responsaveisDe(comando.alunoId)
+      // Com o relogio: e assim que a delegacao de hoje entra na lista.
+      const podem = this.responsaveisDe(comando.alunoId, agora)
       if (podem.length > 0) {
         const escolhido = podem.find((r) => r.id === comando.responsavelId)
         if (!escolhido) {
@@ -246,14 +272,44 @@ export class Livro {
    * de que ele nao pode levar. A diferenca entre "nao consta" e "nao pode" e a
    * unica coisa que importa quando ele esta parado na frente dela.
    */
-  responsaveisDe(alunoId: string): (Responsavel & { impedido: boolean })[] {
-    return (this.vinculos.get(alunoId) ?? [])
+  responsaveisDe(alunoId: string, agora?: number): QuemPodeLevar[] {
+    const fixos: QuemPodeLevar[] = (this.vinculos.get(alunoId) ?? [])
       .map((v) => {
         const r = this.responsaveis.get(v.responsavelId)
         return r ? { ...r, impedido: v.impedido } : null
       })
-      .filter((r): r is Responsavel & { impedido: boolean } => r !== null)
-      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+      .filter((r): r is QuemPodeLevar => r !== null)
+
+    /*
+      Sem relogio, sem delegacao.
+
+      A autorizacao temporaria so vale dentro da janela, e o Livro nao tem
+      relogio: quem chama diz que horas sao. Quem nao diz — um chamador antigo,
+      um teste que so quer os fixos — recebe so os fixos. E o lado certo para
+      errar: uma delegacao vencida que aparecesse por falta de parametro seria
+      uma crianca saindo com quem nao pode mais leva-la.
+
+      O impedido que aparecer DEPOIS da delegacao — na proxima troca de
+      cadastro — continua vencendo: a delegacao vira "nao pode" na lista, com o
+      mesmo tratamento do fixo, em vez de sumir ou de valer.
+    */
+    const temporarios: QuemPodeLevar[] =
+      agora === undefined
+        ? []
+        : [...this.temporarias.values()]
+            .filter((d) => d.alunoId === alunoId && d.validoDe <= agora && agora <= d.validoAte)
+            .map((d) => ({
+              id: idDeDelegacao(d.id),
+              nome: d.nome,
+              vinculo: d.vinculo,
+              telefone: d.telefone,
+              impedido: fixos.some((r) => r.impedido && normalizar(r.nome) === normalizar(d.nome)),
+              temporario: true as const,
+              autorizadoPor: d.autorizadoPorNome,
+              validoAte: d.validoAte,
+            }))
+
+    return [...fixos, ...temporarios].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   }
 
   /**
@@ -289,6 +345,62 @@ export class Livro {
       lista.push(v)
       this.vinculos.set(v.alunoId, lista)
     }
+  }
+
+  /*
+    Delegacao — "hoje a avo busca" — e as tres regras dela.
+
+    O portal de pais cria, o backend empurra, e o satelite so guarda e mostra.
+    Mas guardar tem condicoes, e elas moram aqui, nao na rota:
+
+    1. Quem autoriza precisa ser responsavel cadastrado DESTA crianca, e poder
+       leva-la. Um impedido nao delega o que nao tem; alguem de fora do
+       cadastro nao delega nada.
+    2. Impedido vence. Delegar para alguem com o mesmo nome de quem esta
+       impedido e recusado na hora — um portal nao pode desfazer uma decisao
+       judicial por engano. (E se o impedimento chegar depois, `responsaveisDe`
+       marca a delegacao como "nao pode" do mesmo jeito.)
+    3. A janela precisa fazer sentido: fim depois do inicio, fim depois de
+       agora. Vencida nao entra.
+
+    Sem responsaveis cadastrados nao ha titular, e sem titular nao ha
+    delegacao. E coerente: delegar e um titular autorizando outra pessoa.
+  */
+  adicionarDelegacao(d: Omit<Delegacao, 'autorizadoPorNome'>, agora: number): Delegacao {
+    if (!this.cadastro.has(d.alunoId)) throw new Error(`aluno desconhecido: ${d.alunoId}`)
+    if (d.validoAte <= agora) throw new Error('delegacao ja vencida')
+    if (d.validoAte <= d.validoDe) throw new Error('janela invertida')
+
+    const fixos = this.responsaveisDe(d.alunoId)
+    const titular = fixos.find((r) => r.id === d.autorizadoPor)
+    if (!titular || titular.impedido) {
+      throw new Error(
+        'quem autoriza precisa ser responsavel cadastrado desta crianca, e poder leva-la',
+      )
+    }
+    const barrado = fixos.find((r) => r.impedido && normalizar(r.nome) === normalizar(d.nome))
+    if (barrado) {
+      throw new Error(
+        `${barrado.nome} esta impedido de levar esta crianca; a delegacao nao pode desfazer isso`,
+      )
+    }
+
+    const completa: Delegacao = { ...d, autorizadoPorNome: titular.nome }
+    this.temporarias.set(d.id, completa)
+    return completa
+  }
+
+  removerDelegacao(id: string): boolean {
+    return this.temporarias.delete(id)
+  }
+
+  substituirDelegacoes(lista: Delegacao[]): void {
+    this.temporarias.clear()
+    for (const d of lista) this.temporarias.set(d.id, d)
+  }
+
+  listarDelegacoes(): Delegacao[] {
+    return [...this.temporarias.values()]
   }
 
   registro(): EventoAuditoria[] {
@@ -393,6 +505,10 @@ export class Livro {
     }
     this.cadastro.clear()
     for (const aluno of alunos) this.cadastro.set(aluno.id, aluno)
+    // Delegacao de crianca que saiu do cadastro nao tem mais a quem servir.
+    for (const [id, d] of this.temporarias) {
+      if (!this.cadastro.has(d.alunoId)) this.temporarias.delete(id)
+    }
     this.versaoCadastro++
   }
 }
