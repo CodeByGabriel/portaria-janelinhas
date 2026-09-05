@@ -229,8 +229,17 @@ export function turmaDe(bruta: string): Turma | undefined {
   return TURMAS.find((t) => chaveDeTurma(t) === chave)
 }
 
-/** Caracteres de FORMATO invisiveis (largura zero, hifen suave, marca de direcao, BOM). */
-export const INVISIVEIS = /[\u00ad\u200b-\u200f\u2060\ufeff]/g
+/*
+  Caracteres de FORMATO invisiveis: largura zero, hifen suave, BOM — e os
+  controles de DIRECAO.
+
+  Os de direcao nao sao so ruido de copy-paste: `U+202E` inverte a exibicao do
+  que vem depois dele, entao "Ana <RLO>aviuqS aeD" aparece na tela como se
+  fosse outro nome. Numa lista em que a porteira escolhe pelo que le, um nome
+  que se disfarca de outro e o pior tipo de caractere invisivel. Nome de
+  crianca em alfabeto latino nao precisa de nenhum deles.
+*/
+export const INVISIVEIS = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g
 /** Controles C0 e C1: nunca fazem parte de um nome. */
 export const CONTROLES = /[\u0000-\u001f\u007f-\u009f]/
 

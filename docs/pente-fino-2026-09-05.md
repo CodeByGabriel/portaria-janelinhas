@@ -24,7 +24,7 @@ Quatro frentes, na ordem:
 4. **Revisão do próprio diff da noite** (seção "Terceira passada"), porque cinquenta
    correções entram e alguma quebra outra coisa — e uma delas tinha quebrado.
 
-Portões ao fim (depois das três passadas): `npm test` **242 + 109**, `typecheck`,
+Portões ao fim (depois das três passadas): `npm test` **243 + 109**, `typecheck`,
 `fim-a-fim`, `telas`, `responsivo` **45/45**, `peso` **82,0 / 120 KB** — todos com código de
 saída 0. Prints regenerados em `docs/prints/patio/`.
 
@@ -177,6 +177,12 @@ calculada uma vez e ponteiro que só avança. Medido depois: 1 MB com 20 mil asp
 `/registro` continua sem paginação. Nenhuma tela o consome — só as ferramentas de
 verificação — e o caminho oficial para volume é o `/trilha` por cursor. Fica registrado: se
 um dia uma tela precisar da trilha, ela precisa de página, não deste despejo.
+
+**E uma lacuna fechada de tabela:** nomes com **controles de direção** (bidi) entravam no
+cadastro. `U+202E` inverte a exibição do que vem depois, então "Ana ‮aviuqS aeD" aparece na
+tela como outro nome — numa lista em que a porteira escolhe pelo que lê, um nome que se
+disfarça de outro é pior que um invisível qualquer. Os controles de direção e de isolamento
+entraram na regex de invisíveis, nas três cópias, e viraram teste.
 
 **Dois falsos positivos das minhas próprias sondas**, anotados para não voltarem: `18:00` no
 fuso `+05:30` é 12:30 UTC, ou seja, passado — a recusa estava certa; e o 404 de rota

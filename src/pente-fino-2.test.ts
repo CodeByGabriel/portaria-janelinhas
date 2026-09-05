@@ -125,6 +125,31 @@ test('a turma como a secretaria digita: grau, sem espaco, com ponto, letra o', (
   assert.equal(turmaDe('Pré 3'), undefined)
 })
 
+/*
+  Um nome que se disfarca de outro.
+
+  `U+202E` inverte a exibicao do que vem depois: "Ana <RLO>aviuqS aeD" aparece
+  na tela como outro nome. Numa lista em que a porteira escolhe pelo que le,
+  isso e pior que um caractere invisivel qualquer — e nome de crianca em
+  alfabeto latino nao precisa de controle de direcao nenhum.
+*/
+test('controles de direcao (bidi) nao entram no cadastro nem na busca', () => {
+  const RLO = '‮'
+  const PDF = '‬'
+  const LRI = '⁦'
+  const r = analisar(`Nome,Turma\nAna ${RLO}aviuqS aeD${PDF},Pré 1\n${LRI}Bia Lima,7º ano\n`)
+  assert.equal(r.erros.length, 0, JSON.stringify(r.erros))
+  assert.equal(r.alunos.length, 2)
+  for (const a of r.alunos) {
+    assert.doesNotMatch(a.nome, /[‪-‮⁦-⁩]/, a.nome)
+  }
+  assert.equal(r.alunos[0].nome, 'Ana aviuqS aeD')
+  assert.equal(r.alunos[1].nome, 'Bia Lima')
+  // E as duas copias de normalizar tambem os apagam, para a busca casar.
+  assert.equal(normalizar(`Ana ${RLO}Souza`), 'ana souza')
+  assert.equal(normalizarDoNavegador(`Ana ${RLO}Souza`), 'ana souza')
+})
+
 test('caractere de controle no nome e recusado; invisivel e apagado', () => {
   const r = analisar('Nome,Turma\nAnaSouza,Pré 1\nBia​Lima,7º ano\n')
   assert.equal(r.erros.length, 1)

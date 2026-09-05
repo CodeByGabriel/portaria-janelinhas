@@ -33,7 +33,7 @@ const ACENTOS = /[\u0300-\u036f]/g
     U+2E   .   ponto
 */
 const SEPARADORES = /[\u0027\u2018\u2019\u02bc\u002d\u2013\u2014\u002e]/g
-const INVISIVEIS = /[\u00ad\u200b-\u200f\u2060\ufeff]/g
+const INVISIVEIS = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g
 
 export function normalizar(texto: string): string {
   return texto
