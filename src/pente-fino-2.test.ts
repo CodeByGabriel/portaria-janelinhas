@@ -61,6 +61,44 @@ test('aspas balanceadas continuam funcionando, inclusive com quebra de linha den
   const linhas = analisarCsv('Nome,Turma\n"Souza, Ana","Pré 1"\n"Bia\nLima",7º ano\n', ',')
   assert.deepEqual(linhas[1], ['Souza, Ana', 'Pré 1'])
   assert.deepEqual(linhas[2], ['Bia\nLima', '7º ano'])
+  assert.deepEqual(analisarCsv('"Ela disse ""oi""",2º ano', ','), [['Ela disse "oi"', '2º ano']])
+  assert.deepEqual(analisarCsv('"",Pré 1', ','), [['', 'Pré 1']])
+  assert.deepEqual(analisarCsv(' "Souza, Ana",Pré 1', ','), [['Souza, Ana', 'Pré 1']])
+})
+
+/*
+  Aspas soltas NAO fundem linhas — nem em par.
+
+  A primeira correcao tratava a aspa sozinha e deixava as pares se casarem
+  entre si: trezentas aspas soltas transformavam 301 linhas em 151, em silencio.
+  Isto foi medido, e e o que este teste guarda.
+*/
+test('varias aspas soltas nao fundem linha nenhuma, no meio ou no comeco do campo', () => {
+  for (const faz of [
+    (i: number) => `Aluno "${i},Pré 1`,
+    (i: number) => `"Aluno ${i},Pré 1`,
+  ]) {
+    for (const soltas of [1, 2, 5, 300]) {
+      const corpo = Array.from({ length: 300 }, (_, i) =>
+        i < soltas ? faz(i) : `Aluno ${i},Pré 1`,
+      ).join('\n')
+      const linhas = analisarCsv(`Nome,Turma\n${corpo}`, ',')
+      assert.equal(linhas.length, 301, `${soltas} soltas: ${linhas.length} linhas`)
+    }
+  }
+})
+
+test('a leitura do CSV e linear: 1 MB cheio de aspas soltas nao trava a fila', () => {
+  const gigante =
+    'Nome,Turma\n' +
+    Array.from({ length: 20_000 }, (_, i) => `"Aluno ${i} de nome bem comprido,Pré 1`).join('\n')
+  const t0 = process.hrtime.bigint()
+  const r = analisar(gigante)
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6
+  assert.equal(r.alunos.length, 20_000)
+  // A releitura por aspa que existia antes levaria minutos num Durable Object
+  // que atende um pedido por vez. Folga de 20x sobre o medido (~150 ms).
+  assert.ok(ms < 3000, `${ms.toFixed(0)} ms`)
 })
 
 test('CR sozinho (CSV Macintosh) e aceito', () => {

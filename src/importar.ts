@@ -125,66 +125,89 @@ export function separadorDo(cabecalho: string): string {
  * registro unico e a planilha inteira era recusada com "precisa das colunas
  * Nome e Turma".
  *
- * Aspa sem par: um nome digitado como `Ana "Nina` abria um campo que so
- * fechava na proxima aspa — no fim do arquivo. Metade da escola virava UM campo
- * de uma linha, recusada por "nome longo demais", e as linhas seguintes sumiam
- * sem erro nenhum. Agora uma aspa que nao fecha ate o fim e tratada como o que
- * ela era: um caractere do texto. Repete a leitura ignorando aquela aspa; cada
- * volta neutraliza uma, entao termina.
+ * Aspa sem par, e as duas regras que a resolvem — as do RFC 4180, ditas do
+ * jeito que sobrevive a uma planilha digitada por gente:
+ *
+ *   1. A aspa so ABRE campo quando esta no comeco dele. `Ana "Nina` e texto.
+ *   2. E so abre se existir, mais adiante, uma aspa que possa FECHAR: uma que
+ *      venha antes de um separador, de uma quebra de linha ou do fim. Dentro do
+ *      campo, a mesma regra decide o fechamento; a aspa no meio e texto.
+ *
+ * As duas juntas porque uma so nao bastava, e isso foi MEDIDO: com uma aspa
+ * solta, o resto do arquivo virava um campo unico ("nome longo demais") e as
+ * linhas seguintes sumiam sem erro; corrigido esse caso, com DUAS aspas soltas
+ * elas se casavam entre si e as linhas do meio se fundiam em silencio —
+ * trezentas aspas soltas transformavam 301 linhas em 151, sem uma unica
+ * mensagem.
+ *
+ * A lista de fechamentos possiveis e calculada uma vez, e o ponteiro dentro
+ * dela so avanca: a leitura continua LINEAR. A versao anterior relia o texto
+ * inteiro por aspa solta, o que num arquivo de 1 MB seria tempo de sobra para
+ * travar um Durable Object, que atende um pedido por vez.
  */
 export function analisarCsv(texto: string, separador: string): string[][] {
   texto = texto.replace(/\r\n?/g, '\n')
-  const aspasLiterais = new Set<number>()
 
-  for (;;) {
-    const linhas: string[][] = []
-    let campos: string[] = []
-    let campo = ''
-    let dentro = false
-    let abriuEm = -1
+  const fechaAqui = (i: number): boolean => {
+    const proximo = texto[i + 1]
+    return proximo === undefined || proximo === separador || proximo === '\n'
+  }
+  const possiveis: number[] = []
+  for (let i = 0; i < texto.length; i++) {
+    if (texto[i] === '"' && fechaAqui(i)) possiveis.push(i)
+  }
+  let candidato = 0
 
-    for (let i = 0; i < texto.length; i++) {
-      const c = texto[i]
+  const linhas: string[][] = []
+  let campos: string[] = []
+  let campo = ''
+  let dentro = false
 
-      if (dentro) {
-        if (c === '"') {
-          if (texto[i + 1] === '"') {
-            campo += '"'
-            i++
-          } else {
-            dentro = false
-          }
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i]
+
+    if (dentro) {
+      if (c === '"') {
+        if (texto[i + 1] === '"') {
+          campo += '"'
+          i++
+        } else if (fechaAqui(i)) {
+          dentro = false
         } else {
           campo += c
         }
-        continue
-      }
-
-      if (c === '"' && !aspasLiterais.has(i)) {
-        dentro = true
-        abriuEm = i
-      } else if (c === separador) {
-        campos.push(campo.trim())
-        campo = ''
-      } else if (c === '\n') {
-        campos.push(campo.trim())
-        linhas.push(campos)
-        campos = []
-        campo = ''
       } else {
         campo += c
       }
-    }
-
-    if (dentro) {
-      aspasLiterais.add(abriuEm)
       continue
     }
 
-    campos.push(campo.trim())
-    linhas.push(campos)
-    return linhas
+    if (c === '"' && campo.trim() === '') {
+      // `campo.trim()`: o Excel as vezes poe um espaco antes da aspa de
+      // abertura, e isso continua sendo uma aspa de abertura.
+      while (candidato < possiveis.length && possiveis[candidato] <= i) candidato++
+      if (candidato < possiveis.length) {
+        dentro = true
+        continue
+      }
+      // Nenhum fechamento possivel daqui ate o fim: e texto, nao delimitador.
+      campo += c
+    } else if (c === separador) {
+      campos.push(campo.trim())
+      campo = ''
+    } else if (c === '\n') {
+      campos.push(campo.trim())
+      linhas.push(campos)
+      campos = []
+      campo = ''
+    } else {
+      campo += c
+    }
   }
+
+  campos.push(campo.trim())
+  linhas.push(campos)
+  return linhas
 }
 
 /*
