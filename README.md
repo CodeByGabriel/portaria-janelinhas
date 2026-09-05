@@ -245,6 +245,9 @@ em vez de alerta.
 - `docs/plano-refatoracao.md` — a refatoração em curso, com o que cada fase fecha
 - `docs/pesquisa-refatoracao.md` — a pesquisa que a embasa, e onde o código a desmentiu
 - `docs/baseline.md` — os números do "antes", contra os quais cada fase é medida
+- `docs/fase-3-interfaces.md` — os contratos com o backend: `PUT /cadastro`, `GET /trilha`,
+  `POST/DELETE /delegacoes`, e o que ainda depende de quem constrói o backend
+- `docs/pente-fino-2026-09-05.md` — o que o pente fino de 05/09 encontrou, corrigiu e deixou
 - **`docs/lgpd.md` — o que o sistema coleta, onde guarda, quem alcança, e os três
   bloqueios que impedem dado real de entrar hoje. Leia antes de qualquer conversa com a
   escola sobre subir a lista de verdade.**

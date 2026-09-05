@@ -747,6 +747,11 @@ problema é que ele é de outro lugar.
 
 ## 7. Fase 3 — Ecossistema (esboço de interfaces apenas)
 
+> ✅ **Esboçada e implementada em 05/09/2026**, sob os padrões documentados em
+> `docs/fase-3-interfaces.md` (por instrução do dono): cadastro por API com os ids do
+> backend, trilha exportável por cursor, delegação "hoje a avó busca", e push deixado para o
+> backend a partir da trilha. Na mesma noite, o pente fino: `docs/pente-fino-2026-09-05.md`.
+
 Cadastro por API substituindo a planilha; exportação da trilha no formato `LogAuditoria`; delegação "hoje a avó busca" via portal de pais; push só com fallback e só quando o portal existir.
 
 ---

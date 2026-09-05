@@ -22,8 +22,9 @@ Três frentes, na ordem:
    que se aponta com arquivo e linha.
 3. **Correções**, cada uma com teste de regressão onde a falha era de lógica.
 
-Portões ao fim: `npm test` **225 + 100**, `typecheck`, `fim-a-fim`, `telas`, `responsivo`
-**45/45**, `peso` **81,5 / 120 KB** — todos com código de saída 0.
+Portões ao fim da noite (depois das duas passadas): `npm test` **239 + 107**, `typecheck`,
+`fim-a-fim`, `telas`, `responsivo` **45/45**, `peso` **82,0 / 120 KB** — todos com código de
+saída 0. Prints regenerados em `docs/prints/patio/`.
 
 ## Corrigido — gravidade alta
 
@@ -145,8 +146,9 @@ um vigia em segundo plano o subiu de novo a cada queda.
 - **Em desenvolvimento, todas as origens caem no mesmo balde do limitador** ("desconhecida",
   porque não há `CF-Connecting-IP`); com trinta falhas e o token certo sempre passando,
   isso deixou de atrapalhar.
-- **`wrangler dev` 4.128.0 cai sob carga** com um ERROR vazio e sugere a 4.129.0. Não
-  atualizei no meio da noite; é uma linha no `package.json` para conferir de dia.
+- **`wrangler dev` 4.128.0 caía sob carga** com um ERROR vazio e sugeria a 4.129.0. Atualizado
+  para a 4.129.0 no fim da noite, com a suíte do workerd e os portões verdes; se ela ainda cair
+  sob HTTP malformado ou rajada de fechamentos, é do runtime local, não do app.
 - **Os 33 achados da rodada 1 que a verificação automática não alcançou** foram triados
   à mão (tabelas acima). A rodada 2, a rodada 3 e a crítica final não rodaram por causa
   do limite de uso. Vale repetir o workflow com o código de agora, de dia.
