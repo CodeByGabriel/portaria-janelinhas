@@ -1428,7 +1428,7 @@ async function descartar(pedido: Request): Promise<void> {
   }
 }
 
-function motivoDe(erro: unknown): string {
+export function motivoDe(erro: unknown): string {
   /*
     Allowlist, nao denylist: mensagem de erro nao prevista vira "comando
     recusado" em vez de vazar o interior do servidor para a tela da professora.
