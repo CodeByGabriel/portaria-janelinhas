@@ -532,6 +532,15 @@
     }
 
     tipoBusca.onchange = () => {
+      /*
+        Trocar de modo INVALIDA a busca de adulto que estiver voando.
+
+        Sem isto, a resposta de "xkcdzzz" chegava depois da troca e escrevia
+        "Nenhum responsável com esse nome" na tela de busca por ALUNO, com o
+        campo ja vazio. A porteira le um aviso sobre uma pergunta que ela nao
+        fez — e nao ha nada na tela que explique de onde ele veio.
+      */
+      pedidoDeAdulto++
       const porAdulto = tipoBusca.value === 'responsavel'
       campo.placeholder = porAdulto ? 'Nome do responsável' : 'Nome do aluno'
       campo.setAttribute('aria-label', campo.placeholder)

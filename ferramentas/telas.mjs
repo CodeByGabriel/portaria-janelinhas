@@ -1749,6 +1749,53 @@ async function principal() {
   conferir('a lista de criancas da outra busca sai da tela',
     doRicardo.listaDeAlunosEscondida === true)
 
+  /*
+    A resposta que chega DEPOIS da troca de modo nao escreve na outra tela.
+
+    A busca por adulto vai ao servidor; a busca por aluno e local. Trocar de
+    modo com uma resposta voando deixava "Nenhum responsavel com esse nome"
+    na tela de busca por ALUNO, com o campo ja vazio: um aviso sobre uma
+    pergunta que a porteira nao fez, sem nada na tela que explique de onde
+    veio. Aqui a rede e atrasada de proposito para o caso acontecer sempre.
+  */
+  await cdp.avaliar(`
+    (() => {
+      const orig = window.fetch
+      window.fetch = (...a) =>
+        String(a[0]).includes('/responsaveis')
+          ? new Promise((r) => setTimeout(() => r(orig(...a)), 1500))
+          : orig(...a)
+      const sel = document.getElementById('tipoBusca')
+      const campo = document.getElementById('consulta')
+      sel.value = 'responsavel'
+      sel.onchange()
+      campo.value = 'xkcdzzz'
+      campo.oninput()
+      setTimeout(() => { sel.value = 'aluno'; sel.onchange() }, 200)
+      return true
+    })()
+  `)
+  await esperar(2600)
+
+  const depoisDaTroca = await cdp.avaliar(`
+    (() => {
+      const aviso = document.getElementById('semResultado')
+      return {
+        modo: document.getElementById('tipoBusca').value,
+        visivel: aviso.hidden !== true,
+        texto: aviso.textContent,
+      }
+    })()
+  `)
+  conferir('a resposta atrasada da busca por adulto nao vaza para a busca por aluno',
+    depoisDaTroca.modo === 'aluno' && depoisDaTroca.visivel === false,
+    JSON.stringify(depoisDaTroca))
+
+  // De volta ao estado que o resto do bloco espera.
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+  await cdp.avaliar(buscarPorAdulto('ricardo'))
+  await esperar(1200)
   const impedida = doRicardo.filhos?.find((f) => f.impedido)
   conferir('a crianca IMPEDIDA aparece na lista, e nao sumida',
     !!impedida && /Alice/.test(impedida.texto),
