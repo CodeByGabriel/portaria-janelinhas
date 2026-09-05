@@ -11,8 +11,8 @@
 
     cor      — token --estado-*, todos medidos contra as superficies
     rotulo   — texto em portugues corrido, nunca jargao
-    icone    — forma distinta, para quem nao distingue matiz
-    faixa    — posicao e espessura na lateral (o CSS cuida, via data-estado)
+    icone    — silhueta distinta a 24px, para quem nao distingue matiz
+    faixa    — desenho proprio do traco lateral (o CSS cuida, via data-estado)
 
   O componente monta o conjunto. A tela nao escolhe partes dele — foi assim
   que `aguardando` acabou sem rotulo nenhum, comunicado apenas pela AUSENCIA
@@ -28,18 +28,22 @@ const ROTULO = {
 }
 
 /*
-  Icones desenhados a mao, em SVG inline.
+  Icones desenhados a mao, em SVG inline. Sem biblioteca e sem CDN.
 
-  Sem biblioteca e sem CDN: o app tem que subir com o cabo da escola
-  desconectado, e uma fonte de icone remota seria a unica dependencia externa
-  do projeto inteiro. Cada glifo e um punhado de tracos num viewBox de 24.
+  Cada silhueta diz o que o estado E, nao o que ele parece:
+    aguardando  relogio          — o estado quieto, em aula
+    chamado     sino             — alguem chegou
+    liberado    porta com seta   — a crianca SAIU da sala (antes era um check,
+                                   e check e "concluido"; concluido e entregue)
+    retorno     seta em U        — voltou
+    entregue    check duplo      — passou por duas maos, ciclo fechado
 */
 const ICONE = {
   aguardando: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
   chamado: ['M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7', 'M13.7 21a2 2 0 0 1-3.4 0'],
-  liberado: ['M20 6 9 17l-5-5'],
-  entregue: ['M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8', 'M17 16l4-4-4-4', 'M21 12H10'],
-  retorno: ['M9 14 4 9l5-5', 'M4 9h11a5 5 0 0 1 0 10h-4'],
+  liberado: ['M4 3h9v18H4z', 'M15 12h6M18 9l3 3-3 3'],
+  retorno: ['M20 20v-6a4 4 0 0 0-4-4H4', 'M8 6 4 10l4 4'],
+  entregue: ['M2.5 12.5l5 5L18 7', 'M11 17.5l1 1L22 8'],
 }
 
 const NS = 'http://www.w3.org/2000/svg'
@@ -59,20 +63,11 @@ function icone(estado) {
 }
 
 /*
-  O lugar da foto, vazio ate a escola trazer as fotos.
+  O lugar da foto, vazio ate a escola trazer as fotos de matricula.
 
-  Ate aqui isto desenhava um retrato vetorial gerado do nome. Servia para a
-  vitrine e cumpria o invariante 4 (nada fotorrealista de crianca), mas era
-  ilustracao inventada ocupando o lugar da informacao real — e a escola vai
-  subir as fotos de matricula, com consentimento, na Fase 3.
-
-  O ESPACO CONTINUA RESERVADO, e isso e o ponto. Um lugar vazio hoje e a mesma
-  caixa que recebe a foto amanha: o cartao nao muda de altura, a linha nao
-  reflui, e nenhuma tela precisa ser redesenhada quando as imagens chegarem.
-  Tirar a caixa junto com o desenho seria economizar hoje para refazer depois.
-
-  Fica com `aria-hidden`: e decoracao ate ter conteudo, e um leitor de tela
-  anunciando "imagem" numa caixa vazia so atrapalha quem depende dele.
+  O ESPACO CONTINUA RESERVADO: um lugar vazio hoje e a mesma caixa que recebe
+  a foto amanha. Vazio digno — contorno tracejado, sem inicial, sem avatar.
+  `aria-hidden`: e decoracao ate ter conteudo.
 */
 function foto(_nome, classe) {
   const caixa = document.createElement('div')
@@ -82,7 +77,7 @@ function foto(_nome, classe) {
   return caixa
 }
 
-/** Etiqueta completa: icone + rotulo + cor, os tres sempre juntos. */
+/** Etiqueta completa: icone + rotulo + cor, os tres sempre juntos. Sem caixa. */
 export function etiquetaDe(texto, estado) {
   const span = document.createElement('span')
   span.className = 'etiqueta'
@@ -95,14 +90,6 @@ export function etiquetaDe(texto, estado) {
   return span
 }
 
-/**
- * Monta a etiqueta a partir do estado, com o rotulo e o icone que lhe pertencem.
- *
- * Exportada porque a portaria precisa RECONSTRUIR a etiqueta quando o estado
- * muda. Reescrever so o texto apagava o <svg> junto — textContent substitui
- * todos os filhos — e o rotulo escrito a mao la virava segunda fonte da
- * verdade, que nao sabe de nenhum estado alem dos dois digitados.
- */
 export function etiquetaDoEstado(estado) {
   const texto = ROTULO[estado]
   if (!texto) return null
@@ -110,8 +97,8 @@ export function etiquetaDoEstado(estado) {
 }
 
 /**
- * Cartao grande. E o que a professora ve do fundo da sala: rosto grande,
- * nome legivel, estado inequivoco.
+ * Cartao. Na sala (variante .painel) e uma linha larga: retrato, nome como
+ * estrutura, estado e acao a direita. Fora do painel vira compacto.
  */
 export function criarCartao({ nome, turma }) {
   const raiz = document.createElement('article')
@@ -150,25 +137,22 @@ export function criarCartao({ nome, turma }) {
   return raiz
 }
 
-/** Linha compacta. E o que a portaria percorre com o polegar, no celular. */
+/**
+ * Linha compacta. E o que a portaria percorre com o polegar, no celular.
+ *
+ * Duas linhas internas: retrato + nome em cima; etiqueta + acao embaixo.
+ * A quebra e um elemento de propósito (flex-basis: 100%): um nome longo nunca
+ * disputa espaco com o botao, e o botao nunca encolhe.
+ */
 export function criarLinha({ nome, turma, estado }) {
   const raiz = document.createElement('li')
   raiz.className = 'linha'
-  // Alimenta a faixa lateral do CSS. Sem isto a linha fica sem o quarto canal.
   if (estado) raiz.dataset.estado = estado
 
   const bloco = document.createElement('div')
   bloco.className = 'nome'
   bloco.append(document.createTextNode(nome))
 
-  /*
-    A turma e a espera dividem a mesma linha de detalhe, em spans separados.
-
-    Separados porque o tempo muda a cada tique e a turma nao: escrever os dois
-    juntos obrigaria a reescrever o texto inteiro a cada dez segundos, e o
-    proximo `textContent =` seria mais uma chance de apagar algo por engano —
-    foi assim que a etiqueta perdeu o icone.
-  */
   const detalhe = document.createElement('span')
   detalhe.className = 'detalhe'
 
@@ -185,7 +169,12 @@ export function criarLinha({ nome, turma, estado }) {
   raiz.append(foto(nome, 'foto'), bloco)
 
   const etiqueta = estado ? etiquetaDoEstado(estado) : null
-  if (etiqueta) raiz.append(etiqueta)
+  if (etiqueta) {
+    const quebra = document.createElement('span')
+    quebra.className = 'quebra'
+    quebra.setAttribute('aria-hidden', 'true')
+    raiz.append(quebra, etiqueta)
+  }
 
   return raiz
 }

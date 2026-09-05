@@ -1,51 +1,29 @@
 /*
-  Janelinhas do Saber — sistema visual.
+  Janelinhas do Saber — "Pátio", refinado.
 
-  Institucional, nao lúdico. A escola vai do Pré 1 ao 9º ano: uma interface
-  de madeira e vidrinho fala com o Pré e constrange o Fundamental II, e a
-  professora usa isto quarenta vezes por dia. Verde institucional, cartoes
-  brancos, tipografia limpa, densidade de informacao.
+  Direção: QUADRO DE AVISOS DA SECRETARIA, EM PAPEL QUENTE, LIDO DO FUNDO DA SALA.
 
-  O nome da escola aparece como marca, nao como textura: um glifo discreto
-  de janela no cabecalho. Identidade sem fantasia.
+  O que mudou em relação ao Pátio anterior, e por quê:
+  - sombra em cartão morre; hairline de 1px no lugar. Cartão branco sobre papel
+    já se destaca por superfície; sombra era o segundo sinal para a mesma coisa,
+    e é a marca do "protótipo de IA" que o dono apontou.
+  - a pílula de estado morre. O estado vira ícone + rótulo na cor do estado,
+    sem caixa nem fundo tintado. Cinco fundos pastel eram cor sem trabalho.
+  - o cabeçalho deixa de ser verde cheio. Verde cheio é a ÚNICA ação preenchida
+    da tela; gasto num cabeçalho que não faz nada, sobrava para o botão a mesma
+    cor de algo que não é botão.
+  - `liberado` deixa de ser verde: colidia com a cor da ação (mesmo matiz para
+    quem vê tudo, ΔE 16 sob deuteranopia). Cor de ação e cor de estado não
+    podem se parecer.
 
-  As cores marcadas com --_todo dependem da marca real da escola, que ainda
-  nao conhecemos: conteudo/institucional/ e todo TODO(visita).
+  Contrastes anotados são WCAG 2.2 contra --papel e --cartao. src/contraste.test.ts
+  lê este arquivo e trava os pares.
+
+  Os nomes antigos (--fundo, --superficie, --marca, --tinta-media…) continuam
+  como apelidos no fim do :root, para nenhuma tela quebrar no meio da migração.
+  Apagar os apelidos quando a última referência sumir.
 */
 
-/*
-  Tipografia da direcao "Patio".
-
-  Duas fontes, self-hosted, servidas pelo proprio Worker. Nao ha CDN em runtime
-  nem em desenvolvimento: o wifi de uma escola cai, e um app de saida que
-  depende de fonts.googleapis.com para desenhar o nome de uma crianca e um app
-  que escolhe o pior momento para falhar.
-
-  FRAUNCES 600 escreve exclusivamente o cabecalho e os titulos. E uma serifada
-  com contraste alto, que da a um app de portaria o peso de uma placa de escola
-  em vez de um painel de aeroporto — e a escola vai do Pré 1 ao 9º ano, entao a
-  identidade nao pode parecer infantil.
-
-  Ela vem SUBSETADA aos 44 caracteres que o cabecalho escreve
-  (`ferramentas/subsetar-fontes.mjs`): 35 KB viraram 10 KB. Trinta e cinco
-  quilobytes para desenhar uma frase que nunca muda seria a maior linha do
-  orcamento de peso, e a menos util.
-
-  INSTRUMENT SANS escreve todo o resto, e NAO e subsetada por amostra: ela
-  desenha nome de crianca, e nome de crianca vem de planilha. Recortar pelos
-  glifos que a semente usa daria um retangulo vazio no lugar do "Ø" de alguem
-  no dia em que a escola importasse a lista de verdade. Fonte de corpo se
-  recorta por INTERVALO, e o subset "latin" ja cobre o portugues inteiro,
-  inclusive o "º" de "1º ano".
-
-  Foi escolhida em vez do Inter Tight por um motivo especifico: Inter e a fonte
-  que virou marca do visual generico de interface gerada por IA, e esta escola
-  precisa parecer uma escola.
-
-  `font-display: swap` em ambas: o texto aparece na fonte de sistema e troca
-  quando a fonte chega. Numa tela onde alguem espera o nome de uma crianca,
-  texto invisivel por 3 segundos e pior que texto na fonte errada por 300 ms.
-*/
 @font-face {
   font-family: 'Fraunces';
   src: url('./fontes/fraunces-600-cabecalho.woff2') format('woff2');
@@ -57,285 +35,266 @@
 @font-face {
   font-family: 'Instrument Sans';
   src: url('./fontes/instrument-sans-var-latin.woff2') format('woff2-variations');
-  /* Variavel: um arquivo serve 400 e 600, e o navegador interpola o resto. */
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 
 :root {
+  /* ---------- superfícies ---------- */
+
   /*
-    Escala tipografica, por PAPEL e nao por tamanho.
-
-    Antes havia dezoito tamanhos distintos espalhados pelos arquivos, cinco
-    deles a menos de meio pixel um do outro — 0,78rem, 0,8rem e 0,82rem sao a
-    mesma coisa para qualquer olho, e existiam so porque cada tela foi escrita
-    num dia diferente. Diferenca que ninguem percebe nao comunica nada; so
-    impede que a proxima pessoa saiba qual usar.
-
-    Sete degraus, cada um a pelo menos 12% do vizinho, e cada um com um
-    trabalho. O nome diz o trabalho, entao a proxima pessoa escolhe pelo que
-    esta escrevendo e nao pelo que parece bonito.
+    Papel, não branco. Um degrau menos amarelo que o #FBF7EF anterior: sob sol
+    de 17h o creme forte puxava a terracota de `chamado` para ocre — a mesma
+    direção em que a deuteranopia já a empurra.
   */
-  --t-etiqueta: 0.79rem;   /* caixa alta, contagem, rodape */
-  --t-detalhe: 0.888rem;   /* turma, dica, corte da busca */
-  --t-corpo: 1rem;         /* o padrao */
-  --t-nome: 1.125rem;      /* nome na linha, texto da restricao */
-  --t-titulo: 1.266rem;    /* titulo de tela e de caixa */
-  --t-numero: 1.424rem;    /* o valor no placar da importacao */
-  --t-painel: 2rem;        /* variante Painel: lido do fundo da sala */
+  --papel: #F7F3EC;
+  --cartao: #FFFFFF;
+  --destaque: #EEE8DD;   /* fundo de campo, caixa de importação, hover de botão */
 
-  /* Entrelinha: apertada em titulo, folgada em texto corrido. */
+  /* ---------- tinta ---------- */
+
+  /*
+    Uma tinta, três degraus. Não há cinzas inventados: os dois secundários são
+    a tinta a 70% e 45% compostos sobre o papel, achatados em hex para o teste
+    de contraste conseguir ler.
+      --tinta    15,6 papel / 17,3 cartão
+      --tinta-2   6,1 papel /  6,6 cartão   (texto secundário)
+      --tinta-3   3,2 cartão — só NÃO-TEXTO: borda de campo, retrato tracejado
+    O 60% do Notion foi medido e recusado: 4,38 sobre o papel, reprova.
+  */
+  --tinta: #1E1A16;
+  --tinta-2: #5F5B56;
+  --tinta-3: #8F8B87;
+  --tinta-clara: #FFFFFF;
+
+  /* Hairline no lugar de sombra. A forte é para campo de formulário, que
+     precisa de 3:1 como componente (WCAG 1.4.11). */
+  --linha: rgba(30, 26, 22, 0.08);
+  --linha-forte: var(--tinta-3);
+
+  /* ---------- ação: uma só, preenchida ---------- */
+
+  /*
+    Verde-mata do Pátio. Fica porque é a marca da escola E porque, muito
+    escuro, não briga com nenhum estado: 8,24 sobre papel; branco sobre ele 9,11.
+    Só `button.principal` usa este preenchimento. Tudo o mais é vazado.
+  */
+  --acao: #14532D;
+  --acao-pressionada: #0E3D21;
+
+  /* ---------- estados ---------- */
+
+  /*
+    Nenhum destes aparece sozinho. Quatro canais, sempre: cor + rótulo + ícone
+    + desenho da faixa. web/comum/cartao.js monta o conjunto.
+
+                         papel   cartão  |  ΔE deuteranopia / protanopia
+    aguardando  #6F675F   5,02    5,55   |  nunca aparece em tela ao vivo
+    chamado     #B5441C   4,99    5,51   |  vs liberado 64/48 · vs retorno 80/73
+    liberado    #0F6E78   5,39    5,96   |  vs entregue 36/38 · vs retorno 22/34
+    retorno     #4A1E5C  11,64   12,80   |  vs entregue 26/22
+    entregue    #2F4A9C   7,36    8,14   |
+
+    liberado/retorno a 22 é o par mais fraco e não há quinta cor que resolva:
+    sob deuteranopia sobram o eixo azul-amarelo e a luminosidade, e `chamado`
+    já ocupa o lado quente. É exatamente onde o ícone (porta vs. U) e a faixa
+    (dupla vs. pontilhada grossa) carregam a distinção.
+  */
+  --estado-aguardando: #6F675F;
+  --estado-chamado: #B5441C;
+  --estado-liberado: #0F6E78;
+  --estado-retorno: #4A1E5C;
+  --estado-entregue: #2F4A9C;
+
+  /*
+    Restrição não é estado: é interrupção. Vinho escuro, longe da terracota em
+    luminosidade (o vermelho anterior colapsava com ela sob deuteranopia).
+    8,2 papel / 9,05 cartão.
+  */
+  --alerta: #8B1E2D;
+
+  /*
+    Desabilitado com par próprio, NUNCA opacity: opacity compunha texto e fundo
+    contra a página e caía a 2,12. Este par dá 8,66 — "Aguardando no portão" é
+    o que confirma à professora que ela já fez a parte dela.
+  */
+  --apagado-fundo: #E4DED3;
+  --apagado-tinta: #3D3833;
+
+  /* ---------- tipografia ---------- */
+
+  /*
+    Dois extremos no mesmo sistema: nome lido a metros na sala e rótulo de 12px
+    na portaria. Degraus com papel, não com número bonito.
+
+    O nome no painel é ESTRUTURA: Instrument Sans 700, 64px, entrelinha 0,98,
+    tracking 0. Custo zero de bytes — a variável já cobre 700. Tracking 0 e não
+    negativo: em 700 as hastes colidem; não positivo: isso é para condensadas.
+
+    Fraunces fica onde estava — nome da escola e título de caixa. O subset de 44
+    glifos não escreve nome de criança e expandi-lo custaria ~25 KB do teto.
+  */
+  --fonte-ui: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fonte-voz: 'Fraunces', Georgia, 'Times New Roman', serif;
+
+  --t-etiqueta: 0.75rem;       /* 12  caixa alta, +0.08em, 600 — seção, grupo, rodapé */
+  --t-detalhe: 0.875rem;       /* 14  turma, cronômetro, dica */
+  --t-corpo: 1rem;             /* 16  padrão, botão */
+  --t-nome: 1.125rem;          /* 18  nome na linha, 600 */
+  --t-titulo: 1.25rem;         /* 20  Fraunces 600 — título de tela e de caixa */
+  --t-numero: 1.5rem;          /* 24  placar da importação; turma no painel */
+  --t-estado-painel: 1.375rem; /* 22  etiqueta, faixa e botão do painel */
+  --t-painel: 4rem;            /* 64  nome da criança no painel, 700, 0,98 */
+
+  --linha-apertada: 0.98;
   --linha-titulo: 1.2;
   --linha-corpo: 1.5;
 
-  /* Caixa alta precisa de respiro entre letras; caixa baixa nao. */
-  --tracking-etiqueta: 0.07em;
+  --tracking-etiqueta: 0.08em;
+  --tracking-nome: -0.005em;
+  --tracking-titulo: -0.01em;
 
-    /* marca */
-  --marca: #0e6b45;
-  --marca-escura: #0a5436;
-  --marca-clara: #e4f1ea;
-  --marca-borda: #b9dcc9;
+  /* ---------- medidas ---------- */
 
-  /* superficies */
-  --fundo: #f4f6f5;
-  --superficie: #ffffff;
-  --superficie-2: #eef1ef;
-  --borda: #dfe4e1;
-  --borda-forte: #c3ccc7;
-
-  /* texto */
-  --tinta: #16211c;
-  --tinta-media: #4a5852;
-  /*
-    Era #78857f: 3,54 sobre o fundo e 3,85 sobre o cartao — reprovava o
-    minimo de 4,5 do WCAG 1.4.3. Carrega a turma no cartao, o detalhe na
-    linha e o aviso de truncamento da busca, entao nao e texto decorativo.
-  */
-  --tinta-fraca: #5f6b66;
-  --tinta-clara: #ffffff;
+  /* Base 4: 4 8 12 16 20 24 32 48 64. */
+  --e-1: 4px; --e-2: 8px; --e-3: 12px; --e-4: 16px; --e-5: 20px;
+  --e-6: 24px; --e-8: 32px; --e-12: 48px; --e-16: 64px;
 
   /*
-    ESTADOS.
-
-    Regra de uso: nenhum destes tokens aparece sozinho. Cada estado se
-    apresenta por quatro canais ao mesmo tempo — cor, icone, rotulo textual e
-    faixa lateral. O componente monta o conjunto (web/comum/cartao.js); a tela
-    nao escolhe.
-
-    Todos os pares foram medidos: cada cor passa 4,5 como texto sobre o fundo
-    e sobre o cartao, e passa 3,0 como faixa. src/contraste.test.ts trava isso.
+    Dois raios, e a regra: 8 para o que se toca ou é pequeno (botão, campo,
+    linha, retrato pequeno); 12 para o que contém (cartão, caixa). Nada
+    redondo: a pílula morreu com a etiqueta.
   */
-  --estado-aguardando: #736c67;
-  --estado-chamado: #c2410c;
-  --estado-liberado: #15803d;
-  --estado-entregue: #1d4ed8;
-  --estado-retorno: #86198f;
-
-  --estado-aguardando-fundo: #f7f6f5;
-  --estado-chamado-fundo: #fef6e9;
-  --estado-liberado-fundo: #f2f9f5;
-  --estado-entregue-fundo: #e7edfc;
-  --estado-retorno-fundo: #f8e9f8;
-
-  --alerta: #a4302a;
-  --alerta-fundo: #fbeceb;
-
-  /* Botao desabilitado: par proprio, nunca opacity. Ver a regra la embaixo. */
-  --apagado-fundo: #dfe4e1;
-  --apagado-tinta: #3f4b45;
-
-  /* nomes antigos, mantidos para nao quebrar telas que ainda os usam */
-  --chamado-fundo: var(--estado-chamado-fundo);
-  --chamado-borda: #f0d4a3;
-  --chamado-tinta: var(--estado-chamado);
-  --liberado-fundo: var(--estado-liberado-fundo);
-  --liberado-borda: var(--marca-borda);
-  --liberado-tinta: var(--estado-liberado);
-
-  /* medidas */
   --canto: 8px;
   --canto-g: 12px;
-  /*
-    Alvo de toque. 44px e o nivel AAA (WCAG 2.5.5), acima do minimo AA de 24.
-    A baseline mediu 6 de 9 acoes primarias em 40,1px, e o summary da
-    importacao em 18,7 — abaixo ate do minimo AA.
-  */
-  --toque-min: 44px;
-  --transicao: 180ms cubic-bezier(0.2, 0, 0.2, 1);
-  --sombra: 0 1px 2px rgba(22, 33, 28, 0.06), 0 1px 3px rgba(22, 33, 28, 0.04);
-  --sombra-alta: 0 2px 4px rgba(22, 33, 28, 0.08), 0 4px 12px rgba(22, 33, 28, 0.06);
 
-  --_todo-marca-primaria: var(--marca);
+  /* 44px é o nível AAA (WCAG 2.5.5). Vale para TODO controle, não só botão. */
+  --toque-min: 44px;
+
+  /* Retrato reservado e vazio. Mesma caixa que recebe a foto de matrícula. */
+  --retrato-linha: 44px;
+  --retrato-painel: 112px;
+
+  /* ---------- movimento ---------- */
+
+  /*
+    Discreto: um cartão que chega na sala tem que ser percebido sem roubar a
+    aula. Nada de bounce, nada de scale. O som já é o alarme; o movimento só
+    diz onde olhar.
+  */
+  --dur-toque: 120ms;
+  --dur-base: 180ms;
+  --dur-entrada: 320ms;
+  --dur-faixa: 240ms;
+  --curva: cubic-bezier(0.2, 0, 0, 1);
+  --transicao: var(--dur-base) var(--curva);
+
+  /* ---------- apelidos do Pátio anterior (apagar quando ninguém mais usar) ---------- */
+  --fundo: var(--papel);
+  --superficie: var(--cartao);
+  --superficie-2: var(--destaque);
+  --borda: var(--linha);
+  --borda-forte: var(--linha-forte);
+  --tinta-media: var(--tinta-2);
+  --tinta-fraca: var(--tinta-2);
+  --marca: var(--acao);
+  --marca-escura: var(--acao-pressionada);
+  --marca-clara: var(--destaque);
+  --marca-borda: var(--linha-forte);
+  --alerta-fundo: var(--destaque);
+  --chamado-tinta: var(--estado-chamado);
+  --liberado-tinta: var(--estado-liberado);
 }
 
 /* ---------- base ---------- */
 
 * { box-sizing: border-box; }
 
+/*
+  `hidden` tem que ganhar de qualquer `display`. O atributo esconde pela folha
+  do navegador, a de menor prioridade; qualquer `display` nosso vencia e a
+  faixa de aviso ficou como uma barra vazia atravessada na tela.
+*/
+[hidden] { display: none !important; }
+
+.fora-da-tela {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--fundo);
+  background: var(--papel);
   color: var(--tinta);
-  /*
-    A pilha SEMPRE termina numa fonte de sistema. Se o woff2 nao chegar — rede
-    da escola, cache limpo, arquivo movido — o app continua legivel em vez de
-    cair para um serifado de navegador que ninguem escolheu.
-  */
-  font-family: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
+  font-family: var(--fonte-ui);
+  font-size: var(--t-corpo);
+  line-height: var(--linha-corpo);
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---------- cabecalho institucional ---------- */
+ul { list-style: none; padding: 0; margin: 0; }
+
+/* ---------- cabeçalho: papel, não verde ---------- */
 
 /*
-  `hidden` tem que ganhar de qualquer `display`.
-
-  O atributo `hidden` esconde por `display: none` vindo da folha do navegador —
-  que e a de MENOR prioridade que existe. Qualquer regra nossa que declare
-  `display` na mesma elemento vence, e o elemento fica permanentemente visivel
-  com o atributo `hidden` ali, dizendo o contrario.
-
-  Foi o que aconteceu com a faixa de aviso de som: `.faixa.aviso { display:
-  block }` anulou o `hidden`, e a tela ficou com uma barra preta vazia
-  atravessada nela. As verificacoes automaticas nao pegaram porque leem a
-  PROPRIEDADE `el.hidden`, que continuava correta — a tela e que mentia.
-  Quem pegou foi olhar o print, de novo.
-
-  `!important` aqui e o uso legitimo: e uma regra de plataforma, nao de estilo,
-  e ela existe justamente para nao ser sobrescrita por descuido.
-*/
-[hidden] {
-  display: none !important;
-}
-
-/*
-  Rotulo que so o leitor de tela alcanca.
-
-  Nao usa `display: none` nem `visibility: hidden`: os dois tiram o elemento
-  da arvore de acessibilidade tambem, e ai o campo fica sem nome nenhum. O
-  recorte de 1px e a forma que continua sendo lida.
-*/
-.fora-da-tela {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-/*
-  O cabecalho embrulha, em vez de empurrar o conteudo para fora da tela.
-
-  Em 320px — o iPhone SE, que ainda esta em muita mao — o glifo, o nome da
-  escola, o seletor de som e o botao de mudo somavam 360px numa tela de 320. O
-  resultado nao era so feio: `.direita` saia para fora do lado direito, e o
-  botao de mudo ficava inalcancavel sem descobrir que dava para arrastar a
-  pagina de lado. Ninguem descobre.
-
-  `flex-wrap` mais `margin-left: auto` no bloco da direita: enquanto cabe, ele
-  fica encostado na direita como sempre; quando nao cabe, desce inteiro para a
-  linha de baixo em vez de vazar.
+  Embrulha em vez de empurrar: em 320px o glifo, o nome da escola e os
+  controles de som não cabem numa linha, e o bloco da direita desce inteiro.
 */
 .cabecalho {
-  background: var(--marca);
-  color: var(--tinta-clara);
-  padding: 0.85rem 1.15rem;
+  background: var(--papel);
+  color: var(--tinta);
+  padding: var(--e-3) var(--e-4);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
+  gap: var(--e-2) var(--e-3);
+  border-bottom: 1px solid var(--linha);
 }
 
+/* O glifo de janela é o único verde fora do botão: traço, 24px, marca. */
 .cabecalho .marca-glifo {
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border: 2px solid currentColor;
-  border-radius: 3px;
-  position: relative;
-  opacity: 0.95;
+  width: 24px; height: 24px; flex: none; position: relative;
+  border: 2px solid var(--acao); border-radius: 3px;
 }
-
 .cabecalho .marca-glifo::before,
-.cabecalho .marca-glifo::after {
-  content: '';
-  position: absolute;
-  background: currentColor;
-}
-
-.cabecalho .marca-glifo::before {
-  left: 50%;
-  top: 2px;
-  bottom: 2px;
-  width: 2px;
-  transform: translateX(-50%);
-}
-
-.cabecalho .marca-glifo::after {
-  top: 50%;
-  left: 2px;
-  right: 2px;
-  height: 2px;
-  transform: translateY(-50%);
-}
+.cabecalho .marca-glifo::after { content: ''; position: absolute; background: var(--acao); }
+.cabecalho .marca-glifo::before { left: 50%; top: 2px; bottom: 2px; width: 2px; transform: translateX(-50%); }
+.cabecalho .marca-glifo::after { top: 50%; left: 2px; right: 2px; height: 2px; transform: translateY(-50%); }
 
 .cabecalho .titulo {
-  font-size: var(--t-corpo);
+  font-family: var(--fonte-voz);
+  font-size: var(--t-titulo);
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: var(--tracking-titulo);
+  line-height: var(--linha-titulo);
   margin: 0;
-  line-height: 1.25;
 }
-
-.cabecalho .subtitulo {
-  font-size: var(--t-detalhe);
-  opacity: 0.82;
-  margin: 0;
-  line-height: 1.3;
-}
-
-.cabecalho .direita {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+.cabecalho .subtitulo { font-size: var(--t-detalhe); color: var(--tinta-2); margin: 0; line-height: 1.3; }
+.cabecalho .direita { margin-left: auto; display: flex; align-items: center; gap: var(--e-2); }
 
 /* ---------- faixa de chamada (a manchete da sala) ---------- */
 
+/*
+  O único lugar em que uma cor de estado vira FUNDO. A professora levanta os
+  olhos por um segundo: a barra terracota cheia com texto branco (5,51) é o
+  que ela vê. Não é decoração; é o sinal.
+*/
 .faixa {
-  background: var(--chamado-fundo);
-  border-bottom: 1px solid var(--chamado-borda);
-  color: var(--chamado-tinta);
-  padding: 0.7rem 1.15rem;
+  background: var(--estado-chamado);
+  color: var(--tinta-clara);
+  padding: var(--e-3) var(--e-4);
   font-size: var(--t-corpo);
-  font-weight: 500;
+  font-weight: 600;
+  margin: 0;
+  animation: faixa-entra var(--dur-faixa) var(--curva);
 }
 
 /*
-  Aviso de som interrompido.
-
-  E um <button> porque reativar audio exige gesto do usuario: um aviso que so
-  informasse deixaria a professora sabendo do problema e sem o que fazer. Mas
-  ocupa a largura toda como faixa, e nao parece um botao de acao comum, porque
-  nao e uma escolha dela — e o aparelho avisando que falhou.
-
-  Se destaca por LUMINANCIA, nao por matiz: barra escura com texto claro, entre
-  faixas palidas. Nao empresta a cor de nenhum estado de aluno — `chamado` fica
-  logo acima e ficariam iguais; `retorno` chega na Fase 1 e o significado dele
-  e outro. E, por ser inversao e nao cor, continua saltando em qualquer
-  simulacao de daltonismo.
-
-  Herda de `button` o min-height de 44px, entao ja nasce dentro do alvo AAA.
+  Aviso de som interrompido: luminância, não matiz. Barra escura com texto
+  claro, que não empresta a cor de nenhum estado e salta em qualquer simulação
+  de daltonismo. É <button> porque reativar áudio exige gesto.
 */
 .faixa.aviso {
   display: block;
@@ -347,393 +306,113 @@ body {
   color: var(--tinta-clara);
   font-size: var(--t-corpo);
   font-weight: 600;
-  padding: 0.7rem 1.15rem;
+  padding: var(--e-3) var(--e-4);
   cursor: pointer;
 }
 
-/*
-  Caixa de restricao.
-
-  Vermelho-magenta e escuro de proposito: nao se parece com nada mais no app,
-  porque nao e mais uma etapa do fluxo — e uma interrupcao. E o texto da
-  anotacao vem grande, porque a pessoa esta de pe, com fila esperando, e vai ler
-  em dois segundos ou nao vai ler.
-*/
-.restricao {
-  border: 0;
-  border-radius: var(--canto);
-  padding: 1.3rem 1.4rem 1.15rem;
-  max-width: 34rem;
-  width: calc(100vw - 2rem);
-  background: var(--superficie);
-  border-top: 6px solid var(--alerta);
-  box-shadow: 0 18px 50px rgb(0 0 0 / 0.28);
-  color: var(--tinta);
-}
-
-.restricao::backdrop {
-  background: rgb(20 16 14 / 0.55);
-}
-
-.restricao h2 {
-  margin: 0 0 0.35rem;
-  font-size: var(--t-nome);
-  font-weight: 700;
+/* Recusa do servidor: não é estado de aluno, é o sistema dizendo que não fez. */
+.faixa.recusa {
+  background: var(--cartao);
   color: var(--alerta);
+  border-bottom: 2px solid var(--alerta);
 }
 
-.restricao .quem {
-  margin: 0 0 0.9rem;
-  font-size: var(--t-detalhe);
-  color: var(--tinta-media);
-}
-
-.restricao .texto {
-  margin: 0 0 1.3rem;
-  font-size: var(--t-nome);
-  line-height: 1.45;
-  font-weight: 500;
-}
-
-.restricao .botoes {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-.restricao .botoes button { flex: 1 1 10rem; }
-
-/*
-  A marca de que existe restricao, na lista e na busca.
-
-  Aparece ANTES de qualquer acao, para a pessoa saber que a caixa vem — nao
-  para substitui-la. Texto e simbolo juntos, como todo estado deste app.
-*/
-.marca-restricao {
-  color: var(--alerta);
-  font-weight: 700;
-}
-/* O ponto separa da turma; sem ele a marca colava ("Pré 2! restrição"). */
-.marca-restricao::before { content: " · ! "; }
+@keyframes faixa-entra { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cartao-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* ---------- tipografia aplicada ---------- */
 
-/*
-  O Fraunces aparece SO aqui.
-
-  Titulo de tela, nome da escola e titulo de caixa. Em qualquer outro lugar ele
-  seria decoracao — e ele nao tem os glifos: a fonte foi recortada aos 44
-  caracteres que estas frases escrevem.
-*/
+/* Fraunces SÓ aqui: título de tela, nome da escola, título de caixa. A fonte
+   foi recortada aos glifos que estas frases escrevem. */
 .titulo,
 .entrada h2,
-.restricao h2 {
-  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+.porta h2,
+dialog h2 {
+  font-family: var(--fonte-voz);
   font-weight: 600;
   line-height: var(--linha-titulo);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-titulo);
 }
 
-/*
-  Etiqueta de secao: caixa alta, e por isso precisa de respiro entre letras.
-
-  Caixa alta sem tracking le pior que caixa baixa — as maiusculas tem largura
-  parecida e o olho perde a fronteira das palavras. Meio ponto percentual
-  resolve, e so vale para maiusculas.
-*/
+/* Etiqueta de seção: caixa alta pede respiro entre letras. */
 .secao,
 .grupo,
-.entrada label {
+.entrada label,
+.porta label,
+summary {
   font-size: var(--t-etiqueta);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-etiqueta);
+  color: var(--tinta-2);
 }
 
-/*
-  Numeros em colunas alinham por baixo.
-
-  Contagem, cronometro e placar mudam sozinhos na tela. Com largura variavel de
-  digito, "9" e "11" empurram o texto ao lado a cada tique — movimento que
-  ninguem pediu, na tela onde alguem espera uma crianca.
-*/
+/* Números que mudam sozinhos alinham por baixo e não empurram o texto ao lado. */
 .contagem,
 .contagem-secao,
 .espera,
 .placar .valor,
-.grupo .quantos {
-  font-variant-numeric: tabular-nums;
-}
+.grupo .quantos,
+.secao .quantos { font-variant-numeric: tabular-nums; }
 
-/* ---------- variante Painel ---------- */
+/* ---------- etiqueta de estado: ícone + rótulo, sem caixa ---------- */
 
-/*
-  A sala nao e um app de celular: e um painel.
-
-  A professora nao esta com o aparelho na mao. Ele fica apoiado na mesa ou preso
-  na parede, e ela olha do meio da sala, com vinte criancas em pe. O que importa
-  ali e o nome ser lido a tres metros — nao caber mais cartoes na tela.
-
-  Os TOKENS sao os mesmos; muda so a escala. Uma segunda paleta ou um segundo
-  conjunto de estados seria duas verdades sobre a mesma crianca, e a hora em que
-  elas divergissem seria a hora errada.
-*/
-.painel .cartao .nome {
-  font-size: var(--t-painel);
-  line-height: var(--linha-titulo);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
-.painel .cartao .turma {
-  font-size: var(--t-nome);
-}
-
-.painel .cartao .etiqueta {
-  font-size: var(--t-nome);
-  padding: 0.4rem 0.85rem;
-}
-
-.painel .cartao .etiqueta svg {
-  width: 1.15em;
-  height: 1.15em;
-}
-
-.painel .cartao button {
-  font-size: var(--t-nome);
-  min-height: 3.5rem;
-}
-
-/* A faixa de aviso tambem e lida de longe. */
-.painel .faixa {
-  font-size: var(--t-nome);
-}
-
-/* ---------- caixa de entrega ---------- */
-
-/*
-  Escolher a quem entregar e uma LISTA DE PESSOAS, nao um seletor.
-
-  Um `select` esconde as opcoes atras de um toque e mostra uma de cada vez —
-  e a porteira precisa comparar o que le com quem esta na frente dela. Aqui
-  cada adulto e uma linha grande, com nome, vinculo e telefone visiveis ao
-  mesmo tempo.
-*/
-.entrega {
-  border: 0;
-  border-radius: var(--canto);
-  padding: 1.2rem 1.2rem 1rem;
-  max-width: 30rem;
-  width: calc(100vw - 2rem);
-  background: var(--superficie);
-  border-top: 6px solid var(--marca);
-  box-shadow: 0 18px 50px rgb(0 0 0 / 0.28);
-  color: var(--tinta);
-}
-
-.entrega::backdrop { background: rgb(20 16 14 / 0.55); }
-
-.entrega h2 {
-  margin: 0 0 0.15rem;
-  font-size: var(--t-titulo);
-  font-family: 'Fraunces', Georgia, serif;
-  font-weight: 600;
-}
-
-.entrega .quem {
-  margin: 0 0 1rem;
-  font-size: var(--t-nome);
-  font-weight: 600;
-  color: var(--tinta-media);
-}
-
-.quem-pode { display: flex; flex-direction: column; gap: 0.5rem; }
-
-.responsavel {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.1rem;
-  width: 100%;
-  text-align: left;
-  padding: 0.7rem 0.9rem;
-}
-
-.responsavel .nome { font-weight: 600; font-size: var(--t-nome); }
-.responsavel .detalhe { font-size: var(--t-detalhe); color: var(--tinta-fraca); }
-
-/*
-  O impedido aparece, e aparece DIFERENTE.
-
-  Ele nao pode ser tocado, mas precisa ser visto: some-lo faria a porteira
-  concluir que aquele adulto nao foi cadastrado, quando o que existe e uma
-  decisao de que ele nao pode levar. "Nao consta" e "nao pode" pedem condutas
-  opostas.
-*/
-.responsavel.impedido {
-  background: var(--alerta-fundo);
-  border-color: var(--alerta);
-  color: var(--alerta);
-}
-.responsavel.impedido .detalhe { color: var(--alerta); font-weight: 700; }
-
-.irmaos { display: flex; flex-direction: column; gap: 0.5rem; }
-.irmaos p { margin: 0 0 0.2rem; font-size: var(--t-detalhe); color: var(--tinta-media); }
-
-.irmao {
-  display: flex;
+.etiqueta {
+  display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.9rem;
-  border: 1px solid var(--borda-forte);
-  border-radius: var(--canto);
-  min-height: var(--toque-min);
+  gap: 0.4em;
+  max-width: 100%;
   font-size: var(--t-detalhe);
+  font-weight: 600;
+  color: var(--tinta-2);
 }
+.etiqueta svg {
+  width: 1.15em; height: 1.15em; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
+.etiqueta[data-estado='aguardando'] { color: var(--estado-aguardando); }
+.etiqueta[data-estado='chamado']    { color: var(--estado-chamado); }
+.etiqueta[data-estado='liberado']   { color: var(--estado-liberado); }
+.etiqueta[data-estado='retorno']    { color: var(--estado-retorno); }
+.etiqueta[data-estado='entregue']   { color: var(--estado-entregue); }
 
-.irmao input { width: 1.15rem; height: 1.15rem; min-height: 0; margin: 0; }
-
-.entrega .botoes { display: flex; gap: 0.6rem; margin-top: 0.9rem; }
-.entrega .botoes button { flex: 1; }
-
-/* ---------- porta de entrada do aparelho ---------- */
+/* ---------- cartão do aluno ---------- */
 
 /*
-  A porta cobre a tela inteira e nao tem como ser dispensada.
-
-  Nao e um aviso que a pessoa fecha: enquanto o aparelho nao esta autorizado
-  nao ha tela nenhuma por baixo, porque desenhar a lista e depois descobrir
-  que ninguem pode ve-la seria mostrar nome de crianca a quem o servidor vai
-  recusar em seguida.
+  Uma linha larga, não uma coluna. O painel é lido do meio da sala: retrato à
+  esquerda, nome como estrutura no centro, estado e ação à direita. Em tela
+  estreita (oficina no celular) as três colunas viram pilha.
 */
-.porta {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  background: var(--fundo);
-  padding: 3rem 1.15rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-/*
-  O fundo cobre a TELA; a largura de leitura limita o CONTEUDO.
-
-  A primeira versao punha `max-width` na propria caixa fixa, e o resultado era
-  o cabecalho verde da pagina aparecendo nas beiradas, por tras da porta — uma
-  tela que a pessoa nao pode usar, espiando por baixo de outra que ela precisa
-  usar. Cobrir tudo e o ponto: enquanto o aparelho nao esta autorizado, nao ha
-  aplicacao por baixo.
-*/
-.porta > * {
-  width: 100%;
-  max-width: 26rem;
-  margin-inline: auto;
-}
-
-.porta h2 {
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: var(--t-titulo);
-  font-weight: 600;
-  margin: 0;
-}
-
-.porta p {
-  color: var(--tinta-media);
-  font-size: var(--t-detalhe);
-  margin: 0 0 0.6rem;
-}
-
-.porta label {
-  font-size: var(--t-etiqueta);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-etiqueta);
-  color: var(--tinta-fraca);
-}
-
-.porta input { margin-bottom: 0.6rem; }
-
-.porta-erro {
-  color: var(--alerta);
-  font-weight: 600;
-  font-size: var(--t-detalhe);
-  margin: 0 0 0.6rem;
-}
-
-/*
-  A tarja do modo demonstracao.
-
-  Fixa no topo, acima de tudo, inclusive da porta: um servidor com tokens
-  conhecidos que nao anuncia isso e uma armadilha esperando alguem confundi-lo
-  com producao. Ela nao se fecha.
-*/
-.tarja-demo {
-  /*
-    `sticky`, e nao `fixed`.
-
-    Fixa, ela saia do fluxo e era preciso compensar com margem em cada tela —
-    e a compensacao errava assim que o texto quebrava em duas linhas, cortando
-    o nome da escola no cabecalho. Sticky ocupa o espaco que usa, seja qual for
-    a altura, e continua visivel ao rolar.
-  */
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  margin: 0;
-  padding: 0.4rem 0.9rem;
-  background: var(--alerta);
-  color: var(--tinta-clara);
-  font-size: var(--t-etiqueta);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-align: center;
-}
-
-
-
-/* ---------- cartao do aluno ---------- */
-
 .cartao {
-  background: var(--superficie);
-  border: 1px solid var(--borda);
+  background: var(--cartao);
+  border: 1px solid var(--linha);
   border-radius: var(--canto-g);
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
+  padding: var(--e-4);
+  display: grid;
+  grid-template-columns: var(--retrato-linha) minmax(0, 1fr);
+  gap: var(--e-3) var(--e-4);
   align-items: center;
-  text-align: center;
-  gap: 0.7rem;
-  box-shadow: var(--sombra);
-  transition: box-shadow var(--transicao), border-color var(--transicao);
+  animation: cartao-entra var(--dur-entrada) var(--curva);
 }
 
 .cartao .foto {
-  width: 96px;
-  height: 96px;
+  width: var(--retrato-linha);
+  height: var(--retrato-linha);
   border-radius: var(--canto);
   overflow: hidden;
-  background: var(--superficie-2);
-  border: 1px solid var(--borda);
+  background: var(--destaque);
+  border: 1px solid var(--linha);
   flex: none;
 }
 
 /*
-  A foto que ainda nao existe.
-
-  O espaco fica reservado — mesma caixa, mesma altura — para que o dia em que a
-  escola subir as fotos de matricula nao mexa em layout nenhum: o cartao nao
-  muda de tamanho, a linha nao reflui, nada precisa ser redesenhado.
-
-  Vazio DISCRETO, e nao um buraco. Um contorno tracejado leve diz "aqui vem uma
-  foto" sem competir com o nome, que hoje e a unica coisa que identifica a
-  crianca. Um placeholder chamativo roubaria atencao do que importa agora.
+  A foto que ainda não existe. O espaço fica reservado — mesma caixa — para o
+  dia em que a escola subir as fotos de matrícula não mexer em layout nenhum.
+  Vazio DIGNO: contorno tracejado na tinta fraca, sem inicial, sem avatar.
 */
 .foto[data-sem-foto] {
-  border-style: dashed;
-  border-color: var(--borda-forte);
-  background: var(--superficie-2);
+  border: 1.5px dashed var(--tinta-3);
+  background: transparent;
 }
 
 .cartao .foto img,
@@ -743,128 +422,94 @@ body {
   font-size: var(--t-nome);
   font-weight: 600;
   line-height: 1.25;
+  letter-spacing: var(--tracking-nome);
   margin: 0;
+  /* Só age quando uma palavra sozinha não cabe na linha; nunca antes. */
+  overflow-wrap: break-word;
 }
-
-.cartao .turma {
-  font-size: var(--t-detalhe);
-  color: var(--tinta-fraca);
-  margin: 0;
-}
+.cartao .turma { font-size: var(--t-detalhe); color: var(--tinta-2); margin: 0; }
+.cartao .lugar-etiqueta { grid-column: 1 / -1; }
+.cartao > button, .cartao .razoes { grid-column: 1 / -1; }
 
 /* ---------- linha compacta (listas da portaria) ---------- */
 
 /*
-  A linha embrulha quando nao cabe, em vez de atropelar.
-
-  A versao anterior era uma fila rigida de quatro pecas — retrato, nome,
-  etiqueta e acao. Num celular de 430px isso nunca coube: a etiqueta subia por
-  cima do nome ("Maitê Salgado" atras de "responsável chegou") e a acao
-  transbordava para fora da tela. O print da portaria mostrava isso desde
-  sempre; foi o estado `retorno`, que tem DUAS acoes, que tornou impossivel
-  continuar nao vendo.
-
-  `flex-wrap` mais uma quebra forcada antes da acao: o retrato e o nome ficam
-  na primeira linha, a etiqueta e o botao descem juntos quando precisam. Nada
-  de media query, porque o gatilho nao e a largura da tela — e o tamanho do
-  nome, que varia por crianca.
+  Duas linhas internas de propósito: retrato + nome em cima; etiqueta + ação
+  embaixo. Um nome longo nunca disputa espaço com o botão, e o botão nunca
+  encolhe — encolher um botão chamado "Entregar" é pior que descê-lo.
 */
 .linha {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem 0.8rem;
-  padding: 0.7rem 0.9rem;
-  background: var(--superficie);
-  border: 1px solid var(--borda);
+  gap: var(--e-2) var(--e-3);
+  padding: var(--e-3) var(--e-3) var(--e-3) var(--e-4);
+  background: var(--cartao);
+  border: 1px solid var(--linha);
   border-radius: var(--canto);
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--e-2);
 }
 
-/*
-  A acao vai para o fim da propria linha quando a linha embrulha.
-
-  `margin-left: auto` empurra para a direita enquanto cabe tudo junto, e
-  `flex: none` impede que o botao encolha ate ficar ilegivel — encolher um
-  botao chamado "Entregar" e pior do que baixa-lo uma linha.
-*/
 .linha > button,
-.linha .duasAcoes {
-  margin-left: auto;
-  flex: none;
-}
+.linha .duasAcoes,
+.linha > .etiqueta { margin-left: auto; flex: none; }
+.linha > .etiqueta { margin-left: 0; }
 
 .linha .foto {
-  width: 44px;
-  height: 44px;
+  width: var(--retrato-linha);
+  height: var(--retrato-linha);
   border-radius: 6px;
   overflow: hidden;
-  background: var(--superficie-2);
-  border: 1px solid var(--borda);
+  background: var(--destaque);
+  border: 1px solid var(--linha);
   flex: none;
 }
-
 .linha .foto img,
 .linha .foto svg { width: 100%; height: 100%; display: block; object-fit: cover; }
 
 .linha .nome {
-  /* `flex: 1` com base 8rem: cresce quando sobra espaco, e quebra a linha
-     inteira antes de espremer o nome de uma crianca ate o corte. */
   flex: 1 1 8rem;
   min-width: 0;
-  font-weight: 500;
-  line-height: 1.3;
+  font-size: var(--t-nome);
+  font-weight: 600;
+  letter-spacing: var(--tracking-nome);
+  line-height: 1.25;
 }
 
 .linha .detalhe {
   display: block;
   font-size: var(--t-detalhe);
   font-weight: 400;
-  color: var(--tinta-fraca);
+  color: var(--tinta-2);
+  letter-spacing: 0;
 }
+.linha .espera:not(:empty)::before { content: ' · '; }
 
-/* O ponto so aparece quando ha os dois lados; sem ele a linha comecaria com
-   um separador solto enquanto o cronometro ainda nao foi escrito. */
-.linha .espera:not(:empty)::before { content: " · "; }
-.linha .espera { font-variant-numeric: tabular-nums; }
-
+/* Quebra forçada: etiqueta e ação sempre na segunda linha. */
+.linha .quebra { flex-basis: 100%; height: 0; margin: 0; }
 
 /* ---------- faixa lateral de estado ---------- */
 
 /*
-  O quarto canal, junto de cor, icone e rotulo.
+  O quarto canal. Cada estado tem um DESENHO próprio de traço, que sobrevive a
+  qualquer simulação porque não depende de cor:
 
-  A primeira versao deste bloco so trocava a COR da faixa, e o comentario
-  afirmava que quem nao distingue matiz ainda leria a posicao e a espessura.
-  Era falso: as cinco faixas tinham a mesma posicao e a mesma espessura. A
-  captura em `docs/prints/fase-0/deuteranopia/sala.png` mostra o resultado —
-  a faixa verde de `liberado` e a terracota de `chamado` viram o mesmo oliva,
-  lado a lado, e a faixa nao separa nada. Nao era um quarto canal; era o
-  primeiro canal desenhado maior.
-
-  Agora cada estado tem um DESENHO proprio de traco, que sobrevive a qualquer
-  simulacao porque nao depende de cor nenhuma:
-
-    aguardando  3px pontilhado  — traco fino e interrompido, o estado quieto
-    chamado     6px solido      — a barra cheia, o unico que pede acao agora
-    liberado    6px duplo       — duas barras, "passou por duas maos"
-    entregue    6px tracejado   — traco largo e interrompido, ciclo fechado
+    aguardando  3px pontilhado  — traço fino e interrompido, o estado quieto
+    chamado     6px sólido      — a barra cheia, o único que pede ação agora
+    liberado    6px duplo       — duas barras, "passou por duas mãos"
     retorno     6px pontilhado  — pontilhado grosso, distinto do aguardando
                                   pela espessura
+    entregue    6px tracejado   — traço largo e interrompido, ciclo fechado
 
-  A cor continua ali por cima, e continua util para quem a enxerga: a faixa
-  usa a cor cheia do estado, que passa 3:1 como nao-texto, contra 1,43 da
-  borda de 1px que existia antes.
-
-  Fica DEPOIS de .cartao e .linha de proposito: as duas declaram `border` no
-  atalho, e o atalho reescreve border-left-width. Colocado antes, este bloco
-  era silenciosamente anulado.
+  Fica DEPOIS de .cartao e .linha: as duas declaram `border` no atalho, e o
+  atalho reescreve border-left-width. O teste de regressão lê estilo e
+  espessura em longhand, então longhand fica.
 */
 .cartao,
 .linha {
   border-left-width: 6px;
   border-left-style: solid;
-  border-left-color: var(--borda);
+  border-left-color: var(--linha);
 }
 
 .cartao[data-estado='aguardando'],
@@ -894,127 +539,242 @@ body {
   border-left-style: dotted;
 }
 
-/* ---------- etiqueta de estado ---------- */
-
+/* ---------- variante Painel ---------- */
 
 /*
-  A etiqueta nao empurra a tela.
-
-  `white-space: nowrap` mantinha "retornou à sala" numa linha so — bonito, e em
-  430px o cartao inteiro passava 2px da borda direita e a pagina ganhava rolagem
-  horizontal. Dois pixels bastam: a pessoa arrasta a tela sem querer no meio da
-  saida, e a lista se mexe embaixo do dedo dela.
-
-  `max-width: 100%` prende a etiqueta ao cartao, e a quebra normal de palavra
-  cuida do resto. Perder uma linha e melhor do que empurrar a pagina.
+  A sala não é um app de celular: é um painel. Os TOKENS são os mesmos; muda só
+  a escala. O nome vira estrutura: 64px, 700, entrelinha 0,98.
 */
-.etiqueta {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 0.13rem 0.55rem;
-  border-radius: 999px;
-  font-size: var(--t-etiqueta);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  background: var(--superficie-2);
-  color: var(--tinta-media);
-  border: 1px solid var(--borda);
+.painel .cabecalho { padding: var(--e-4) var(--e-6); }
+.painel .cabecalho .marca-glifo { width: 28px; height: 28px; }
+.painel .cabecalho .subtitulo {
+  font-size: var(--t-numero);
+  font-weight: 600;
+  color: var(--tinta);
+  line-height: var(--linha-titulo);
 }
 
-.etiqueta[data-estado='aguardando'] {
-  background: var(--estado-aguardando-fundo);
-  color: var(--estado-aguardando);
-  border-color: var(--estado-aguardando);
+.painel .faixa {
+  font-size: var(--t-estado-painel);
+  padding: var(--e-4) var(--e-6);
+  line-height: var(--linha-titulo);
 }
 
-.etiqueta[data-estado='chamado'] {
-  background: var(--estado-chamado-fundo);
-  color: var(--estado-chamado);
-  border-color: var(--estado-chamado);
+.painel .cartao {
+  grid-template-columns: var(--retrato-painel) minmax(0, 1fr) minmax(280px, 320px);
+  gap: var(--e-6);
+  padding: var(--e-5) var(--e-6);
+}
+.painel .cartao .foto { width: var(--retrato-painel); height: var(--retrato-painel); }
+.painel .cartao .nome {
+  font-size: var(--t-painel);
+  font-weight: 700;
+  line-height: var(--linha-apertada);
+  letter-spacing: 0;
+  margin-bottom: var(--e-2);
+  text-wrap: balance;
+}
+.painel .cartao .turma { font-size: var(--t-numero); }
+
+/* Coluna da direita: etiqueta em cima, botão embaixo, volta por último. */
+.painel .cartao .lugar-etiqueta,
+.painel .cartao > button,
+.painel .cartao .razoes { grid-column: 3; }
+.painel .cartao .lugar-etiqueta { display: flex; justify-content: flex-end; }
+.painel .cartao .etiqueta { font-size: var(--t-estado-painel); }
+.painel .cartao > button { min-height: 56px; font-size: var(--t-nome); width: 100%; }
+
+/* Em painel estreito (tablet em pé) a coluna da direita desce para baixo do nome. */
+@media (max-width: 900px) {
+  .painel .cartao { grid-template-columns: var(--retrato-painel) minmax(0, 1fr); }
+  .painel .cartao .lugar-etiqueta,
+  .painel .cartao > button,
+  .painel .cartao .razoes { grid-column: 1 / -1; }
+  .painel .cartao .lugar-etiqueta { justify-content: flex-start; }
+  .painel .cartao .nome { font-size: 2.75rem; }
 }
 
-.etiqueta[data-estado='liberado'] {
-  background: var(--estado-liberado-fundo);
-  color: var(--estado-liberado);
-  border-color: var(--estado-liberado);
+/*
+  Em celular (320–480px) a coluna do nome ao lado do retrato de 112px fica com
+  menos de 100px: "Magalhães" em 44px mede 227px e vazava a página inteira.
+  Aqui o retrato sobe e o nome ocupa a largura toda. É mecanismo de caber, não
+  escolha de estilo — o tamanho volta ao do painel assim que houver espaço.
+*/
+@media (max-width: 480px) {
+  .painel .cartao { grid-template-columns: minmax(0, 1fr); }
+  .painel .cartao .nome { font-size: 2.25rem; }
 }
 
-.etiqueta[data-estado='entregue'] {
-  background: var(--estado-entregue-fundo);
-  color: var(--estado-entregue);
-  border-color: var(--estado-entregue);
-}
+/* ---------- motivo do retorno (sala) ---------- */
 
-.etiqueta[data-estado='retorno'] {
-  background: var(--estado-retorno-fundo);
-  color: var(--estado-retorno);
-  border-color: var(--estado-retorno);
+/*
+  Lista fechada em ALVOS, não em <select>: a professora compara e toca, não
+  navega. Quatro opções em grade de dois, cada uma com 56px de altura.
+*/
+.razoes {
+  border-top: 1px solid var(--linha);
+  padding-top: var(--e-4);
+  margin-top: var(--e-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-3);
 }
+.razoes .pergunta { margin: 0; font-size: var(--t-nome); font-weight: 600; }
+.razoes .opcoes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e-2); }
+.razoes .opcao {
+  display: flex; align-items: center; gap: var(--e-2);
+  min-height: 56px; padding: var(--e-2) var(--e-3);
+  border: 1px solid var(--linha-forte); border-radius: var(--canto);
+  font-size: var(--t-corpo); font-weight: 600; cursor: pointer;
+}
+.razoes .opcao input { width: 20px; height: 20px; min-height: 0; margin: 0; accent-color: var(--acao); flex: none; }
+.razoes .opcao:has(input:checked) { border: 2px solid var(--acao); background: var(--papel); }
+.razoes .botoes { display: flex; gap: var(--e-2); }
+.razoes .botoes button { flex: 1; }
+.painel .razoes .opcao { font-size: var(--t-nome); }
 
-/* O icone vive dentro da etiqueta e herda a cor do estado. */
-.etiqueta svg {
-  width: 0.95em;
-  height: 0.95em;
-  vertical-align: -0.15em;
-  margin-right: 0.3em;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+/* ---------- caixas: entrega e restrição ---------- */
+
+/*
+  Sem sombra também aqui: o escurecimento do fundo já separa a caixa da tela.
+  Uma borda hairline e o raio de contêiner bastam.
+*/
+.entrega,
+.restricao {
+  border: 1px solid var(--linha);
+  border-radius: var(--canto-g);
+  padding: var(--e-6) var(--e-5) var(--e-5);
+  max-width: 30rem;
+  width: calc(100vw - 2rem);
+  background: var(--cartao);
+  color: var(--tinta);
+}
+.entrega::backdrop,
+.restricao::backdrop { background: rgb(30 26 22 / 0.55); }
+
+.entrega h2,
+.restricao h2 { margin: 0 0 var(--e-1); font-size: var(--t-titulo); }
+.entrega .quem,
+.restricao .quem { margin: 0 0 var(--e-5); font-size: var(--t-detalhe); color: var(--tinta-2); }
+.entrega .quem { font-size: var(--t-nome); font-weight: 600; color: var(--tinta); }
+
+/*
+  Restrição: a única caixa com faixa superior grossa, em vinho. Não é etapa do
+  fluxo — é interrupção. O texto vem grande porque a pessoa está de pé, com
+  fila esperando, e vai ler em dois segundos ou não vai ler.
+*/
+.restricao { border-top: 6px solid var(--alerta); max-width: 34rem; }
+.restricao h2 { color: var(--alerta); }
+.restricao .texto { margin: 0 0 var(--e-6); font-size: var(--t-nome); line-height: 1.45; font-weight: 500; }
+.restricao .botoes { display: flex; flex-direction: column; gap: var(--e-2); }
+
+/* Marca de restrição, na lista e na busca, ANTES de qualquer ação. */
+.marca-restricao { color: var(--alerta); font-weight: 700; }
+.marca-restricao::before { content: ' · '; }
+
+/* Quem pode levar: lista de PESSOAS, uma linha grande cada, alvo inteiro. */
+.quem-pode { display: flex; flex-direction: column; gap: var(--e-2); }
+.responsavel {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; text-align: left; min-height: 60px;
+  padding: var(--e-3) var(--e-4); font-weight: 400;
+}
+.responsavel .nome { font-weight: 600; font-size: var(--t-nome); }
+.responsavel .detalhe { font-size: var(--t-detalhe); color: var(--tinta-2); }
+
+/*
+  O impedido aparece, e aparece DIFERENTE: tracejado em vinho, intocável.
+  "Não consta" e "não pode" pedem condutas opostas.
+*/
+.responsavel.impedido,
+.responsavel.impedido:disabled {
+  background: transparent;
+  border: 1.5px dashed var(--alerta);
+  color: var(--alerta);
+  cursor: not-allowed;
+}
+.responsavel.impedido .detalhe { color: var(--alerta); font-weight: 700; }
+
+.irmaos { display: flex; flex-direction: column; gap: var(--e-2); }
+.irmaos p { margin: 0 0 var(--e-1); font-size: var(--t-detalhe); color: var(--tinta-2); }
+.irmao {
+  display: flex; align-items: center; gap: var(--e-3);
+  padding: var(--e-2) var(--e-4);
+  border: 1px solid var(--linha-forte); border-radius: var(--canto);
+  min-height: var(--toque-min); font-size: var(--t-corpo);
+}
+.irmao input { width: 22px; height: 22px; min-height: 0; margin: 0; accent-color: var(--acao); }
+
+.entrega .botoes { display: flex; gap: var(--e-2); margin-top: var(--e-4); }
+.entrega .botoes button { flex: 1; }
+
+/* ---------- porta de entrada do aparelho ---------- */
+
+.porta {
+  position: fixed; inset: 0; z-index: 20;
+  background: var(--papel);
+  padding: var(--e-12) var(--e-4);
+  display: flex; flex-direction: column; gap: var(--e-2);
+}
+.porta > * { width: 100%; max-width: 26rem; margin-inline: auto; }
+.porta h2 { font-size: var(--t-titulo); margin: 0; }
+.porta p { color: var(--tinta-2); font-size: var(--t-detalhe); margin: 0 0 var(--e-3); }
+.porta input { margin-bottom: var(--e-3); }
+.porta-erro { color: var(--alerta); font-weight: 600; font-size: var(--t-detalhe); margin: 0 0 var(--e-3); }
+
+/* Tarja do modo demonstração: luminância invertida, acima de tudo, não se fecha. */
+.tarja-demo {
+  position: sticky; top: 0; z-index: 30; margin: 0;
+  padding: var(--e-2) var(--e-3);
+  background: var(--tinta); color: var(--tinta-clara);
+  font-size: var(--t-etiqueta); font-weight: 700; letter-spacing: var(--tracking-etiqueta);
+  text-transform: uppercase; text-align: center;
 }
 
 /* ---------- controles ---------- */
 
+/*
+  O botão padrão é VAZADO: hairline forte e texto na tinta. Só `.principal`
+  preenche. `.contorno` é a ação secundária que ainda é da mesma família da
+  ação ("Chamar de novo"): borda verde, fundo vazado.
+*/
 button {
   font: inherit;
   font-size: var(--t-corpo);
-  font-weight: 500;
+  font-weight: 600;
   min-height: var(--toque-min);
-  padding: 0.5rem 0.9rem;
+  padding: var(--e-2) var(--e-4);
   border-radius: var(--canto);
-  border: 1px solid var(--borda-forte);
-  background: var(--superficie);
+  border: 1px solid var(--linha-forte);
+  background: transparent;
   color: var(--tinta);
   cursor: pointer;
-  transition: background var(--transicao), border-color var(--transicao);
+  transition: background var(--dur-base) var(--curva), border-color var(--dur-base) var(--curva), transform var(--dur-toque) var(--curva);
 }
 
-button:hover:not(:disabled) { background: var(--superficie-2); }
+button:hover:not(:disabled) { background: var(--destaque); }
 button:active:not(:disabled) { transform: translateY(1px); }
 
 button.principal {
-  background: var(--marca);
-  border-color: var(--marca-escura);
+  background: var(--acao);
+  border-color: var(--acao);
   color: var(--tinta-clara);
 }
+button.principal:hover:not(:disabled) { background: var(--acao-pressionada); border-color: var(--acao-pressionada); }
 
-button.principal:hover:not(:disabled) { background: var(--marca-escura); }
+button.contorno { border-color: var(--acao); color: var(--acao); }
 
-button.larga { width: 100%; padding: 0.7rem; font-size: var(--t-corpo); }
+button.larga { width: 100%; }
 
-button.fantasma {
-  background: transparent;
-  border-color: transparent;
-  color: inherit;
-}
+button.fantasma { border-color: transparent; color: var(--tinta-2); }
+button.fantasma:hover:not(:disabled) { background: var(--destaque); color: var(--tinta); }
 
-button.fantasma:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+/* A volta para a sala é ação secundária, fora do eixo do botão principal. */
+.cartao .secundaria { width: auto; margin: 0 auto; }
 
 /*
-  Desabilitado com par proprio, NUNCA com opacity.
-
-  A versao anterior usava opacity: 0.45 no elemento inteiro, o que compunha
-  texto E fundo contra a pagina e derrubava o contraste para 2,12 — menos da
-  metade do minimo. E era justamente o estado "Aguardando no portao", o que
-  confirma a professora que ela ja fez a parte dela.
-
-  Fica DEPOIS de .principal e .fantasma de proposito. Colocado antes, tinha a
-  mesma especificidade que elas e perdia por ordem: o botao desabilitado
-  continuava verde-cheio na tela, e o teste de tokens nao pegava porque ele
-  mede as cores declaradas, nao qual regra vence a cascata. Quem pegou foi
-  olhar o print.
+  Desabilitado com par próprio, NUNCA opacity. Fica DEPOIS de .principal e
+  .fantasma: mesma especificidade, vence por ordem.
 */
 button:disabled,
 button.principal:disabled,
@@ -1022,7 +782,7 @@ button.fantasma:disabled,
 button.larga:disabled {
   background: var(--apagado-fundo);
   color: var(--apagado-tinta);
-  border-color: var(--borda-forte);
+  border-color: var(--apagado-fundo);
   cursor: default;
 }
 
@@ -1032,72 +792,65 @@ select,
 textarea {
   font: inherit;
   width: 100%;
-  /*
-    O alvo de 44px vale para TODO controle, nao so para botao.
-
-    So o botao tinha o minimo, e bastou o seletor de volume ganhar uma fonte um
-    pouco menor para ele cair a 43px — um pixel abaixo do nivel AAA do WCAG
-    2.5.8, invisivel em revisao e medido pela verificacao. Regra por elemento
-    vira regra que alguem esquece; aqui ela vale para todos de uma vez.
-  */
   min-height: var(--toque-min);
-  padding: 0.65rem 0.8rem;
+  padding: var(--e-3) var(--e-4);
   border-radius: var(--canto);
-  border: 1px solid var(--borda-forte);
-  background: var(--superficie);
+  border: 1px solid var(--linha-forte);
+  background: var(--cartao);
   color: var(--tinta);
 }
 
 input:focus,
 select:focus,
-textarea:focus {
-  outline: 2px solid var(--marca);
-  outline-offset: -1px;
-  border-color: var(--marca);
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--acao);
+  outline-offset: 2px;
+  border-color: var(--acao);
 }
 
 /* ---------- estrutura ---------- */
 
-.conteudo { padding: 1.15rem; max-width: 560px; margin: 0 auto; }
+.conteudo { padding: var(--e-4); max-width: 560px; margin: 0 auto; }
 
 .secao {
-  font-size: var(--t-etiqueta);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--tinta-fraca);
-  margin: 1.6rem 0 0.6rem;
+  margin: var(--e-8) 0 var(--e-3);
+  display: flex; align-items: baseline; gap: var(--e-2);
 }
-
 .secao:first-of-type { margin-top: 0; }
+.secao .quantos, .contagem-secao { color: var(--tinta); text-transform: none; letter-spacing: 0; font-weight: 600; }
 
-.vazio {
-  color: var(--tinta-fraca);
-  font-size: var(--t-corpo);
-  padding: 0.8rem 0;
+.grupo {
+  padding: var(--e-5) 0 var(--e-2);
+  display: flex; align-items: baseline; gap: var(--e-2);
 }
+/* O grupo leva a cor do estado que agrupa: é a etiqueta da fila. */
+.grupo[data-grupo='liberado'] { color: var(--estado-liberado); }
+.grupo[data-grupo='retorno']  { color: var(--estado-retorno); }
+.grupo[data-grupo='chamado']  { color: var(--estado-chamado); }
+.grupo .quantos { color: inherit; }
 
-/*
-  `min(180px, 100%)`, e nao `180px` seco.
+.vazio { color: var(--tinta-2); font-size: var(--t-corpo); padding: var(--e-2) 0; }
 
-  Numa tela de 320px com o padding do palco, a coluna minima de 180px ainda
-  cabe — mas o conteudo dentro dela nem sempre, e uma coluna de grade nunca
-  encolhe abaixo do minimo declarado. `min()` diz "180, ou a largura toda, o
-  que for menor", e ai a grade cede em vez de empurrar a pagina.
-*/
-.grade {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
-  gap: 0.9rem;
+.grade { display: flex; flex-direction: column; gap: var(--e-4); }
+
+.rede { font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-etiqueta); color: var(--tinta-2); }
+.rede[data-rede='desligado'] { color: var(--alerta); }
+
+/* Importar planilha: caixa recolhida, sem sombra. */
+details {
+  margin-top: var(--e-8);
+  border: 1px solid var(--linha);
+  border-radius: var(--canto);
+  background: var(--cartao);
+  padding: 0 var(--e-4) var(--e-4);
 }
-
-.rede {
-  font-size: var(--t-etiqueta);
-  color: var(--tinta-fraca);
-}
-
-.rede[data-rede='desligado'] { color: var(--alerta); font-weight: 600; }
+details:not([open]) { padding-bottom: 0; }
+summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: ''; width: 8px; height: 8px; margin-right: var(--e-3); border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-base) var(--curva); }
+details[open] summary::before { transform: rotate(45deg); }
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  * { transition: none !important; animation: none !important; }
 }

@@ -6,91 +6,37 @@
   <title>Sala — Janelinhas do Saber</title>
   <link rel="stylesheet" href="../comum/tokens.css">
   <style>
-    .entrada { max-width: 420px; margin: 3.5rem auto; padding: 0 1.15rem; }
-    .entrada h2 { font-size: var(--t-titulo); font-weight: 600; margin: 0 0 0.3rem; }
-    .entrada p { color: var(--tinta-media); margin: 0 0 1.4rem; font-size: var(--t-corpo); }
-    .entrada label {
-      display: block; font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.07em; color: var(--tinta-fraca); margin-bottom: 0.4rem;
-    }
-    .entrada select { margin-bottom: 1rem; }
-    /* A turma do aparelho é um fato, não um palpite: ela vem da escola. */
-    .turma-do-aparelho {
-      font-size: var(--t-nome);
-      font-weight: 600;
-      color: var(--tinta);
-      margin: 0 0 0.4rem;
-    }
-    /*
-      O rodapé é fixo, então o palco precisa terminar acima dele.
-
-      Sem isto o último cartão passava POR BAIXO do rodapé — e com a variante
-      Painel, que deixou os cartões mais altos, o que sumia era o botão: ficava
-      invisível e alcançável só rolando às cegas.
-    */
-    .palco { padding: 1.15rem 1.15rem 5rem; max-width: 900px; margin: 0 auto; }
-    .cartao button { width: 100%; }
+    .entrada { max-width: 420px; margin: 3.5rem auto; padding: 0 var(--e-4); }
+    .entrada h2 { font-size: var(--t-titulo); margin: 0 0 var(--e-1); }
+    .entrada p { color: var(--tinta-2); margin: 0 0 var(--e-6); font-size: var(--t-corpo); }
+    .turma-do-aparelho { font-size: var(--t-nome); font-weight: 600; color: var(--tinta); margin: 0 0 var(--e-2); }
+    /* O rodapé é fixo, então o palco termina acima dele. */
+    .palco { padding: var(--e-6) var(--e-6) 5rem; max-width: 1280px; margin: 0 auto; }
     .rodape {
       position: fixed; bottom: 0; left: 0; right: 0;
-      padding: 0.5rem 1.15rem; background: var(--superficie);
-      border-top: 1px solid var(--borda); display: flex; gap: 1rem; align-items: center;
+      padding: var(--e-3) var(--e-6); background: var(--papel);
+      border-top: 1px solid var(--linha); display: flex; flex-wrap: wrap; gap: var(--e-2) var(--e-6); align-items: center;
+      font-size: var(--t-detalhe); font-weight: 600; text-transform: uppercase;
+      letter-spacing: var(--tracking-etiqueta); color: var(--tinta-2);
     }
-    .contagem { font-size: var(--t-detalhe); color: var(--tinta-media); margin-left: auto; }
-    .tela-apaga { font-size: var(--t-detalhe); color: var(--estado-chamado); font-weight: 500; }
-    /* Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`. */
+    .rodape .rede { font-size: inherit; }
+    .contagem { margin-left: auto; color: var(--tinta); }
+    .tela-apaga { color: var(--tinta-2); }
     /*
-      Compacto no cabeçalho, mas ainda dentro do alvo de 44px do `select`.
-      Fundo translúcido em vez de branco sólido: no cabeçalho verde, uma caixa
-      branca pesa mais que o nome da escola.
+      Compacto no cabeçalho. Vazado, como todo controle que não é a ação: no
+      papel, uma caixa branca pesaria mais que o nome da escola.
     */
-    .volume {
-      width: auto; min-width: 7.5rem; margin: 0;
-      background: rgba(255, 255, 255, 0.14);
-      color: var(--tinta-clara);
-      border-color: rgba(255, 255, 255, 0.45);
-      font-size: var(--t-detalhe);
-    }
-    .volume option { color: var(--tinta); }
-    .recusa {
-      background: var(--estado-retorno-fundo);
-      border-bottom: 1px solid var(--estado-retorno);
-      color: var(--estado-retorno);
-      font-weight: 600;
-    }
-    /* A volta para a sala é ação secundária: não disputa o eixo do botão que
-       libera a criança. Ver o comentário em desenhar(). */
-    .cartao .secundaria {
-      width: auto;
-      margin: 0.5rem auto 0;
-      display: block;
-      font-size: var(--t-detalhe);
-    }
-    .razoes { margin-top: 0.75rem; border-top: 1px solid var(--borda); padding-top: 0.7rem; }
-    /* Nome de razão é longo; sem isto o `select` corta no meio da palavra. */
-    /* Padding menor: no Painel o rótulo mais longo cortava a última letra no
-       estado fechado. A altura continua nos 44px, que é o que importa. */
-    .razoes select {
-      margin: 0 0 0.45rem; width: 100%;
-      font-size: var(--t-detalhe); padding-left: 0.55rem; padding-right: 0.4rem;
-    }
+    .volume { width: auto; min-width: 8rem; margin: 0; background: transparent; font-weight: 600; }
+    /* A faixa leva o sino: é o mesmo ícone da etiqueta de `chamado`. */
+    .faixa svg { width: 28px; height: 28px; vertical-align: -6px; margin-right: var(--e-3); fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   </style>
 </head>
 <body>
 
   <!--
-    A turma vem do APARELHO, e por isso não há mais o que escolher aqui.
-
-    Até a fase 2 esta tela tinha um seletor de turma, e a memória da 1.8 servia
-    para pré-selecionar a última usada — com um aviso, porque entrar na sala
-    errada é ver a criança de outra turma sumir da tela sem explicação, e não
-    ver a da sua. O próprio plano dizia que aquilo valia "até existir login".
-
-    Agora existe. O tablet foi autorizado como a sala do 3º ano pela escola, e
-    a tela não oferece nada que contrarie isso — o erro deixou de ser possível
-    em vez de ficar sendo avisado.
-
-    O botão continua, e continua sendo necessário: destravar o áudio e pedir o
-    bloqueio de tela exigem um gesto do usuário, e este é o gesto.
+    A turma vem do APARELHO, e por isso não há mais o que escolher aqui. O
+    botão continua sendo necessário: destravar o áudio e pedir o bloqueio de
+    tela exigem um gesto do usuário, e este é o gesto.
   -->
   <div id="entrada" class="entrada">
     <h2>Tela da sala</h2>
@@ -99,12 +45,7 @@
     <button class="principal larga" id="entrar">Entrar na sala</button>
   </div>
 
-  <!--
-    `painel`: a sala é lida do meio da sala, não da mão.
-
-    O aparelho fica apoiado na mesa ou preso na parede, com vinte crianças em
-    pé na frente. Os tokens são os mesmos da portaria; muda só a escala.
-  -->
+  <!-- `painel`: a sala é lida do meio da sala, não da mão. -->
   <div id="app" class="painel" hidden>
     <header class="cabecalho">
       <span class="marca-glifo" aria-hidden="true"></span>
@@ -113,13 +54,6 @@
         <p class="subtitulo" id="turmaAtual"></p>
       </div>
       <div class="direita">
-        <!--
-          Três degraus, não um cursor deslizante. Quem mexe nisto é uma
-          professora de pé, com a turma esperando, num tablet: três alvos
-          grandes acertam de primeira, um cursor exige mira e produz
-          "quase inaudível" por engano — a mesma falha do mudo, sem nada
-          na tela dizendo.
-        -->
         <label class="fora-da-tela" for="volume">Volume do aviso</label>
         <select id="volume" class="volume"></select>
         <button class="fantasma" id="mudo" aria-pressed="false">Som ligado</button>
@@ -128,22 +62,8 @@
 
     <p class="faixa" id="faixa" hidden></p>
 
-    <!--
-      Aviso de som interrompido.
-
-      Fica FORA da faixa de "N responsáveis chegaram" de propósito: as duas
-      podem estar valendo ao mesmo tempo, e é justamente quando as duas valem
-      que o aviso importa — tem gente esperando no portão e a sala não ouviu.
-      É um botão, não um texto, porque reativar áudio exige gesto do usuário;
-      um aviso que só informa deixaria a professora sem o que fazer.
-    -->
     <button class="faixa aviso" id="avisoSom" aria-live="polite" hidden></button>
 
-    <!--
-      Recusa do servidor. Fica separada do aviso de som porque as duas podem
-      valer ao mesmo tempo e dizem coisas diferentes: uma é "não te ouvi", a
-      outra é "não fiz o que você pediu".
-    -->
     <p class="faixa recusa" id="recusa" role="alert" hidden></p>
 
     <main class="palco">
@@ -153,11 +73,6 @@
 
     <footer class="rodape">
       <span class="rede" id="rede">ligando…</span>
-      <!--
-        Só aparece quando a tela PODE apagar. Bloqueio funcionando é o
-        esperado e não merece pixel; bloqueio ausente é uma coisa que a
-        professora pode resolver na configuração do aparelho.
-      -->
       <span class="tela-apaga" id="telaApaga" hidden>a tela pode apagar sozinha</span>
       <span class="contagem" id="contagem"></span>
     </footer>
@@ -182,15 +97,8 @@
     import { podeSeguir } from '../comum/alerta.js'
 
     /*
-      O código vai para a trilha; a frase fica aqui.
-
-      Renomear um rótulo na tela não pode reescrever o passado — e a trilha não
-      tem caminho de correção, então o que entra fica os 90 dias. Por isso o
-      servidor só aceita os códigos, e a lista viva está em `src/estados.ts`.
-
-      Não há razão de saúde: seria dado sensível de uma criança, agrupável por
-      aluno ao longo do trimestre, e `docs/lgpd.md` já proíbe usar a trilha para
-      avaliar aluno. O detalhe clínico fica no livro de ocorrência da escola.
+      O código vai para a trilha; a frase fica aqui. Não há razão de saúde:
+      seria dado sensível de uma criança (docs/lgpd.md).
     */
     const ROTULO_RAZAO = [
       ['esqueceu-material', 'Esqueceu material'],
@@ -199,12 +107,20 @@
       ['outro', 'Outro motivo'],
     ]
 
-    /*
-      Quem e este aparelho. A tela nao existe antes disso.
+    const SINO = ['M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7', 'M13.7 21a2 2 0 0 1-3.4 0']
+    function sino() {
+      const NS = 'http://www.w3.org/2000/svg'
+      const svg = document.createElementNS(NS, 'svg')
+      svg.setAttribute('viewBox', '0 0 24 24')
+      svg.setAttribute('aria-hidden', 'true')
+      for (const d of SINO) {
+        const p = document.createElementNS(NS, 'path')
+        p.setAttribute('d', d)
+        svg.append(p)
+      }
+      return svg
+    }
 
-      A porta fica na frente ate o codigo ser aceito; so entao sabemos qual sala
-      esta e podemos escrever a turma na tela.
-    */
     const aparelho = await exigirAparelho('sala')
     const turmaDoAparelho = aparelho.turma
 
@@ -213,7 +129,7 @@
       ? `Esta é a tela do ${turmaDoAparelho}.`
       : 'Este aparelho não está autorizado como sala.'
 
-        const botaoMudo = document.getElementById('mudo')
+    const botaoMudo = document.getElementById('mudo')
     const rede = document.getElementById('rede')
     const grade = document.getElementById('grade')
     const faixa = document.getElementById('faixa')
@@ -224,13 +140,6 @@
     let conexao = null
     const cartoes = new Map()
 
-    /*
-      O rótulo carrega o estado e `aria-pressed` também.
-
-      É redundante de propósito. Trocar o rótulo por um nome fixo ("Silenciar")
-      e deixar só o aria-pressed dizer o estado quebraria a 2.5.3 do WCAG para
-      quem comanda por voz, que precisa falar o texto que está vendo.
-    */
     const avisoSom = document.getElementById('avisoSom')
 
     function desenharMudo() {
@@ -240,14 +149,7 @@
     }
     desenharMudo()
 
-    /*
-      O som pode parar sozinho depois do primeiro gesto — aba em segundo plano,
-      ligação, tela bloqueada. Sem isto a sala continuava desenhando o cartão e
-      nada mais: a professora só descobria pelo responsável reclamando no portão.
-    */
     aoFalharSom((mensagem) => {
-      // O texto ANTES de mostrar: uma região aria-live que aparece já com o
-      // conteúdo é anunciada; preenchida depois de aparecer, às vezes não.
       if (mensagem) avisoSom.textContent = mensagem
       avisoSom.hidden = !mensagem
     })
@@ -259,7 +161,6 @@
     }
 
     const seletorVolume = document.getElementById('volume')
-    // O codigo do degrau e interno; o que a professora le e uma palavra.
     const ROTULO_VOLUME = { baixo: 'Som baixo', medio: 'Som médio', alto: 'Som alto' }
     for (const degrau of degraus()) {
       const opcao = document.createElement('option')
@@ -270,17 +171,9 @@
     seletorVolume.value = volumeAtual()
     seletorVolume.onchange = () => {
       definirVolume(seletorVolume.value)
-      // Toca uma vez para ela ouvir o que escolheu. Escolher volume sem
-      // referência é escolher no escuro, e o erro só aparece na hora errada.
       tocarEntrega()
     }
 
-    /*
-      A tela da sala fica minutos parada de propósito: ela só muda quando um
-      responsável chega no portão. É exatamente aí que o tablet decide apagar —
-      e com a tela apagada o som também não sai, porque o navegador suspende o
-      áudio junto. Os dois canais caem ao mesmo tempo.
-    */
     const telaApaga = document.getElementById('telaApaga')
     aoMudarTelaAcesa((estado) => {
       telaApaga.hidden = estado === 'ativo'
@@ -306,30 +199,10 @@
           rede.textContent = estado === 'ligado' ? 'conectado' : 'reconectando…'
         },
         aoRetrato: desenhar,
-        /*
-          A sala nunca teve canal de recusa.
-
-          `ligacao.js` chama `aoRecusa?.(dado)` — sem o retorno, toda recusa
-          enviada a sala sumia. Era quase inofensivo enquanto a unica acao dela
-          era `liberar`, porque o retrato seguinte desmentia a tela. `retornar`
-          e a acao cuja falha significa crianca num lugar e registro em outro:
-          a professora aperta "voltou", o servidor recusa, e sem isto ela nao
-          fica sabendo.
-        */
         aoRecusa: (recusa) => mostrarRecusa(recusa.motivo),
       })
     }
 
-    /*
-      O primeiro retrato desenha, mas não toca.
-
-      Ele é a fotografia do que já estava acontecendo antes desta tela existir —
-      um F5 no meio da saída, ou a reconexão depois de o wifi cair. Sem esta
-      guarda, recarregar com quatro crianças na fila disparava quatro sinos de
-      uma vez, e nenhum deles correspondia a alguém que acabou de chegar.
-
-      Som que toca quando nada aconteceu ensina a professora a ignorar o som.
-    */
     const faixaRecusa = document.getElementById('recusa')
     let apagarRecusa = null
 
@@ -340,14 +213,94 @@
       apagarRecusa = setTimeout(() => { faixaRecusa.hidden = true }, 8000)
     }
 
+    /*
+      O motivo do retorno é uma LISTA DE ALVOS, não um <select>.
+
+      Um select esconde as opções atrás de um toque e mostra uma de cada vez;
+      a professora, de pé, precisa comparar as quatro e tocar. Cada opção é um
+      alvo de 56px. O código continua sendo o que vai para a trilha.
+    */
+    let contadorRazoes = 0
+    function montarRazoes(aoConfirmar) {
+      const grupo = `razao-${++contadorRazoes}`
+      const volta = document.createElement('div')
+      volta.className = 'razoes'
+      volta.hidden = true
+
+      const pergunta = document.createElement('p')
+      pergunta.className = 'pergunta'
+      pergunta.id = `${grupo}-pergunta`
+      pergunta.textContent = 'Por que a criança voltou?'
+
+      const opcoes = document.createElement('div')
+      opcoes.className = 'opcoes'
+      opcoes.setAttribute('role', 'radiogroup')
+      opcoes.setAttribute('aria-labelledby', pergunta.id)
+
+      for (const [i, [codigo, rotulo]] of ROTULO_RAZAO.entries()) {
+        const opcao = document.createElement('label')
+        opcao.className = 'opcao'
+        const marca = document.createElement('input')
+        marca.type = 'radio'
+        marca.name = grupo
+        marca.value = codigo
+        marca.checked = i === 0
+        opcao.append(marca, document.createTextNode(rotulo))
+        opcoes.append(opcao)
+      }
+
+      const botoes = document.createElement('div')
+      botoes.className = 'botoes'
+
+      const confirmar = document.createElement('button')
+      confirmar.className = 'principal'
+      confirmar.textContent = 'Confirmar: voltou para a sala'
+      confirmar.onclick = () => {
+        const marcada = opcoes.querySelector('input:checked')
+        aoConfirmar(marcada ? marcada.value : ROTULO_RAZAO[0][0])
+        volta.hidden = true
+        abrir.hidden = false
+      }
+
+      const desistir = document.createElement('button')
+      desistir.className = 'fantasma'
+      desistir.textContent = 'Não voltou'
+      desistir.onclick = () => {
+        volta.hidden = true
+        abrir.hidden = false
+      }
+
+      botoes.append(confirmar, desistir)
+      volta.append(pergunta, opcoes, botoes)
+
+      /*
+        "Voltou para a sala" é ação SECUNDÁRIA, fora do eixo do botão principal:
+        no estado `liberado` o botão principal fica desabilitado, e o gesto
+        habitual da professora sobre aquele cartão é um no-op seguro. A volta
+        abre a lista de motivos; só o "Confirmar" envia.
+      */
+      const abrir = document.createElement('button')
+      abrir.className = 'fantasma secundaria'
+      abrir.textContent = 'Voltou para a sala'
+      abrir.onclick = () => {
+        abrir.hidden = true
+        volta.hidden = false
+      }
+
+      return { volta, abrir }
+    }
+
+    /*
+      O primeiro retrato desenha, mas não toca: é a fotografia do que já estava
+      acontecendo antes desta tela existir. Som que toca quando nada aconteceu
+      ensina a professora a ignorar o som.
+    */
     let jaDesenhou = false
 
     function desenhar(retrato) {
       const primeiro = !jaDesenhou
       jaDesenhou = true
 
-      // `retorno` entra: a criança voltou para esta sala e a professora precisa
-      // continuar vendo o caso aberto até a portaria fechá-lo.
       const ativas = retrato.chamadas
         .filter((c) => c.estado !== 'entregue')
         .sort((a, b) => a.desde - b.desde)
@@ -369,12 +322,6 @@
           botao.className = 'principal'
           botao.textContent = 'Liberar saída'
           botao.onclick = async () => {
-            /*
-              Liberar é a confirmação da professora — o único evento que este
-              sistema existe para proteger. Se há restrição registrada, ela
-              precisa aparecer aqui, e não só na portaria: quem conhece a
-              criança e a família é quem está na sala.
-            */
             const seguir = await podeSeguir({
               alunoId: chamada.alunoId,
               nome: chamada.nome,
@@ -386,44 +333,15 @@
           }
           cartao.acrescentar(botao)
 
-          /*
-            "Voltou para a sala" é ação SECUNDÁRIA, fora do eixo do botão
-            principal.
-
-            No estado `liberado` o botão principal fica desabilitado com
-            "Aguardando no portão": o gesto habitual da professora sobre aquele
-            cartão é um no-op seguro. Pôr a volta ali transformaria a mesma
-            área num botão que rebobina o estado — e o efeito colateral cai na
-            porteira, do outro lado da escola.
-          */
-          const volta = document.createElement('div')
-          volta.className = 'razoes'
-          volta.hidden = true
-
-          const porque = document.createElement('select')
-          porque.setAttribute('aria-label', 'Por que a criança voltou')
-          for (const [codigo, rotulo] of ROTULO_RAZAO) {
-            const o = document.createElement('option')
-            o.value = codigo
-            o.textContent = rotulo
-            porque.append(o)
-          }
-
-          const botaoVolta = document.createElement('button')
-          botaoVolta.className = 'secundaria'
-          botaoVolta.textContent = 'Voltou para a sala'
-          botaoVolta.onclick = () =>
-            conexao.enviar({
-              tipo: 'retornar',
-              alunoId: chamada.alunoId,
-              razao: porque.value,
-            })
-
-          volta.append(porque, botaoVolta)
+          const { volta, abrir } = montarRazoes((razao) =>
+            conexao.enviar({ tipo: 'retornar', alunoId: chamada.alunoId, razao }),
+          )
+          cartao.acrescentar(abrir)
           cartao.acrescentar(volta)
 
           cartao.__botao = botao
           cartao.__volta = volta
+          cartao.__abrir = abrir
           cartao.__estado = null
           cartoes.set(chamada.alunoId, cartao)
           grade.append(cartao)
@@ -435,12 +353,6 @@
           if (chamada.estado === 'liberado' && !primeiro) tocarEntrega()
           cartao.__estado = chamada.estado
         }
-        /*
-          Em `retorno`, a professora não pode liberar de novo: alguém precisa
-          reconfirmar que há um adulto no portão, e quem enxerga o portão é a
-          portaria. O botão diz isso em vez de sumir — um botão que some leva a
-          professora a achar que perdeu a criança de vista.
-        */
         cartao.__botao.disabled = chamada.estado !== 'chamado'
         cartao.__botao.textContent =
           chamada.estado === 'liberado'
@@ -450,16 +362,22 @@
               : 'Liberar saída'
 
         // A volta só existe enquanto a criança está liberada e ainda não saiu.
-        cartao.__volta.hidden = chamada.estado !== 'liberado'
+        const podeVoltar = chamada.estado === 'liberado'
+        cartao.__abrir.hidden = !podeVoltar || !cartao.__volta.hidden
+        if (!podeVoltar) cartao.__volta.hidden = true
       }
 
       const aguardando = ativas.filter((c) => c.estado === 'chamado').length
       vazio.hidden = ativas.length > 0
       faixa.hidden = aguardando === 0
-      faixa.textContent =
-        aguardando === 1
-          ? 'Responsável chegou. Toque em liberar saída.'
-          : `${aguardando} responsáveis chegaram. Toque em liberar saída.`
+      faixa.replaceChildren(
+        sino(),
+        document.createTextNode(
+          aguardando === 1
+            ? 'Responsável chegou. Toque em liberar saída.'
+            : `${aguardando} responsáveis chegaram. Toque em liberar saída.`,
+        ),
+      )
       contagem.textContent = ativas.length > 0 ? `${ativas.length} em saída` : ''
     }
   </script>

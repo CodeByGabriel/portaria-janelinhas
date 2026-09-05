@@ -6,88 +6,47 @@
   <title>Portaria — Janelinhas do Saber</title>
   <link rel="stylesheet" href="../comum/tokens.css">
   <style>
-    ul { list-style: none; padding: 0; margin: 0; }
     .conteudo { padding-bottom: 4rem; }
     .aviso {
-      color: var(--alerta); background: var(--alerta-fundo);
-      border: 1px solid #f0cdcb; border-radius: var(--canto);
-      font-size: var(--t-detalhe); padding: 0.5rem 0.7rem; margin: 0.6rem 0 0;
+      color: var(--alerta); background: var(--cartao);
+      border: 1px solid var(--alerta); border-radius: var(--canto);
+      font-size: var(--t-detalhe); font-weight: 600; padding: var(--e-2) var(--e-3); margin: var(--e-3) 0 0;
     }
-    .corte { font-size: var(--t-detalhe); color: var(--tinta-fraca); padding: 0.5rem 0.2rem; }
+    .corte { font-size: var(--t-detalhe); color: var(--tinta-2); padding: var(--e-2) 0; }
     /*
       A turma de um homônimo deixa de ser detalhe: é a única coisa que separa
-      duas crianças com o mesmo nome, e chamar a errada avisa a sala errada.
+      duas crianças com o mesmo nome. Sobe para a tinta cheia, em negrito — não
+      empresta cor de estado, porque não é estado.
     */
-    .linha[data-homonimo='true'] .turma-da-linha {
-      color: var(--estado-retorno);
-      font-weight: 600;
-    }
-    .homonimo {
-      color: var(--estado-retorno);
-      font-weight: 600;
-    }
-    .homonimo::before { content: " · "; }
-    .contagem-secao {
-      float: right; text-transform: none; letter-spacing: 0;
-      font-weight: 500; color: var(--tinta-media);
-    }
-    /*
-      Cabeçalho de grupo. É um <li> para viver dentro da mesma <ul> e passar
-      pela mesma reconciliação por chave das linhas — uma lista com duas
-      estruturas paralelas seria a chance de as duas saírem de sincronia.
-    */
-    .grupo {
-      list-style: none;
-      font-size: var(--t-etiqueta); font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.07em; color: var(--tinta-fraca);
-      padding: 0.7rem 0.2rem 0.25rem;
-      display: flex; align-items: baseline; gap: 0.4rem;
-    }
-    .grupo .quantos { color: var(--tinta-media); }
-    .duasAcoes { display: flex; gap: 0.4rem; }
-    .duasAcoes button { white-space: nowrap; }
-    details {
-      margin-top: 2rem; border: 1px solid var(--borda);
-      border-radius: var(--canto); background: var(--superficie); padding: 0.9rem 1rem;
-    }
-    /*
-      A baseline mediu este summary em 18,7px de altura — abaixo ate do minimo
-      de 24px do WCAG 2.5.8 nivel AA, e era o pior alvo de toque do app.
-    */
-    summary {
-      cursor: pointer; font-size: var(--t-etiqueta); font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.07em; color: var(--tinta-fraca);
-      min-height: var(--toque-min); display: flex; align-items: center;
-    }
+    .linha[data-homonimo='true'] .turma-da-linha { color: var(--tinta); font-weight: 700; }
+    .homonimo { color: var(--tinta); font-weight: 600; }
+    .homonimo::before { content: ' · '; }
+    .duasAcoes { display: flex; gap: var(--e-2); flex: 1 1 100%; }
+    .duasAcoes button { flex: 1; white-space: nowrap; }
     .lgpd {
-      background: var(--chamado-fundo); border: 1px solid var(--chamado-borda);
-      border-radius: var(--canto); color: var(--chamado-tinta);
-      padding: 0.65rem 0.8rem; font-size: var(--t-detalhe); margin: 0.9rem 0 0.7rem;
+      background: var(--papel); border: 1px solid var(--linha);
+      border-radius: var(--canto); color: var(--tinta-2);
+      padding: var(--e-3) var(--e-4); font-size: var(--t-detalhe); margin: var(--e-3) 0 var(--e-3);
     }
-    .dica { font-size: var(--t-detalhe); color: var(--tinta-fraca); margin: 0 0 0.6rem; }
-    code {
-      background: var(--superficie-2); padding: 0.05rem 0.3rem;
-      border-radius: 4px; font-size: var(--t-detalhe);
-    }
-    textarea { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: var(--t-detalhe); }
-    .placar { display: flex; gap: 0.6rem; margin: 0.9rem 0 0; }
-    .placar div {
-      flex: 1; text-align: center; background: var(--superficie-2);
-      border-radius: var(--canto); padding: 0.6rem 0.3rem;
-    }
-    .placar .valor { font-size: var(--t-numero); font-weight: 600; line-height: 1.15; }
-    .placar .rotulo {
-      font-size: var(--t-etiqueta); text-transform: uppercase;
-      letter-spacing: 0.06em; color: var(--tinta-fraca);
-    }
+    .dica { font-size: var(--t-detalhe); color: var(--tinta-2); margin: 0 0 var(--e-3); }
+    code { background: var(--destaque); padding: 1px 5px; border-radius: 4px; font-size: var(--t-detalhe); }
+    textarea { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: var(--t-detalhe); margin-bottom: var(--e-3); }
+    .placar { display: flex; gap: var(--e-2); margin: var(--e-4) 0 0; }
+    .placar div { flex: 1; text-align: center; background: var(--papel); border: 1px solid var(--linha); border-radius: var(--canto); padding: var(--e-3) var(--e-1); }
+    .placar .valor { font-size: var(--t-numero); font-weight: 700; line-height: 1.15; }
+    .placar .rotulo { font-size: var(--t-etiqueta); text-transform: uppercase; letter-spacing: var(--tracking-etiqueta); color: var(--tinta-2); }
     .placar .ruim .valor { color: var(--alerta); }
-    .listaErros { font-size: var(--t-detalhe); color: var(--alerta); margin: 0.7rem 0 0; padding-left: 1.1rem; }
+    .listaErros { font-size: var(--t-detalhe); color: var(--alerta); margin: var(--e-3) 0 0; padding-left: 1.1rem; }
     .listaErros li { list-style: disc; }
     .rodape {
       position: fixed; bottom: 0; left: 0; right: 0;
-      padding: 0.45rem 1.15rem; background: var(--superficie);
-      border-top: 1px solid var(--borda);
+      padding: var(--e-2) var(--e-4); background: var(--papel);
+      border-top: 1px solid var(--linha);
     }
+    /* Ícone de busca dentro do campo. */
+    .busca { position: relative; }
+    .busca svg { position: absolute; left: var(--e-4); top: 50%; width: 20px; height: 20px; transform: translateY(-50%); fill: none; stroke: var(--tinta-2); stroke-width: 2.2; stroke-linecap: round; pointer-events: none; }
+    .busca input { padding-left: 44px; }
   </style>
 </head>
 <body>
@@ -102,7 +61,10 @@
 
   <main class="conteudo">
     <p class="secao">Chamar aluno</p>
-    <input id="consulta" placeholder="Nome do aluno" autocomplete="off" autocapitalize="off">
+    <div class="busca">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <input id="consulta" placeholder="Nome do aluno" autocomplete="off" autocapitalize="off" aria-label="Nome do aluno">
+    </div>
     <div id="aviso"></div>
     <ul id="resultados"></ul>
     <p class="corte" id="corteBusca" hidden></p>
@@ -110,11 +72,6 @@
 
     <p class="secao">
       Em saída
-      <!--
-        A tela que gerencia a fila era a única que não mostrava o tamanho dela.
-        A contagem fica no cabeçalho, e não no rodapé, porque é aqui que a
-        porteira olha antes de decidir se dá conta ou chama reforço.
-      -->
       <span class="contagem-secao" id="contagemSaida" hidden></span>
     </p>
     <ul id="ativas"></ul>
@@ -155,15 +112,7 @@
     let ativas = []
     let versaoCadastro = null
 
-    /*
-      O cronômetro conta pelo relógio do SERVIDOR, não pelo do tablet.
-
-      `desde` é carimbado no Worker. O relógio de um tablet de escola erra
-      minutos com facilidade, e um aparelho adiantado mostraria "esperando há
-      -3 min", enquanto um atrasado esconderia uma espera real. Cada retrato
-      traz o `em` do servidor: a diferença entre ele e o relógio local é o
-      deslocamento, e ele é recalculado a cada retrato.
-    */
+    /* O cronômetro conta pelo relógio do SERVIDOR, não pelo do tablet. */
     let deslocamentoDoRelogio = 0
     const agoraNoServidor = () => Date.now() + deslocamentoDoRelogio
 
@@ -178,16 +127,8 @@
     }
 
     /*
-      A ordem da fila, e por que ela não é só `desde`.
-
-      A porteira olha esta lista para saber O QUE FAZER AGORA. `liberado` é
-      criança a caminho do portão, para ela entregar; `retorno` espera uma
-      decisão dela; `chamado` está com a sala, e não há nada para ela fazer
-      além de cancelar. Então as ações dela sobem.
-
-      Dentro de cada grupo a ordem é `desde`, que é estável: quem chegou antes
-      fica antes, e a linha não pula de lugar quando outra criança muda de
-      estado do outro lado da escola.
+      A ordem da fila: as ações da porteira sobem. Dentro de cada grupo a ordem
+      é `desde`, estável.
     */
     const GRUPOS = [
       ['liberado', 'Pode entregar'],
@@ -196,13 +137,6 @@
     ]
     const PRIORIDADE = Object.fromEntries(GRUPOS.map(([e], i) => [e, i]))
 
-    /*
-      Nada da tela existe antes de o aparelho estar autorizado.
-
-      A porta fica na frente ate o codigo ser aceito. Desenhar a lista e depois
-      descobrir que ninguem pode ve-la seria mostrar nome de crianca a quem o
-      servidor vai recusar em seguida.
-    */
     await exigirAparelho('portaria')
 
     const conexao = ligar({
@@ -216,19 +150,7 @@
         }
         ativas = retrato.chamadas
         desenharAtivas()
-        // NAO chamar campo.oninput() aqui. Reconstruir os resultados da busca
-        // por causa de um retrato da rede destroi o botao que a porteira esta
-        // prestes a tocar — a acao de outra pessoa, em outra sala, trocava o
-        // no sob o dedo dela. Em vez disso, so o estado das linhas ja
-        // desenhadas e atualizado.
         atualizarResultados()
-
-        /*
-          Se outra pessoa importou uma planilha, a lista que este aparelho tem
-          na memoria venceu. Sem isto, a porteira busca um nome, toca em
-          Chamar, e o servidor chama OUTRA crianca — porque o id que a tela
-          guardou aponta para outro aluno no cadastro novo. Silencioso e grave.
-        */
         if (versaoCadastro !== null && retrato.cadastro !== versaoCadastro) {
           recarregarCadastro('A lista de alunos foi atualizada. Recarreguei.')
         }
@@ -262,92 +184,62 @@
       .then((lista) => { alunos = lista })
       .catch(() => mostrarAviso('Não consegui carregar a lista de alunos.'))
 
-    function botao(texto, principal, aoTocar) {
+    function botao(texto, classe, aoTocar) {
       const b = document.createElement('button')
       b.textContent = texto
-      if (principal) b.className = 'principal'
+      if (classe) b.className = classe
       b.onclick = aoTocar
       return b
     }
 
-    /** Monta o que a linha oferece naquele estado. Pode ser mais de um botão. */
+    /**
+      Monta o que a linha oferece naquele estado.
+
+      Uma ação PREENCHIDA por linha, sempre a mesma cor: "Chamar" na busca,
+      "Entregar" na fila. "Chamar de novo" e "Encerrar" ficam vazados — nenhum
+      dos dois afirma entrega, e o par não pode parecer o botão que afirma.
+    */
     function acaoPara(acao, c) {
       if (acao === 'cancelar') {
-        return botao('Cancelar', false, () =>
+        return botao('Cancelar', '', () =>
           conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId }))
       }
       if (acao === 'entregar') {
-        return botao('Entregar', true, async () => {
-          /*
-            A pergunta que faltava. Sem responsável cadastrado a caixa nem
-            aparece e o comando segue como antes — a escola pode ainda não ter
-            subido a segunda planilha, e travar a saída por isso seria parar a
-            escola no meio do turno por pendência administrativa.
-          */
+        return botao('Entregar', 'principal', async () => {
           const escolha = await escolherResponsavel({ alunoId: c.alunoId, nome: c.nome })
           if (!escolha) return
           if (escolha.erro) {
             mostrarAviso(escolha.erro)
             return
           }
-
           conexao.enviar({
             tipo: 'entregar',
             alunoId: c.alunoId,
             responsavelId: escolha.responsavelId ?? undefined,
           })
-
-          /*
-            Os irmãos escolhidos entram na fila de saída — chamados, não
-            entregues. Entregar sem a sala liberar seria pular a confirmação da
-            professora, que é o único evento que este sistema existe para
-            proteger.
-          */
           for (const irmaoId of escolha.tambem ?? []) {
             conexao.enviar({ tipo: 'chamar', alunoId: irmaoId })
           }
         })
       }
       if (acao === 'rechamar') {
-        /*
-          A criança voltou para a sala. Duas saídas, e a escolha é sobre o
-          PORTÃO: "Chamar de novo" afirma que o responsável está lá; "Encerrar"
-          afirma que não está. Nenhuma das duas afirma entrega — dizer que a
-          criança saiu com alguém sem ninguém ter recebido nada é a única coisa
-          que este sistema não pode fazer.
-        */
         const par = document.createElement('div')
         par.className = 'duasAcoes'
         par.append(
-          botao('Chamar de novo', true, () =>
-            conexao.enviar({ tipo: 'chamar', alunoId: c.alunoId })),
-          botao('Encerrar', false, () =>
+          botao('Encerrar', '', () =>
             conexao.enviar({ tipo: 'encerrar', alunoId: c.alunoId })),
+          botao('Chamar de novo', 'contorno', () =>
+            conexao.enviar({ tipo: 'chamar', alunoId: c.alunoId })),
         )
         return par
       }
       return null
     }
 
-    /*
-      Reconciliacao por chave, nos dois lados.
-
-      A versao anterior fazia `ul.innerHTML = ''` a cada retrato: todo <li>,
-      todo retrato SVG e todo botao eram destruidos e recriados. Como o
-      servidor transmite o retrato inteiro a cada mudanca de QUALQUER aluno, a
-      acao de outra pessoa em outra sala reconstruia a lista debaixo do dedo
-      da porteira. O toque em curso se perdia — inofensivo — e o seguinte
-      podia cair no "Entregar" de outra crianca, que e o dano real.
-
-      A tela da sala ja fazia isto certo desde sempre; a portaria e que ficou
-      de fora. Aqui a lista mantem um Map por alunoId: remove so quem saiu,
-      muta quem ficou, e insere os novos na posicao certa. O elemento sob o
-      dedo sobrevive.
-    */
+    /* Reconciliação por chave, nos dois lados: o elemento sob o dedo sobrevive. */
     const linhasResultado = new Map()
     const linhasAtivas = new Map()
 
-    /** Deixa o <ul> na ordem pedida sem recriar nada que ja esteja certo. */
     function ordenar(ul, chavesEmOrdem, mapa) {
       let anterior = null
       for (const chave of chavesEmOrdem) {
@@ -367,7 +259,6 @@
       }
     }
 
-    /** Troca so a acao da linha, preservando foto e nome ja renderizados. */
     function definirAcao(li, acao) {
       const atual = li.querySelector('.acao')
       if (atual) atual.remove()
@@ -391,25 +282,8 @@
           linhasResultado.set(aluno.id, li)
           ul.append(li)
         }
-        /*
-          Homônimo é o erro caro desta tela.
-
-          Chamar a Maria Eduarda errada avisa a SALA errada, e a criança certa
-          continua esperando no portão sem ninguém saber. Quando o nome se
-          repete no cadastro, a turma deixa de ser detalhe e passa a ser a única
-          coisa que distingue as duas — então ela sobe de peso e ganha um aviso
-          ao lado, em vez de ficar em cinza pequeno como todo o resto.
-
-          A marca vem do cadastro INTEIRO, não dos resultados: se o corte em 8
-          deixou a outra Maria de fora, o aviso continua valendo — e é justo
-          esse o caso em que ninguém desconfia.
-        */
         const li = linhasResultado.get(aluno.id)
 
-        /*
-          A marca aparece ANTES do toque, para a pessoa saber que a caixa vem —
-          não para substituí-la. O texto continua no servidor.
-        */
         if (aluno.temAlerta && !li.querySelector('.marca-restricao')) {
           const marca = document.createElement('span')
           marca.className = 'marca-restricao'
@@ -424,7 +298,7 @@
           if (repetido && !marca) {
             marca = document.createElement('span')
             marca.className = 'homonimo'
-            marca.textContent = 'nome repetido — confira a turma'
+            marca.textContent = 'nome repetido, confira a turma'
             li.querySelector('.detalhe')?.append(marca)
           } else if (!repetido && marca) {
             marca.remove()
@@ -443,13 +317,10 @@
         corte.hidden = true
       }
 
-      // Busca sem resultado dizia NADA: lista em branco, indistinguivel de
-      // "ainda carregando". Agora ela fala.
       const vazio = document.getElementById('semResultado')
       vazio.hidden = !(campo.value.trim() !== '' && achados.length === 0)
     }
 
-    /** So a acao de cada resultado muda quando o retrato chega. */
     function atualizarResultados() {
       const emSaida = new Set(ativas.map((c) => c.alunoId))
       for (const [id, li] of linhasResultado) {
@@ -460,15 +331,7 @@
           li,
           jaSaindo
             ? etiquetaDe('já em saída')
-            : botao('Chamar', true, async () => {
-                /*
-                  A restrição é consultada AQUI, no toque, e não junto da lista.
-
-                  Também é o único momento em que ela pode estar certa: a
-                  planilha pode ter sido reimportada entre a busca e o toque, e
-                  uma anotação lida cedo demais é uma anotação que pode ter
-                  deixado de valer — ou que acabou de passar a valer.
-                */
+            : botao('Chamar', 'principal', async () => {
                 const aluno = alunos.find((a) => a.id === id)
                 const versaoAoTocar = versaoCadastro
                 const seguir = await podeSeguir({
@@ -478,18 +341,6 @@
                   acao: 'chamar para a saída',
                 })
                 if (!seguir) return
-
-                /*
-                  A caixa fica aberta enquanto alguém LÊ — segundos, não
-                  milissegundos. É a maior janela do app, e é justamente nela
-                  que a secretária pode reimportar a planilha.
-
-                  Com a lista trocada, o id que este botão guardou deixa de
-                  valer, e a restrição que a pessoa acabou de ler pode não ser
-                  mais a daquela criança. Chamar assim mesmo é o mesmo furo que
-                  a versão de cadastro já fecha na busca, só que agora com uma
-                  anotação de guarda no meio.
-                */
                 if (versaoCadastro !== versaoAoTocar) {
                   mostrarAviso('A lista mudou enquanto você lia. Busque de novo.')
                   recarregarCadastro()
@@ -503,7 +354,6 @@
       }
     }
 
-    /** Cabeçalhos de grupo, por estado. Vivem na mesma <ul> das linhas. */
     const cabecalhos = new Map()
 
     function cabecalhoDe(estado, rotulo, quantos) {
@@ -550,33 +400,10 @@
         }
         if (li.dataset.estado !== c.estado) {
           li.dataset.estado = c.estado
-          /*
-            RECONSTRÓI a etiqueta, não reescreve o texto dela.
-
-            A versão anterior fazia `etiqueta.textContent = ...`, e textContent
-            substitui TODOS os filhos — inclusive o <svg> do ícone que o
-            `cartao.js` monta. O resultado é que na tela onde o estado mais muda,
-            a etiqueta perdia o ícone assim que mudava, e os quatro canais
-            viravam dois: cor e texto. Justamente o que a 0.5 existe para impedir.
-
-            E o rótulo vinha escrito aqui à mão, uma segunda fonte da verdade que
-            não sabe de estado nenhum além dos dois que alguém lembrou de digitar.
-            Agora vem do componente, como no cartão da sala.
-          */
+          // RECONSTRÓI a etiqueta, não reescreve o texto: textContent apagaria o ícone.
           const antiga = li.querySelector('.etiqueta')
           if (antiga) antiga.replaceWith(etiquetaDoEstado(c.estado))
         }
-        /*
-          A ação que cada estado pede da portaria.
-
-          `retorno` é o estado em que a criança voltou para a sala e ninguém
-          sabe mais se há alguém no portão. A saída é da portaria porque é ela
-          quem enxerga o portão: ou o responsável está lá e ela CHAMA de novo,
-          ou não está e ela ENCERRA. A professora não pode liberar de lá — seria
-          liberar sem ninguém ter reconfirmado, que é a premissa do sistema.
-
-          Duas ações num estado só, então aqui a linha ganha as duas.
-        */
         const ACAO_DO_ESTADO = {
           chamado: 'cancelar',
           liberado: 'entregar',
@@ -590,12 +417,6 @@
         li.__desde = c.desde
       }
 
-      /*
-        A sequência final intercala cabeçalhos e linhas na mesma <ul>, e passa
-        pela mesma reconciliação por chave. Um cabeçalho de grupo vazio não
-        entra — grupo com título e sem ninguém dentro é ruído que a porteira
-        precisa ler para descobrir que não precisava.
-      */
       const sequencia = []
       const mapa = new Map(linhasAtivas)
       for (const [estado, rotulo] of GRUPOS) {
@@ -605,7 +426,6 @@
         mapa.set(chave, cabecalhoDe(estado, rotulo, doGrupo.length))
         sequencia.push(chave, ...doGrupo.map((c) => c.alunoId))
       }
-      // Estado sem grupo declarado ainda aparece, no fim, em vez de sumir.
       for (const c of ordenadas) {
         if (!(c.estado in PRIORIDADE)) sequencia.push(c.alunoId)
       }
@@ -618,16 +438,7 @@
       atualizarEsperas()
     }
 
-    /*
-      Só os cronômetros mudam a cada tique — nunca a estrutura.
-
-      Reconstruir a lista de dez em dez segundos seria trocar o nó sob o dedo da
-      porteira por conta própria, sem nem haver um evento: exatamente o furo S2,
-      agora automatizado. Aqui só o `textContent` de um <span> é reescrito.
-
-      Dez segundos, e não um: a espera na saída se mede em minutos, e um número
-      piscando a cada segundo é um pedido de atenção que nunca vale a pena.
-    */
+    /* Só os cronômetros mudam a cada tique — nunca a estrutura. */
     function atualizarEsperas() {
       for (const li of linhasAtivas.values()) {
         const alvo = li.querySelector('.espera')
@@ -678,8 +489,6 @@
       caixa.append(linha)
 
       const erros = r.erros ?? []
-      // errosTotal, nao erros.length: o servidor limita a resposta a 100
-      // itens, entao contar o array mentiria sobre o tamanho do estrago.
       const totalErros = r.errosTotal ?? erros.length
       if (erros.length > 0) {
         const ul = document.createElement('ul')

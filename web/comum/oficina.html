@@ -6,13 +6,16 @@
   <title>Oficina — Janelinhas do Saber</title>
   <link rel="stylesheet" href="./tokens.css">
   <style>
-    main { padding: 1.5rem; max-width: 1000px; margin: 0 auto; }
-    p.dica { color: var(--tinta-media); max-width: 62ch; margin: 0 0 1.6rem; font-size: var(--t-corpo); }
-    .controles { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1.6rem 0; }
-    ul { list-style: none; padding: 0; margin: 0; }
+    main { padding: var(--e-6); max-width: 1280px; margin: 0 auto; }
+    p.dica { color: var(--tinta-2); max-width: 62ch; margin: 0 0 var(--e-6); font-size: var(--t-corpo); }
+    .controles { display: flex; gap: var(--e-2); flex-wrap: wrap; margin: var(--e-6) 0; }
+    .lado-a-lado { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: var(--e-8); align-items: start; }
+    @media (max-width: 1000px) { .lado-a-lado { grid-template-columns: 1fr; } }
+    /* A prova em P&B: a mesma tela, sem cor nenhuma. */
+    .pb { filter: grayscale(1); }
   </style>
 </head>
-<body>
+<body class="painel">
 
   <header class="cabecalho">
     <span class="marca-glifo" aria-hidden="true"></span>
@@ -24,55 +27,82 @@
 
   <main>
     <p class="dica">
-      Os dois formatos em que um aluno aparece, nos quatro estados. Cartão para a
-      sala, linha para a portaria. Nenhum servidor envolvido.
+      Os dois formatos em que um aluno aparece, nos cinco estados. Cartão para a
+      sala (variante painel), linha para a portaria. Nenhum servidor envolvido.
     </p>
-
-    <p class="secao">Cartão — tela da sala</p>
-    <div class="grade" id="grade"></div>
 
     <div class="controles">
       <button data-estado="aguardando">Aguardando</button>
       <button data-estado="chamado" class="principal">Chamado</button>
       <button data-estado="liberado">Liberado</button>
+      <button data-estado="retorno">Retorno</button>
+      <button data-estado="entregue">Entregue</button>
+      <button id="pb" aria-pressed="false">Preto e branco</button>
     </div>
 
-    <p class="secao">Linha — tela da portaria</p>
-    <ul id="linhas"></ul>
-
-    <p class="secao">Etiquetas</p>
-    <div class="controles" id="etiquetas"></div>
+    <div class="lado-a-lado" id="palco">
+      <div>
+        <p class="secao">Cartão — tela da sala</p>
+        <div class="grade" id="grade"></div>
+      </div>
+      <div>
+        <p class="secao">Linha — tela da portaria</p>
+        <ul id="linhas"></ul>
+        <p class="secao">Etiquetas</p>
+        <div class="controles" id="etiquetas"></div>
+      </div>
+    </div>
   </main>
 
   <script type="module">
     import { criarCartao, criarLinha, etiquetaDe } from './cartao.js'
     import { destravar, tocarAbertura, tocarEntrega } from './som.js'
 
+    const ESTADOS = ['aguardando', 'chamado', 'liberado', 'retorno', 'entregue']
     const ELENCO = [
-      ['Maria Cecília Rocha', 'Pré 1'],
-      ['Anthony Peçanha', '2º ano'],
-      ["Maria Sant'Ana", '6º ano'],
-      ['Gustavo Bandeira', '9º ano'],
-      ['Ana-Clara Vasconcelos', '7º ano'],
+      ['Maria Eduarda Nogueira', 'Pré 1'],
+      ["Luíza Sant'Anna", 'Pré 2'],
+      ['João Pedro Gonçalves de Albuquerque', '3º ano'],
+      ['Ana-Clara Vasconcelos', '3º ano'],
+      ['Rafael Oliveira dos Santos', '9º ano'],
     ]
+    const ACAO = {
+      aguardando: ['—', true],
+      chamado: ['Liberar saída', false],
+      liberado: ['Aguardando no portão', true],
+      retorno: ['Aguardando a portaria chamar de novo', true],
+      entregue: ['Some da tela; fica na trilha', true],
+    }
 
     const grade = document.getElementById('grade')
-    const cartoes = ELENCO.map(([nome, turma]) => {
+    const cartoes = ELENCO.map(([nome, turma], i) => {
       const c = criarCartao({ nome, turma })
+      const botao = document.createElement('button')
+      botao.className = 'principal'
+      c.acrescentar(botao)
+      c.__botao = botao
+      c.mostrar = (estado) => {
+        c.definirEstado(estado)
+        const [texto, desabilitado] = ACAO[estado]
+        botao.textContent = texto
+        botao.disabled = desabilitado
+      }
+      c.mostrar(ESTADOS[i])
       grade.append(c)
       return c
     })
 
     const linhas = document.getElementById('linhas')
     for (const [i, [nome, turma]] of ELENCO.entries()) {
-      const estado = ['aguardando', 'chamado', 'liberado', 'chamado', 'liberado'][i]
-      linhas.append(criarLinha({ nome, turma, estado }))
+      linhas.append(criarLinha({ nome, turma, estado: ESTADOS[i] }))
     }
 
     const etiquetas = document.getElementById('etiquetas')
     for (const [texto, estado] of [
       ['responsável chegou', 'chamado'],
       ['liberado', 'liberado'],
+      ['retornou à sala', 'retorno'],
+      ['entregue', 'entregue'],
       ['já em saída', null],
     ]) {
       etiquetas.append(etiquetaDe(texto, estado))
@@ -82,10 +112,17 @@
       botao.onclick = () => {
         destravar()
         const estado = botao.dataset.estado
-        cartoes.forEach((c) => c.definirEstado(estado))
+        cartoes.forEach((c) => c.mostrar(estado))
         if (estado === 'chamado') tocarAbertura()
         if (estado === 'liberado') tocarEntrega()
       }
+    }
+
+    const pb = document.getElementById('pb')
+    const palco = document.getElementById('palco')
+    pb.onclick = () => {
+      const ligado = palco.classList.toggle('pb')
+      pb.setAttribute('aria-pressed', String(ligado))
     }
   </script>
 </body>
