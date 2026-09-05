@@ -405,7 +405,19 @@
         nome.textContent = adulto.nome
         const detalhe = document.createElement('span')
         detalhe.className = 'detalhe'
-        detalhe.textContent = [adulto.vinculo, adulto.telefone].filter(Boolean).join(' · ')
+        /*
+          A autorizacao de hoje diz que e de hoje, e por quem — a MESMA frase
+          do dialogo de entrega (`entrega.js`). Duas telas dizendo a mesma
+          coisa com palavras diferentes e como a porteira aprende a duvidar
+          das duas.
+        */
+        detalhe.textContent = [
+          adulto.vinculo,
+          adulto.temporario ? `hoje, autorizado por ${adulto.autorizadoPor}` : '',
+          adulto.telefone,
+        ]
+          .filter(Boolean)
+          .join(' · ')
         quem.append(nome, detalhe)
         cartao.append(quem)
 

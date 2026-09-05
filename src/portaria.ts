@@ -882,7 +882,9 @@ export class Portaria {
           return new Response('so a portaria busca por responsavel', { status: 403 })
         }
         if (consulta.length > 80) return new Response('consulta longa demais', { status: 400 })
-        return Response.json(this.livro.quemBusca(consulta))
+        // Com o relogio: a avo autorizada para HOJE tambem e procuravel pelo
+        // nome dela, e a de ontem nao. Mesma regra de `/responsaveis?alunoId`.
+        return Response.json(this.livro.quemBusca(consulta, 8, Date.now()))
       }
 
       const alunoId = url.searchParams.get('alunoId') ?? ''

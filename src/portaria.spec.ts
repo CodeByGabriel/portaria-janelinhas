@@ -1804,6 +1804,44 @@ describe('fase 3 — cadastro por API, trilha por cursor, delegacao', () => {
     expect(avoNaSala.telefone).toBeUndefined()
   })
 
+  it('a avo de hoje e achada pelo NOME DELA em /responsaveis?q, com a neta junto', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    expect((await criarDelegacao(delegacao())).status).toBe(201)
+
+    type Achado = {
+      nome: string
+      temporario?: boolean
+      autorizadoPor?: string
+      filhos: { id: string; nome: string; impedido: boolean }[]
+    }
+    const { achados } = await (
+      await pedir('/responsaveis?q=helena')
+    ).json<{ achados: Achado[] }>()
+    expect(achados.map((a) => a.nome)).toEqual(['Helena Prado'])
+    expect(achados[0].temporario).toBe(true)
+    expect(achados[0].autorizadoPor).toBe('Marta Prado')
+    expect(achados[0].filhos.map((f) => f.nome)).toEqual(['Alice Prado'])
+
+    // E o chamado em lote funciona por ela como por um responsavel fixo.
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: achados[0].filhos[0].id }))
+    expect(await ateQue(ws, (r) => r.chamadas.some((c) => c.alunoId === 'b1'))).toBe(true)
+    ws.close()
+  })
+
+  it('delegacao vencida some da busca por nome, como some da lista da crianca', async () => {
+    expect((await enviarCadastro(cadastro(1))).status).toBe(200)
+    // Janela de tres horas que ja passou seria recusada na criacao; entao
+    // criamos valida e conferimos a MESMA porta pela qual a entrega olha.
+    expect((await criarDelegacao(delegacao())).status).toBe(201)
+    expect((await pedir('/delegacoes?id=d1', { method: 'DELETE', ...comoBackend() })).status).toBe(204)
+
+    const { achados } = await (
+      await pedir('/responsaveis?q=helena')
+    ).json<{ achados: { nome: string }[] }>()
+    expect(achados).toEqual([])
+  })
   it('entregar pela delegacao grava delegacao:<id> e o nome na trilha — e na exportacao', async () => {
     expect((await enviarCadastro(cadastro(1))).status).toBe(200)
     expect((await criarDelegacao(delegacao())).status).toBe(201)

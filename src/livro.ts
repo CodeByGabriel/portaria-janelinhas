@@ -39,6 +39,11 @@ export interface FilhoDoResponsavel {
 /** O adulto achado pelo nome, com quem ele busca. */
 export interface QuemBusca extends Responsavel {
   filhos: FilhoDoResponsavel[]
+  /** Autorizacao de hoje, e nao vinculo de cadastro. Ver `delegadosAgora`. */
+  temporario?: true
+  /** Nome de quem autorizou. E por ele que a porteira confere a historia. */
+  autorizadoPor?: string
+  validoAte?: number
 }
 
 export type QuemPodeLevar = Responsavel & {
@@ -353,12 +358,70 @@ export class Livro {
    * decisao de que ele nao pode leva-la. E a mesma diferenca entre "nao
    * consta" e "nao pode" que o dialogo de entrega ja faz.
    */
-  quemBusca(consulta: string, limite = 8): Achado<QuemBusca> {
-    const encontrados = buscar([...this.responsaveis.values()], consulta, limite)
-    return {
-      ...encontrados,
-      achados: encontrados.achados.map((r) => ({ ...r, filhos: this.filhosDe(r.id) })),
+  quemBusca(consulta: string, limite = 8, agora?: number): Achado<QuemBusca> {
+    const fixos: QuemBusca[] = [...this.responsaveis.values()].map((r) => ({
+      ...r,
+      filhos: this.filhosDe(r.id),
+    }))
+    const todos = [...fixos, ...this.delegadosAgora(agora)]
+    return buscar(todos, consulta, limite)
+  }
+
+  /**
+   * A avo de HOJE, procuravel pelo nome dela.
+   *
+   * `quemBusca` so olhava `responsaveis` — o cadastro fixo — e a delegacao
+   * mora em outro lugar. A avo que o portal autorizou para hoje digitava o
+   * proprio nome e recebia "nenhum adulto com esse nome": a resposta que a
+   * porteira le como "essa senhora nao pode levar ninguem". Exatamente o caso
+   * que a delegacao existe para atender, e o unico erro que nao da para
+   * cometer aqui.
+   *
+   * As regras nao sao reescritas: cada delegacao volta a passar por
+   * `responsaveisDe`, que ja decide janela, titular que perdeu o direito e
+   * impedido que chegou depois. Aqui so se agrupa por nome — a avo com dois
+   * netos e UMA pessoa no portao, e chamar os dois de uma vez e o ponto.
+   */
+  private delegadosAgora(agora?: number): QuemBusca[] {
+    if (agora === undefined) return []
+    const porNome = new Map<string, QuemBusca>()
+    for (const d of this.temporarias.values()) {
+      const aluno = this.cadastro.get(d.alunoId)
+      if (!aluno) continue
+      const valendo = this.responsaveisDe(d.alunoId, agora).find(
+        (r) => r.id === idDeDelegacao(d.id),
+      )
+      if (!valendo) continue
+      const filho: FilhoDoResponsavel = {
+        id: aluno.id,
+        nome: aluno.nome,
+        turma: aluno.turma,
+        temAlerta: aluno.temAlerta === true,
+        impedido: valendo.impedido,
+      }
+      const chave = normalizar(d.nome)
+      const ja = porNome.get(chave)
+      if (ja) {
+        ja.filhos.push(filho)
+        // A janela mais curta manda: e ate quando ESTA visita esta autorizada.
+        if (ja.validoAte !== undefined) ja.validoAte = Math.min(ja.validoAte, d.validoAte)
+        continue
+      }
+      porNome.set(chave, {
+        id: idDeDelegacao(d.id),
+        nome: d.nome,
+        vinculo: d.vinculo,
+        telefone: d.telefone,
+        filhos: [filho],
+        temporario: true,
+        autorizadoPor: d.autorizadoPorNome,
+        validoAte: d.validoAte,
+      })
     }
+    for (const a of porNome.values()) {
+      a.filhos.sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'))
+    }
+    return [...porNome.values()]
   }
 
   /** Toda crianca ligada a este adulto, impedida ou nao, em ordem de nome. */

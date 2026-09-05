@@ -120,3 +120,105 @@ test('o corte devolve o total, para a porteira saber que ha mais', () => {
   assert.equal(r.achados.length, 8)
   assert.equal(r.total, 12)
 })
+
+/* ---------- a avo de HOJE, procuravel pelo nome dela ---------- */
+
+/*
+  A busca por adulto so olhava o cadastro fixo, e a delegacao mora em outro
+  lugar. A avo autorizada para hoje digitava o proprio nome e recebia
+  "nenhum adulto com esse nome" — que a porteira le como "essa senhora nao
+  pode levar ninguem". E justamente o caso que a delegacao existe para
+  atender.
+*/
+
+const HORA = 60 * 60 * 1000
+const AGORA = 1_700_000_000_000
+const MARTA = idDeResponsavel('Marta Fernandes')
+
+const alunoChamado = (nome: string) => semear().find((a) => a.nome === nome)!
+
+function comAvo(extras: Record<string, unknown> = {}): Livro {
+  const livro = comFamilias()
+  livro.adicionarDelegacao(
+    {
+      id: 'd1',
+      alunoId: alunoChamado('Alice Fernandes').id,
+      nome: 'Helena Prado',
+      vinculo: 'avó',
+      telefone: '11 90000-0009',
+      validoDe: AGORA,
+      validoAte: AGORA + 4 * HORA,
+      autorizadoPor: MARTA,
+      ...extras,
+    },
+    AGORA,
+  )
+  return livro
+}
+
+test('a avo autorizada para hoje e achada pelo nome dela, com a neta junto', () => {
+  const livro = comAvo()
+  const r = livro.quemBusca('helena prado', 8, AGORA)
+  assert.deepEqual(nomes(r), ['Helena Prado'])
+  const avo = r.achados[0]
+  assert.deepEqual(avo.filhos.map((f) => f.nome), ['Alice Fernandes'])
+  // Dita como o que e: de hoje, e por quem — a mesma frase do dialogo de entrega.
+  assert.equal(avo.temporario, true)
+  assert.equal(avo.autorizadoPor, 'Marta Fernandes')
+  assert.equal(avo.validoAte, AGORA + 4 * HORA)
+})
+
+test('sem relogio a delegacao nao entra: quem nao diz a hora recebe so os fixos', () => {
+  const livro = comAvo()
+  assert.deepEqual(nomes(livro.quemBusca('helena prado')), [])
+  assert.deepEqual(nomes(livro.quemBusca('marta')), ['Marta Fernandes'])
+})
+
+test('a avo de ONTEM nao e achada — a janela vale aqui como vale na entrega', () => {
+  const livro = comAvo()
+  assert.deepEqual(nomes(livro.quemBusca('helena', 8, AGORA + 5 * HORA)), [])
+  assert.deepEqual(nomes(livro.quemBusca('helena', 8, AGORA - HORA)), [])
+})
+
+test('a avo com dois netos e UMA pessoa no portao, com os dois para chamar', () => {
+  const livro = comAvo()
+  livro.adicionarDelegacao(
+    {
+      id: 'd2',
+      alunoId: alunoChamado('Ravi Bacelar').id,
+      nome: 'Helena Prado',
+      vinculo: 'avó',
+      telefone: '11 90000-0009',
+      validoDe: AGORA,
+      validoAte: AGORA + 2 * HORA,
+      autorizadoPor: idDeResponsavel('Zuleide Bacelar'),
+    },
+    AGORA,
+  )
+  const avo = livro.quemBusca('helena prado', 8, AGORA).achados
+  assert.equal(avo.length, 1, 'a mesma pessoa apareceu duas vezes')
+  assert.deepEqual(avo[0].filhos.map((f) => f.nome), ['Alice Fernandes', 'Ravi Bacelar'])
+  // A janela mais curta manda: e ate quando ESTA visita esta autorizada.
+  assert.equal(avo[0].validoAte, AGORA + 2 * HORA)
+  // E a restricao da crianca viaja junto, como nos fixos.
+  assert.equal(avo[0].filhos.find((f) => f.nome === 'Ravi Bacelar')?.temAlerta, true)
+})
+
+test('o titular que perdeu o direito derruba a delegacao tambem na busca', () => {
+  const livro = comAvo()
+  assert.equal(livro.quemBusca('helena', 8, AGORA).achados.length, 1)
+  // Marta sai do cadastro na proxima planilha: ninguem delega o que perdeu.
+  const familias = responsaveisDaSemente()
+  livro.substituirResponsaveis(
+    familias.responsaveis.filter((r) => r.id !== MARTA),
+    familias.vinculos.filter((v) => v.responsavelId !== MARTA),
+  )
+  assert.deepEqual(nomes(livro.quemBusca('helena', 8, AGORA)), [])
+})
+
+test('a avo e o fixo aparecem lado a lado, e o homonimo entre eles e avisado', () => {
+  const livro = comAvo({ nome: 'Marta Fernandes' })
+  const r = livro.quemBusca('marta fernandes', 8, AGORA)
+  assert.equal(r.achados.length, 2, 'a delegacao e o cadastro precisam coexistir')
+  assert.equal(r.homonimos.length, 2)
+})
