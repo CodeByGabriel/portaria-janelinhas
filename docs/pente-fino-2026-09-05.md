@@ -178,6 +178,14 @@ calculada uma vez e ponteiro que só avança. Medido depois: 1 MB com 20 mil asp
 verificação — e o caminho oficial para volume é o `/trilha` por cursor. Fica registrado: se
 um dia uma tela precisar da trilha, ela precisa de página, não deste despejo.
 
+**Teclado e foco nos diálogos**, outra lacuna da crítica: o diálogo de entrega é modal de
+verdade (`:modal`), então o foco não escapa para a página atrás; todo botão habilitado recebe
+foco e o adulto impedido fica fora da ordem de foco mas continua legível no fluxo; e, depois
+de escolher o adulto, o foco vai para a primeira caixa de irmão em vez de ficar num botão que
+sumiu. O que **não** dá para verificar neste navegador embutido é a tecla em si: Tab, Enter e
+Escape simulados não chegam a um `<dialog>` modal — artefato da simulação, não do app, e o
+mesmo motivo pelo qual o Escape "não fechava" ontem.
+
 **E uma lacuna fechada de tabela:** nomes com **controles de direção** (bidi) entravam no
 cadastro. `U+202E` inverte a exibição do que vem depois, então "Ana ‮aviuqS aeD" aparece na
 tela como outro nome — numa lista em que a porteira escolhe pelo que lê, um nome que se
