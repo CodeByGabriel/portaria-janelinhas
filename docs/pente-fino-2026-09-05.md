@@ -24,7 +24,7 @@ Quatro frentes, na ordem:
 4. **Revisão do próprio diff da noite** (seção "Terceira passada"), porque cinquenta
    correções entram e alguma quebra outra coisa — e uma delas tinha quebrado.
 
-Portões ao fim (depois das três passadas): `npm test` **243 + 109**, `typecheck`,
+Portões ao fim: `npm test` **246 + 109**, `typecheck`,
 `fim-a-fim`, `telas`, `responsivo` **45/45**, `peso` **82,0 / 120 KB** — todos com código de
 saída 0. Prints regenerados em `docs/prints/patio/`.
 
@@ -196,6 +196,28 @@ entraram na regex de invisíveis, nas três cópias, e viraram teste.
 fuso `+05:30` é 12:30 UTC, ou seja, passado — a recusa estava certa; e o 404 de rota
 desconhecida não leva `no-store` porque é respondido pelo Worker, antes do Durable Object, e
 não carrega dado de criança.
+
+## Quarta leva — o que ainda não tinha sido cobrado
+
+**Nenhuma recusa pode chegar muda.** `motivoDe` é uma allowlist: mensagem não prevista vira
+"comando recusado". É a escolha certa — erro interno cru não vai para a tela da professora —
+e tem um preço que morde: toda regra nova do Livro precisa entrar na lista, senão a recusa
+fica muda e ninguém descobre que faltou escolher o motivo do retorno. Agora três testes
+cobram esse preço: um provoca as catorze regras de verdade, outro varre o fonte do Livro
+atrás de mensagem que ninguém provocou, e o terceiro confirma que erro interno cru continua
+mudo de propósito. Nenhuma estava faltando hoje — e, para não deixar um teste que passa por
+acidente, acrescentei uma regra nova sem pôr na lista e vi o teste falhar apontando a frase.
+
+**O cadastro trocando sob o dedo da porteira**, que é o caminho mais curto para chamar a
+criança errada, exercitado ponta a ponta no navegador: com a busca aberta e um resultado na
+tela, o cadastro foi substituído por API com **ids diferentes**. A tela recarregou sozinha,
+limpou o campo, avisou "A lista de alunos foi atualizada. Recarreguei." — e a busca seguinte
+chamou a criança certa, com o id novo, registrado na trilha. Nenhuma criança errada foi
+chamada em nenhum momento.
+
+**Vazão e teto de conexões**, medidos no runtime real: com 12, 50 e 150 conexões abertas, um
+comando entrega o retrato a todas sem degradação perceptível; a 201ª conexão é recusada com
+503, como o teto promete.
 
 ## Verificado e descartado
 
