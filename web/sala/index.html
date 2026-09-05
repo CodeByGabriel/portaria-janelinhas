@@ -11,7 +11,12 @@
     .entrada p { color: var(--tinta-2); margin: 0 0 var(--e-6); font-size: var(--t-corpo); }
     .turma-do-aparelho { font-size: var(--t-nome); font-weight: 600; color: var(--tinta); margin: 0 0 var(--e-2); }
     /* O rodapé é fixo, então o palco termina acima dele. */
-    .palco { padding: var(--e-6) var(--e-6) 5rem; max-width: 1280px; margin: 0 auto; }
+    /*
+      O palco acompanha a tela até 1600px. Eram 1280 fixos, e num monitor de
+      1920 sobravam 640px de papel vazio dos dois lados enquanto o cartão —
+      que existe para ser lido do fundo da sala — ficava espremido no meio.
+    */
+    .palco { padding: var(--e-6) var(--e-6) 5rem; max-width: 1600px; margin: 0 auto; }
     .rodape {
       position: fixed; bottom: 0; left: 0; right: 0;
       padding: var(--e-3) var(--e-6); background: var(--papel);

@@ -172,9 +172,20 @@
   /* 44px é o nível AAA (WCAG 2.5.5). Vale para TODO controle, não só botão. */
   --toque-min: 44px;
 
-  /* Retrato reservado e vazio. Mesma caixa que recebe a foto de matrícula. */
-  --retrato-linha: 44px;
-  --retrato-painel: 112px;
+  /*
+    Retrato reservado e vazio. Mesma caixa que recebe a foto de matrícula.
+
+    CRESCE COM A TELA, e por medida: fixo em 112px ele ocupava 33% do cartão no
+    celular e 9% no notebook — sumia justamente onde havia espaço de sobra, e o
+    rosto é o que a professora reconhece de longe, do fundo da sala.
+
+    `clamp` com piso e teto: o piso protege o celular (a foto não pode empurrar
+    o nome para fora), o teto impede que num projetor de 1920 a foto vire um
+    pôster e empurre a lista para baixo da dobra. Entre os dois, a foto
+    acompanha a largura sem nenhum ponto de quebra para manter.
+  */
+  --retrato-linha: clamp(56px, 5.5vw, 96px);
+  --retrato-painel: clamp(132px, 16vw, 264px);
 
   /* ---------- movimento ---------- */
 
@@ -584,6 +595,24 @@ summary {
 .painel .cartao .etiqueta { font-size: var(--t-estado-painel); }
 .painel .cartao > button { min-height: 56px; font-size: var(--t-nome); width: 100%; }
 
+/*
+  O retrato atravessa as tres linhas do grid.
+
+  Medido: o cartao tem 343px de altura (etiqueta + botao + "voltou para a
+  sala" empilhados na coluna 3) e o retrato so ocupava a linha 1. Sobrava um
+  vazio de 117px SOB a foto e 21px acima — desequilibrio visivel, e a foto
+  parecia colada no topo mesmo com align-items: center.
+*/
+@media (min-width: 901px) {
+  /*
+    As duas linhas precisam ser EXPLICITAS. Sem `grid-template-rows`, o grid
+    e todo implicito e `-1` resolve para a linha 1 — o span degenera e a foto
+    volta a ocupar so a primeira linha, silenciosamente.
+  */
+  .painel .cartao { grid-template-rows: auto auto; }
+  .painel .cartao .foto { grid-row: 1 / -1; align-self: center; }
+}
+
 /* Em painel estreito (tablet em pé) a coluna da direita desce para baixo do nome. */
 @media (max-width: 900px) {
   .painel .cartao { grid-template-columns: var(--retrato-painel) minmax(0, 1fr); }
@@ -595,14 +624,32 @@ summary {
 }
 
 /*
-  Em celular (320–480px) a coluna do nome ao lado do retrato de 112px fica com
-  menos de 100px: "Magalhães" em 44px mede 227px e vazava a página inteira.
-  Aqui o retrato sobe e o nome ocupa a largura toda. É mecanismo de caber, não
-  escolha de estilo — o tamanho volta ao do painel assim que houver espaço.
+  Em celular (320–480px) a coluna do nome ao lado do retrato fica com menos de
+  100px: "Magalhães" em 44px mede 227px e vazava a página inteira. Aqui o
+  retrato sobe e o nome ocupa a largura toda.
+
+  E, empilhado, o retrato PODE ser grande: sem ninguém ao lado disputando
+  largura, ele ocupa quase metade da tela do celular — é a foto que a
+  professora olha primeiro, e no celular ela está a um palmo do rosto.
 */
 @media (max-width: 480px) {
   .painel .cartao { grid-template-columns: minmax(0, 1fr); }
   .painel .cartao .nome { font-size: 2.25rem; }
+  .painel .cartao .foto {
+    width: min(46vw, 240px);
+    height: min(46vw, 240px);
+  }
+}
+
+/*
+  Tablet em pé e deitado (481–1100px) é o aparelho da sala no dia a dia. Aqui o
+  retrato ganha o tamanho que a tela permite sem espremer o nome ao lado.
+*/
+@media (min-width: 481px) and (max-width: 1100px) {
+  .painel .cartao .foto {
+    width: clamp(132px, 22vw, 200px);
+    height: clamp(132px, 22vw, 200px);
+  }
 }
 
 /* ---------- motivo do retorno (sala) ---------- */
@@ -846,7 +893,20 @@ button:focus-visible {
 
 /* ---------- estrutura ---------- */
 
-.conteudo { padding: var(--e-4); max-width: 560px; margin: 0 auto; }
+/*
+  A coluna da portaria acompanha a tela, com teto.
+
+  Eram 560px fixos: num notebook de 1280 sobrava metade da tela vazia, e num
+  projetor de 1920, dois terços. O teto existe porque linha de texto larga
+  demais cansa de ler — 860px é o limite confortável para nome e etiqueta —, e
+  o piso é a própria largura do celular.
+*/
+.conteudo {
+  padding: var(--e-4);
+  width: 100%;
+  max-width: clamp(560px, 68vw, 860px);
+  margin: 0 auto;
+}
 
 .secao {
   margin: var(--e-8) 0 var(--e-3);

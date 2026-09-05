@@ -450,7 +450,19 @@ async function principal() {
         pronto = false
         for (let i = 0; i < 20 && !pronto; i++) {
           pronto = (await cdp.avaliar(tela.pronto)) === true
-          if (!pronto) await esperar(250)
+          if (pronto) break
+          /*
+            Repete o preparo a cada tentativa, e nao so uma vez.
+
+            O `antes` da busca digita no campo e dispara o evento. Se o
+            `fetch('/alunos')` ainda nao voltou — e num servidor de dev
+            carregado ele ja levou tres segundos — a lista esta vazia, o
+            resultado nunca aparece e o portao acusava "a tela carregou" em
+            uma largura aleatoria a cada execucao. Vermelho que muda de lugar
+            e vermelho que ninguem investiga.
+          */
+          if (tela.antes) await cdp.avaliar(tela.antes)
+          await esperar(250)
         }
       }
       conferir(largura.px + 'px: a tela carregou', pronto, '(' + largura.nome + ')')
