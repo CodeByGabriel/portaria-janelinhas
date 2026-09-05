@@ -653,10 +653,14 @@ summary {
   retrato ganha o tamanho que a tela permite sem espremer o nome ao lado.
 */
 @media (min-width: 481px) and (max-width: 1100px) {
-  .painel .cartao .foto {
-    width: clamp(132px, 22vw, 200px);
-    height: clamp(132px, 22vw, 200px);
-  }
+  /*
+    Mexe no TOKEN, nunca na largura da foto sozinha: a coluna do grid tambem
+    e desenhada com --retrato-painel. Medido a primeira versao, que so
+    alargava a `.foto`: a 1024px a coluna ficava em 164px com a foto em 200
+    — 13px de retrato POR CIMA do nome da crianca. Os portoes nao pegam,
+    porque a pagina inteira nao transborda; so o vizinho.
+  */
+  .painel .cartao { --retrato-painel: clamp(132px, 22vw, 200px); }
 }
 
 /* ---------- motivo do retorno (sala) ---------- */

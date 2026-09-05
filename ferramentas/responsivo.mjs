@@ -151,6 +151,13 @@ const AUDITORIA = String.raw`
     return (e.tagName.toLowerCase() + id + cls).slice(0, 70)
   }
 
+  const flutuante = (e) => {
+    for (let n = e; n && n !== document.documentElement; n = n.parentElement) {
+      const pos = getComputedStyle(n).position
+      if (pos === 'fixed' || pos === 'sticky') return true
+    }
+    return false
+  }
   const temTextoProprio = (e) =>
     [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 0)
 
@@ -259,6 +266,42 @@ const AUDITORIA = String.raw`
     }
   }
 
+  /*
+    6. o RETRATO sobre o texto.
+
+    A checagem 5 so compara quem tem texto PROPRIO, e o retrato e uma caixa
+    vazia: ele podia cobrir o nome da crianca sem que nada aqui reclamasse.
+    Foi o que aconteceu a 1024px, quando a largura da foto e a largura da
+    coluna do grid passaram a ser desenhadas por regras diferentes — 200px de
+    retrato numa coluna de 164px, 13px por cima do nome. A pagina nao
+    transbordava, entao a checagem 1 tambem passava.
+  */
+  for (const foto of document.querySelectorAll('.foto')) {
+    const rf = foto.getBoundingClientRect()
+    if (rf.width < 1 || rf.height < 1) continue
+    for (const outro of comTexto) {
+      if (foto.contains(outro) || outro.contains(foto)) continue
+      // Camada flutuante (rodape fixo, cabecalho grudado) e pintada POR CIMA,
+      // e o conteudo rola por baixo dela de proposito. Nao e sobreposicao.
+      if (flutuante(outro)) continue
+      let achou = null
+      for (const ro of outro.getClientRects()) {
+        const largura = Math.min(rf.right, ro.right) - Math.max(rf.left, ro.left)
+        const altura = Math.min(rf.bottom, ro.bottom) - Math.max(rf.top, ro.top)
+        if (largura > 2 && altura > 2) {
+          achou = { largura: largura, altura: altura }
+          break
+        }
+      }
+      if (achou) {
+        problemas.push({
+          tipo: 'retrato',
+          alvo: 'retrato sobre ' + nomeDe(outro),
+          detalhe: Math.round(achou.largura) + 'x' + Math.round(achou.altura) + 'px em comum',
+        })
+      }
+    }
+  }
   return problemas
 })()
 `
