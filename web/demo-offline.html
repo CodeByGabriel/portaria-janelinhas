@@ -423,15 +423,6 @@ summary {
   flex: none;
 }
 
-/*
-  A foto que ainda não existe. O espaço fica reservado — mesma caixa — para o
-  dia em que a escola subir as fotos de matrícula não mexer em layout nenhum.
-  Vazio DIGNO: contorno tracejado na tinta fraca, sem inicial, sem avatar.
-*/
-.foto[data-sem-foto] {
-  border: 1.5px dashed var(--tinta-3);
-  background: transparent;
-}
 
 .cartao .foto img,
 .cartao .foto svg { width: 100%; height: 100%; display: block; object-fit: cover; }
@@ -484,6 +475,22 @@ summary {
 }
 .linha .foto img,
 .linha .foto svg { width: 100%; height: 100%; display: block; object-fit: cover; }
+
+/*
+  A foto que ainda não existe. O espaço fica reservado — mesma caixa — para o
+  dia em que a escola subir as fotos de matrícula não mexer em layout nenhum.
+  Vazio DIGNO: contorno tracejado na tinta fraca, sem inicial, sem avatar.
+
+  DEPOIS das duas variantes, de propósito. Esta regra morava antes de
+  `.linha .foto`, e as duas têm a mesma especificidade: na lista da portaria
+  quem vencia era a borda cheia sobre o fundo bege — que não se lê como
+  "ainda não há foto", e sim como "a foto falhou ao carregar". No cartão da
+  sala o tracejado aparecia, e ninguém notou a diferença entre as duas telas.
+*/
+.foto[data-sem-foto] {
+  border: 1.5px dashed var(--tinta-3);
+  background: transparent;
+}
 
 .linha .nome {
   flex: 1 1 8rem;

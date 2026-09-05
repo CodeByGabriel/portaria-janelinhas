@@ -375,6 +375,28 @@ async function principal() {
   conferir('a busca desenhou resultados para trabalhar', quantosResultados > 0,
     `viu ${quantosResultados}`)
 
+  /*
+    O retrato vazio e o mesmo VAZIO DIGNO nas duas telas.
+
+    A regra do contorno tracejado morava antes de `.linha .foto`, com a mesma
+    especificidade: na lista da portaria vencia a borda cheia sobre o fundo
+    bege, que nao se le como "ainda nao ha foto" e sim como "a foto falhou
+    ao carregar". No cartao da sala o tracejado aparecia — e a diferenca
+    entre as duas telas passou despercebida por ser sutil nos dois lados.
+  */
+  const retratoVazio = await cdp.avaliar(`
+    (() => {
+      const f = document.querySelector('#resultados .linha .foto[data-sem-foto]')
+      if (!f) return { achou: false }
+      const cs = getComputedStyle(f)
+      return { achou: true, estilo: cs.borderStyle, fundo: cs.backgroundColor }
+    })()
+  `)
+  conferir('o retrato ainda sem foto e um vazio tracejado, nao um bloco cheio',
+    retratoVazio.achou === true && retratoVazio.estilo === 'dashed' &&
+      /rgba\(0, 0, 0, 0\)|transparent/.test(retratoVazio.fundo),
+    JSON.stringify(retratoVazio))
+
   // Outra pessoa, em outra sala, mexe no estado. Um retrato chega pela rede.
   const alunos = await fetch(`${BASE}/alunos`, comoAparelho(TOKEN.portaria)).then((r) => r.json())
   const forasteiro = alunos[alunos.length - 1]
