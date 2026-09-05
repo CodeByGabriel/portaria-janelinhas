@@ -7,7 +7,7 @@ foi encontrado, o que foi corrigido, e o que ficou.
 
 ## Como foi feito
 
-Três frentes, na ordem:
+Quatro frentes, na ordem:
 
 1. **Testes manuais no navegador embutido**, com dois aparelhos ao mesmo tempo (portaria em
    `localhost:8787`, sala em `127.0.0.1:8787` — jarros de cookie separados): ciclo completo,
@@ -21,8 +21,10 @@ Três frentes, na ordem:
    quatorze. Os demais foram triados à mão, lendo o código, com o mesmo rigor: só entrou o
    que se aponta com arquivo e linha.
 3. **Correções**, cada uma com teste de regressão onde a falha era de lógica.
+4. **Revisão do próprio diff da noite** (seção "Terceira passada"), porque cinquenta
+   correções entram e alguma quebra outra coisa — e uma delas tinha quebrado.
 
-Portões ao fim da noite (depois das duas passadas): `npm test` **239 + 107**, `typecheck`,
+Portões ao fim (depois das três passadas): `npm test` **242 + 109**, `typecheck`,
 `fim-a-fim`, `telas`, `responsivo` **45/45**, `peso` **82,0 / 120 KB** — todos com código de
 saída 0. Prints regenerados em `docs/prints/patio/`.
 
@@ -122,6 +124,64 @@ sob carga, o cliente WebSocket real e as duas páginas só por teste manual, ngr
 hostis na tela (override bidi), acessibilidade por teclado. E o ambiente: o `wrangler dev`
 4.128.0 morre com HTTP malformado ou com uma leva de conexões fechadas de forma abrupta —
 um vigia em segundo plano o subiu de novo a cada queda.
+
+## Terceira passada — revisão do que a própria noite mudou
+
+Cinquenta correções entram e alguma quebra outra coisa. Esta passada reli o diff da noite
+inteira (`git diff 4505027..HEAD`, 42 arquivos) e exercitou o que dava para exercitar.
+
+**Um defeito encontrado, e era meu, de ontem à noite.** A correção da aspa sem par no CSV
+tratava a aspa **ímpar** e deixava as **pares** se casarem entre si: trezentas aspas soltas
+transformavam 301 linhas em 151 — metade da escola fundida, sem uma única mensagem. E a
+releitura por aspa era quadrática: 1 MB cheio de aspas soltas travaria um Durable Object,
+que atende um pedido por vez. Trocado pelas duas regras do RFC 4180 (a aspa só abre campo
+no começo dele, e só se houver adiante uma que possa fechar), com a lista de fechamentos
+calculada uma vez e ponteiro que só avança. Medido depois: 1 MB com 20 mil aspas soltas em
+**156 ms**, com as 20 mil crianças importadas em vez de zero.
+
+**Conferido e correto** (nesta ordem, com sonda quando possível):
+
+- O envio no socket itera sobre uma cópia da lista, então fechar uma conexão dentro do laço
+  não pula ninguém; a expiração por conexão roda antes de a sessão existir, então não
+  transmite para um socket ainda não aceito.
+- Datas nas bordas: 29/02 de ano bissexto passa e de ano comum não; milissegundo de um
+  dígito, `-00:00` e fuso com minutos (+05:30) passam; `:99` de minuto e segundo 60 não.
+- Janela da delegação inclusiva nas duas pontas, e fora dela por 1 ms já não conta.
+- Poda da trilha em memória corta abaixo do corte, mantém o resto e preserva a ordem.
+- Visibilidade: a portaria enxerga qualquer turma, a sala só a própria, e o ciclo completo
+  segue intacto.
+- No servidor: `Cache-Control: no-store` em toda resposta do Durable Object (com e sem
+  identidade), leituras só por GET com `Allow: GET` (HEAD passa), `/entrar` ainda entregando
+  o cookie HttpOnly + SameSite=Strict, `/sair` só por POST com cookie, `/ws` recusando
+  origem de fora e aceitando sem `Origin`, BOM na frente do JSON aceito, e as três rotas do
+  backend continuando fechadas ao cookie da portaria.
+- Na tela: o batimento manda ping sozinho aos 30 s; o pong traz o instante do servidor; a
+  rajada acima do teto fecha com `1008 mensagens demais` depois de exatamente 120 respostas
+  e a tela reconecta (sem recarregar, porque não foi revogação); e um comando dado com o
+  socket fechado mostra "Sem conexão com o servidor agora" em vez de sumir.
+- **Migração do banco antigo**, que ninguém cobria: o esquema anterior à 2.1 (sem `razao`,
+  sem `alerta`, sem responsável na trilha, sem a tabela de delegações) é montado com dados
+  dentro e o objeto é obrigado a hidratar em cima dele. A lista da escola e a trilha
+  sobrevivem, as colunas novas nascem vazias, o ciclo completo funciona e a delegação
+  responde 422 (regra), não 500 (tabela faltando). Subir duas vezes seguidas também não
+  quebra. Teste no spec.
+
+**Escala medida** (uma escola de 292 alunos gera ~80 mil eventos em 90 dias):
+
+| O quê | Com 80 mil eventos |
+|---|---|
+| Primeira resposta depois do reinício (inclui hidratar a trilha inteira) | 499 ms |
+| `GET /trilha?limite=1000` (o caminho do backend) | 13 ms |
+| `GET /registro` (a trilha inteira de uma vez) | 195 ms, **17,7 MB** |
+
+`/registro` continua sem paginação. Nenhuma tela o consome — só as ferramentas de
+verificação — e o caminho oficial para volume é o `/trilha` por cursor. Fica registrado: se
+um dia uma tela precisar da trilha, ela precisa de página, não deste despejo.
+
+**Dois falsos positivos das minhas próprias sondas**, anotados para não voltarem: `18:00` no
+fuso `+05:30` é 12:30 UTC, ou seja, passado — a recusa estava certa; e o 404 de rota
+desconhecida não leva `no-store` porque é respondido pelo Worker, antes do Durable Object, e
+não carrega dado de criança.
 
 ## Verificado e descartado
 

@@ -2386,3 +2386,102 @@ describe('segunda passada — leitura so por GET, Origin, quadro grande, sem cac
     ws.close()
   })
 })
+
+/* ---------- o banco de uma escola que ja rodava a versao antiga ---------- */
+
+describe('migracao: o banco anterior a 2.1 sobe, e nada do que ele guardava se perde', () => {
+  beforeEach(async () => {
+    await reset()
+  })
+
+  /*
+    Nenhum teste cobria a atualizacao — so o banco novo, criado pelo esquema
+    atual. Uma escola que ja usa o app tem tabelas SEM razao, SEM alerta, SEM
+    responsavelId/Nome e SEM a tabela de delegacoes. Se `migrar()` errar, o
+    `blockConcurrencyWhile` lanca e NENHUMA tela sobe — nem recarregar resolve.
+
+    Aqui o banco antigo e montado do zero, com dados dentro, e o Durable Object
+    e obrigado a hidratar em cima dele.
+  */
+  it('hidrata sobre o esquema antigo, preserva a trilha e ganha as colunas novas', async () => {
+    const ontem = Date.now() - 2 * 60 * 60 * 1000
+
+    await runInDurableObject(portaria(), async (instancia) => {
+      const sql = (instancia as unknown as { estado: { storage: { sql: SqlStorage } } }).estado
+        .storage.sql
+
+      // Volta o banco ao formato da versao anterior: derruba tudo e recria as
+      // tabelas como elas eram, sem as colunas que vieram depois.
+      for (const tabela of ['cadastro', 'chamadas', 'trilha', 'responsaveis', 'vinculos', 'dispositivos', 'delegacoes', 'meta']) {
+        sql.exec(`DROP TABLE IF EXISTS ${tabela}`)
+      }
+      sql.exec(`CREATE TABLE cadastro (id TEXT PRIMARY KEY, nome TEXT NOT NULL, turma TEXT NOT NULL)`)
+      sql.exec(`CREATE TABLE chamadas (alunoId TEXT PRIMARY KEY, nome TEXT NOT NULL, turma TEXT NOT NULL, estado TEXT NOT NULL, desde INTEGER NOT NULL, em INTEGER NOT NULL)`)
+      sql.exec(`CREATE TABLE trilha (seq INTEGER PRIMARY KEY AUTOINCREMENT, alunoId TEXT NOT NULL, nome TEXT NOT NULL, turma TEXT NOT NULL, acao TEXT NOT NULL, papel TEXT NOT NULL, origem TEXT NOT NULL, de TEXT NOT NULL, para TEXT NOT NULL, em INTEGER NOT NULL)`)
+      sql.exec(`CREATE TABLE meta (chave TEXT PRIMARY KEY, valor TEXT NOT NULL)`)
+
+      // O que a escola tinha: a lista dela, uma saida registrada, e a marca de
+      // que o banco ja foi semeado (senao a semente fictcia voltaria por cima).
+      sql.exec(`INSERT INTO cadastro (id, nome, turma) VALUES ('velho-1', 'Criança Antiga', 'Pré 1')`)
+      sql.exec(
+        `INSERT INTO trilha (alunoId, nome, turma, acao, papel, origem, de, para, em)
+         VALUES ('velho-1', 'Criança Antiga', 'Pré 1', 'chamar', 'portaria', 'portaria', 'aguardando', 'chamado', ?)`,
+        ontem,
+      )
+      sql.exec(`INSERT INTO meta (chave, valor) VALUES ('semeado', 'sim')`)
+      sql.exec(`INSERT INTO meta (chave, valor) VALUES ('versaoCadastro', '7')`)
+    })
+
+    // Reinicia: o construtor roda iniciar() -> migrar() sobre o banco antigo.
+    await derrubarInstancia()
+
+    const alunos = await (await pedir('/alunos')).json<{ id: string; nome: string }[]>()
+    expect(alunos).toEqual([{ id: 'velho-1', nome: 'Criança Antiga', turma: 'Pré 1', temAlerta: false }])
+
+    const trilha = await (
+      await pedir('/registro')
+    ).json<{ alunoId: string; razao: string; responsavelId: string; responsavelNome: string }[]>()
+    expect(trilha.length).toBe(1)
+    expect(trilha[0]).toMatchObject({ alunoId: 'velho-1', razao: '', responsavelId: '', responsavelNome: '' })
+
+    // E o app segue funcionando por cima: chamar, liberar, entregar.
+    const ws = await ligar(TOKEN.portaria)
+    const sala = await ligar(TOKEN.sala('Pré 1'))
+    await retratoInicial(ws)
+    await retratoInicial(sala)
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'velho-1' }))
+    expect(await ateQue(sala, (r) => r.chamadas.some((c) => c.alunoId === 'velho-1'))).toBe(true)
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: 'velho-1' }))
+    await ateQue(ws, (r) => r.chamadas.some((c) => c.alunoId === 'velho-1' && c.estado === 'liberado'))
+    ws.send(JSON.stringify({ tipo: 'entregar', alunoId: 'velho-1' }))
+    expect(await ateQue(ws, (r) => !r.chamadas.some((c) => c.alunoId === 'velho-1'))).toBe(true)
+    ws.close()
+    sala.close()
+
+    // A delegacao (tabela que nem existia no banco antigo) tambem funciona.
+    const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+    const semTitular = await pedir('/delegacoes', {
+      method: 'POST',
+      token: null,
+      headers: { Authorization: `Bearer ${CHAVE}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'd-migrado',
+        alunoId: 'velho-1',
+        quemBusca: { nome: 'Avó' },
+        validoAte: new Date(Date.now() + 3600_000).toISOString(),
+        autorizadoPor: 'ninguem',
+      }),
+    })
+    // 422 (nao ha responsavel cadastrado para autorizar), e nao 500: a tabela existe.
+    expect(semTitular.status).toBe(422)
+  })
+
+  it('migrar() e idempotente: subir duas vezes sobre o mesmo banco nao quebra', async () => {
+    await derrubarInstancia()
+    expect((await pedir('/alunos')).status).toBe(200)
+    await derrubarInstancia()
+    expect((await pedir('/alunos')).status).toBe(200)
+    const trilha = await (await pedir('/registro')).json<unknown[]>()
+    expect(Array.isArray(trilha)).toBe(true)
+  })
+})
