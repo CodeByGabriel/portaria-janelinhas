@@ -306,6 +306,94 @@ const AUDITORIA = String.raw`
 })()
 `
 
+/*
+  O que fica preso embaixo da barra de baixo.
+
+  Uma camada flutuante no rodape e opaca: o conteudo rola por baixo dela de
+  proposito, e a checagem 6 a ignora por isso. Mas rolar ate o FIM tem de
+  trazer tudo para cima dela. Enquanto a reserva era um `padding-bottom`
+  adivinhado, nao trazia: a 390px o rodape da sala quebrava em tres linhas e
+  media 104px contra 80 de reserva, e o botao "Liberar saida" do ultimo
+  cartao ficava 3px debaixo da barra — sem rolagem que o resgatasse, porque
+  a reserva ERA a rolagem.
+*/
+/*
+  O que fica PRESO nos extremos da rolagem.
+
+  Uma camada flutuante e opaca, e o conteudo rola por baixo dela de
+  proposito — a checagem 6 a ignora por isso. Mas rolar ate o fim tem de
+  trazer tudo para cima da barra de baixo, e o topo tem de comecar abaixo da
+  barra de cima. Nos extremos nao ha mais rolagem para resgatar nada.
+
+  Enquanto a reserva do rodape era um `padding-bottom` adivinhado, nao
+  trazia: a 390px o rodape da sala quebrava em tres linhas e media 104px
+  contra 80 de reserva, e o botao "Liberar saida" do ultimo cartao ficava
+  3px debaixo da barra — sem rolagem que o resgatasse, porque a reserva ERA
+  a rolagem.
+
+  So conta a camada ANCORADA no extremo que estamos olhando. Uma barra
+  grudada no topo cobre o comeco da tela o tempo todo, e nem por isso prende
+  o que esta debaixo dela no meio da pagina: basta rolar.
+*/
+const PRESOS_NOS_EXTREMOS = `
+(() => {
+  const problemas = []
+  const flutuantes = [...document.querySelectorAll('*')].filter((e) => {
+    const pos = getComputedStyle(e).position
+    return pos === 'fixed' || pos === 'sticky'
+  })
+  /*
+    Com uma CORTINA de tela cheia aberta — a porta de entrada, um dialogo —
+    a pagina atras dela nao esta presa: esta desligada, e em geral nem rola.
+    Medir aprisionamento ali acusaria o rodape por cobrir coisa que ninguem
+    pode tocar de qualquer jeito.
+  */
+  const cortina = flutuantes.find((e) => {
+    const c = e.getBoundingClientRect()
+    return c.height > window.innerHeight * 0.5 && c.width > window.innerWidth * 0.5
+  })
+  if (cortina) return []
+
+  const clicaveis = () =>
+    [...document.querySelectorAll('button, a, select, input, textarea, [role="button"]')]
+
+  const olhar = (onde, ancorada) => {
+    for (const alvo of clicaveis()) {
+      const r = alvo.getBoundingClientRect()
+      if (r.width < 1 || r.height < 1) continue
+      if (getComputedStyle(alvo).visibility === 'hidden') continue
+      for (const capa of flutuantes) {
+        if (capa.contains(alvo) || alvo.contains(capa)) continue
+        const c = capa.getBoundingClientRect()
+        if (c.width < 1 || c.height < 1) continue
+        // Barra, nao cortina: uma sobreposicao de tela cheia (a porta de
+        // entrada) cobre tudo de proposito, e o que esta atras dela nao esta
+        // preso — esta desligado.
+        if (c.height > window.innerHeight * 0.5) continue
+        if (!ancorada(c)) continue
+        const largura = Math.min(r.right, c.right) - Math.max(r.left, c.left)
+        const altura = Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top)
+        if (largura > 2 && altura > 2) {
+          problemas.push({
+            tipo: 'preso',
+            alvo: (alvo.textContent || alvo.id || alvo.tagName).trim().slice(0, 40),
+            detalhe:
+              Math.round(altura) + 'px sob ' + (capa.className || capa.tagName) + ', ' + onde,
+          })
+          break
+        }
+      }
+    }
+  }
+
+  window.scrollTo(0, document.body.scrollHeight)
+  olhar('com a pagina ja no fim', (c) => c.bottom >= window.innerHeight - 2)
+  window.scrollTo(0, 0)
+  olhar('com a pagina ja no comeco', (c) => c.top <= 2)
+  return problemas
+})()
+`
+
 async function esperarServidor(segundos = 30) {
   for (let i = 0; i < segundos * 2; i++) {
     try {
@@ -512,6 +600,8 @@ async function principal() {
       if (!pronto) continue
 
       const problemas = await cdp.avaliar(AUDITORIA)
+      // No FIM da pagina, onde a camada flutuante de baixo cobre o conteudo.
+      problemas.push(...(await cdp.avaliar(PRESOS_NOS_EXTREMOS)))
 
       if (problemas.length === 0) {
         console.log('  ok    ' + String(largura.px).padStart(4) + 'px  ' + largura.nome)
