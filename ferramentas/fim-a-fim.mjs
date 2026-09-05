@@ -485,8 +485,12 @@ async function principal() {
   conferir('a sala do Pré 1 NAO libera aluno do 9º ano',
     alvo?.estado === 'chamado',
     `estado ficou "${alvo?.estado}"`)
-  conferir('a sala recebe recusa dizendo que e de outra turma',
-    /outra turma/.test(recusas(maternal).at(-1)?.motivo ?? ''),
+  // Desde o pente fino de 05/09/2026 a recusa nao diz "outra turma": para a
+  // sala, crianca de outra turma e crianca inexistente sao a MESMA resposta
+  // (oraculo de matricula fechado). O que importa e que nao mencione a turma.
+  conferir('a sala recebe recusa sem revelar a turma da crianca alheia',
+    /desconhecido/.test(recusas(maternal).at(-1)?.motivo ?? '') &&
+      !/9º ano/.test(recusas(maternal).at(-1)?.motivo ?? ''),
     `motivo: ${recusas(maternal).at(-1)?.motivo}`)
 
   portaria.ws.send(JSON.stringify({ tipo: 'cancelar', alunoId: ID.a41 }))

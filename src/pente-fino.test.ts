@@ -146,7 +146,7 @@ test('a recusa por outra turma nao diz qual turma e', () => {
   livro.aplicar({ tipo: 'chamar', alunoId: a.id }, 1000, 'portaria')
   assert.throws(
     () => livro.aplicar({ tipo: 'liberar', alunoId: a.id }, 2000, 'sala', '9º ano'),
-    (erro: Error) => /outra turma/.test(erro.message) && !erro.message.includes(a.turma),
+    (erro: Error) => /desconhecido/.test(erro.message) && !erro.message.includes(a.turma),
   )
 })
 

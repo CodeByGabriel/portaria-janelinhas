@@ -148,12 +148,19 @@ function textoOpcional(valor: unknown, maximo: number): string | null {
   return texto(valor, maximo)
 }
 
-/** Ids sao opacos, mas tem teto e nao podem usar o prefixo da delegacao. */
-function idValido(valor: unknown): string | null {
+/**
+ * Ids sao opacos, tem teto, nao podem usar o prefixo da delegacao — e NAO sao
+ * reescritos: um id com espaco na ponta ou com "<" era guardado limpo na
+ * criacao, e o `DELETE /delegacoes?id=` com o id que o backend mandou nao
+ * achava nada. Id que precisaria de limpeza e recusado na hora.
+ */
+export function idExternoValido(valor: unknown): string | null {
+  if (typeof valor !== 'string') return null
   const id = texto(valor, LIMITE_ID)
-  if (id === null || id.startsWith(PREFIXO_DELEGACAO)) return null
+  if (id === null || id !== valor || id.startsWith(PREFIXO_DELEGACAO)) return null
   return id
 }
+const idValido = idExternoValido
 
 /** Para mensagens de erro: nunca ecoa mais que um pedaco, e nunca com marcacao. */
 function amostra(valor: unknown): string {
@@ -190,8 +197,10 @@ export function analisarCadastroExterno(corpo: unknown): CadastroAnalisado | Ana
   }
 
   const versao = corpo.versao
-  if (!Number.isInteger(versao) || (versao as number) < 0) {
-    c.anotar(0, 'versao precisa ser um inteiro nao negativo')
+  // SafeInteger, e nao Integer: 1e21 e "inteiro", e 2^53+1 vira 2^53 no
+  // JSON.parse — duas versoes distintas do backend seriam "a mesma".
+  if (!Number.isSafeInteger(versao) || (versao as number) < 0) {
+    c.anotar(0, 'versao precisa ser um inteiro nao negativo (ate 2^53 - 1)')
   }
 
   if (!Array.isArray(corpo.alunos)) {
@@ -395,11 +404,36 @@ export interface DelegacaoAnalisada {
   com a avo no portao. Um `Z` ou um `-03:00` no fim tira a ambiguidade; sem
   isso, a data e recusada e o backend descobre na hora, nao no portao.
 */
-const COM_FUSO = /(?:Z|[+-]\d{2}:?\d{2})$/
+const ISO_COM_FUSO =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})$/
+/*
+  A forma INTEIRA, e nao so o sufixo: `Date.parse` aceita RFC 2822, "05/09/2026"
+  (lido como 9 de maio) e datas que nao existem — 30/02 virava 2 de marco,
+  24:00 virava o dia seguinte, +15:00 passava. Aqui cada campo e conferido, o
+  dia contra o mes de verdade, e o deslocamento contra o que existe no mundo.
+*/
 function instante(valor: unknown): number | null {
-  if (typeof valor !== 'string' || valor.length > 40 || !COM_FUSO.test(valor)) return null
-  const ms = Date.parse(valor)
-  return Number.isFinite(ms) ? ms : null
+  if (typeof valor !== 'string' || valor.length > 40) return null
+  const m = ISO_COM_FUSO.exec(valor)
+  if (!m) return null
+  const ano = Number(m[1])
+  const mes = Number(m[2])
+  const dia = Number(m[3])
+  const hora = Number(m[4])
+  const minuto = Number(m[5])
+  const segundo = Number(m[6] ?? '0')
+  const ms = Number((m[7] ?? '0').padEnd(3, '0'))
+  if (mes < 1 || mes > 12 || dia < 1 || hora > 23 || minuto > 59 || segundo > 59) return null
+  if (dia > new Date(Date.UTC(ano, mes, 0)).getUTCDate()) return null
+  let deslocamento = 0
+  if (m[8] !== 'Z') {
+    const sinal = m[8][0] === '-' ? -1 : 1
+    const dh = Number(m[8].slice(1, 3))
+    const dm = Number(m[8].slice(4, 6))
+    if (dh > 14 || dm > 59) return null
+    deslocamento = sinal * (dh * 60 + dm)
+  }
+  return Date.UTC(ano, mes - 1, dia, hora, minuto, segundo, ms) - deslocamento * 60_000
 }
 
 /** Forma da delegacao. `agora` vem de fora: aqui nao ha relogio. */

@@ -112,9 +112,6 @@ export class Livro {
   aplicar(comando: Comando, agora: number, papel: Papel, turma?: Turma): EventoAuditoria {
     exigirDono(comando.tipo, papel)
 
-    const aluno = this.cadastro.get(comando.alunoId)
-    if (!aluno) throw new Error(`aluno desconhecido: ${comando.alunoId}`)
-
     /*
       A sala so age sobre a PROPRIA turma.
 
@@ -127,12 +124,14 @@ export class Livro {
       sistema existe para proteger. Ele nao pode ser forjavel por quem tem a
       URL. Sala sem turma declarada nao age sobre ninguem.
     */
-    if (papel === 'sala') {
-      if (!turma) throw new Error('a sala precisa declarar a turma para agir')
-      // Sem dizer QUAL turma: a recusa volta para a sala que perguntou, e a
-      // turma de uma crianca alheia e informacao que ela nao tem por que ter.
-      if (aluno.turma !== turma) throw new Error('aluno de outra turma')
-    }
+    if (papel === 'sala' && !turma) throw new Error('a sala precisa declarar a turma para agir')
+    /*
+      Para a sala, "nao existe" e "e de outra turma" sao a MESMA recusa — a
+      mesma regra e a mesma frase de /alerta e /responsaveis. Dizer "outra
+      turma" era um oraculo de matricula por id, pelo WebSocket.
+    */
+    const aluno = this.alunoVisivelPara(papel, turma, comando.alunoId)
+    if (!aluno) throw new Error(`aluno desconhecido: ${comando.alunoId}`)
 
     const anterior = this.chamadas.get(comando.alunoId)
     const de: Estado = anterior?.estado ?? 'aguardando'

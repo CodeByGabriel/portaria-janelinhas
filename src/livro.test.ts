@@ -232,7 +232,7 @@ test('REGRESSAO: a sala do Pré 1 NAO libera aluno do 9º ano', () => {
   chamar(livro, 'a41', 1000) // Giovanna Paixao, 9º ano
   assert.throws(
     () => livro.aplicar({ tipo: 'liberar', alunoId: 'a41' }, 2000, 'sala', 'Pré 1'),
-    /outra turma/,
+    /desconhecido/,
   )
   assert.equal(livro.retratoPara('portaria').chamadas[0].estado, 'chamado')
 })

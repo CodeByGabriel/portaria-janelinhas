@@ -75,6 +75,53 @@ linha errada no LGPD; `/importar-responsaveis` lia o corpo sem `try`; turma em N
 pela API; `alarm()` sem nenhum teste (agora tem); `baseline.mjs` quebrado desde a 2.2
 (removido com o script — a medição de então continua em `docs/baseline.md`).
 
+## Segunda passada — sondas executáveis (erros de lógica por execução)
+
+Um segundo workflow (`wf_5bf494ed-d19`, 60 agentes, terminou inteiro): oito agentes
+escreveram e **rodaram** sondas — fuzz da máquina de estados, propriedades da busca, CSV e
+JSON malformados, cookies, matriz HTTP contra o servidor, cenários de WebSocket ao vivo,
+fronteiras de tempo — e cada achado passou por dois verificadores (refutar e reproduzir).
+27 achados brutos, 25 distintos, **23 confirmados**, 2 refutados. Tudo abaixo está
+corrigido, com teste de regressão em `src/pente-fino-2.test.ts` e no bloco "segunda
+passada" de `src/portaria.spec.ts`.
+
+| Gravidade | Achado | Correção |
+|---|---|---|
+| **alta** | **A coluna Impedido falhava aberta**: só "sim" impedia; "Sim (ordem judicial)", "impedido", "bloqueado", "não pode buscar" viravam vínculo AUTORIZADO, sem erro. | "sim" e variantes impedem; vazio e "não" autorizam; qualquer outra coisa recusa a linha com o número — e o adulto daquela linha não entra. |
+| **alta** | **Aspa sem fechar engolia o resto da planilha**: `Ana "Nina` abria um campo que só fechava no fim do arquivo; metade da escola sumia com um erro só ("nome longo demais"). | Aspa que não fecha até o fim é tratada como texto; o analisador repete a leitura ignorando aquela aspa. |
+| **alta** | **Chamada esquecida atravessava a noite** quando o objeto ficava residente: a expiração só rodava na hidratação e no alarme diário, cuja hora era "a do primeiro boot + 24 h·n". | Expira a cada conexão nova (idempotente, barato) e o alarme cai às 03:00 de Brasília, reagendado em `finally` mesmo se a poda falhar. |
+| média | Caracteres invisíveis (largura zero, hífen suave) e ligaduras passavam por `normalizar()`: "Ana​Souza" era outra criança que a busca por sobrenome não achava e o aviso de homônimo não via. | `normalizar` usa NFKD e apaga caracteres de formato, nas duas cópias (paridade testada); a importação apaga invisíveis e recusa caracteres de controle no nome. |
+| média | Regex global com `.test()` em `responsaveis.ts`: um nome com `<` logo depois de uma linha recusada passava (lastIndex). | Regex sem `/g` para testar, com `/g` só para `.replace()`. |
+| média | CSV com `\r` sozinho ("CSV (Macintosh)" do Excel) era recusado inteiro. | Quebras normalizadas antes de analisar. |
+| média | Turma "1° ano" (sinal de grau), "Pré1", "1.º ano" recusadas com mensagem visualmente idêntica à turma válida. | `turmaDe()`: compara por chave (sem grau/ordinal/espaço/ponto). |
+| média | `DELETE /delegacoes` com o id que o backend mandou não revogava quando a criação tinha reescrito o id (espaço, `<>`). | Id externo não é reescrito: precisa de limpeza, é recusado na criação; o DELETE valida igual. |
+| baixa | Pelo WebSocket a sala ainda distinguia id inexistente de id de outra turma. | Mesma regra e mesma frase de `/alerta`: "aluno desconhecido". |
+| baixa | `ACENTOS` com marcas combinantes cruas no fonte (o comentário dizia o contrário). | Escapes `\u` nas duas cópias. |
+| baixa | Linha em branco antes do cabeçalho recusava a planilha com mensagem enganosa. | Linhas vazias iniciais puladas; numeração continua física. |
+| baixa | `versao` aceitava 1e21 e 2^53+1 (colide com 2^53). | `Number.isSafeInteger`. |
+| baixa | `instante()` aceitava 30/02, 24:00, +15:00, "05/09/2026" e RFC 2822 via `Date.parse`. | Forma ISO inteira conferida campo a campo, dia contra o mês real, deslocamento real. |
+| baixa | Rotas de leitura respondiam a qualquer método (um `DELETE /alunos` devolvia o cadastro); `/ws` aceitava upgrade fora de GET. | 405 com `Allow: GET` nas leituras; guarda de método no `/ws` (o runtime entrega upgrades como GET, então a guarda é defensiva). |
+| baixa | `POST /dispositivos` era a única rota JSON sem teto de corpo. | 64 KB, 413. |
+| baixa | `/ws` aceitava qualquer `Origin`; a única defesa era o SameSite do cookie. | Origin presente precisa ter o host deste servidor (só o host: atrás do ngrok o Worker vê http e a página é https). |
+| baixa | Sem teto de bytes por mensagem no WebSocket (32 MB eram parseados). | 4 KB; acima disso a conexão fecha com 1009. |
+| baixa | `alarm()` que falhasse não deixava alarme agendado. | `finally`. |
+| baixa | O cronômetro "há N min" só se corrigia a cada retrato. | O pong traz `em`; a tela corrige o relógio a cada batimento. |
+| baixa | Comentário do `tokenDemoDe` e README diziam `3o-ano`; o token é `3-ano`. | Corrigidos. |
+| baixa | Os comentários de `telas.mjs`/`prints.mjs` descreviam o gatilho do "Network connection lost" ao contrário (é o fechamento **limpo** de um socket que nunca falou; abrupto não dispara). | Comentários corrigidos; a tela manda um ping ao abrir, o que elimina o gatilho. |
+| — | Das lacunas apontadas pela crítica: TOCTOU entre o teto de sessões e o `await` do handshake; BOM na frente do JSON; `Cache-Control` ausente nas leituras; referência de 8 hex ambígua no `DELETE /dispositivos`. | Impressão calculada antes do teto; BOM removido; `Cache-Control: no-store` em toda resposta do Durable Object; referência ambígua é 409 (e aceita até 64 hex). |
+
+**Refutados:** um byte fora do UTF-8 fazer o arquivo inteiro ser lido como Windows-1252
+(é o desenho, e é o certo para o Excel em ANSI); o "Network connection lost" no fechamento
+limpo (é do runtime local, não do app).
+
+**Ficou desta passada:** as lacunas da crítica que não são defeito — escritas de cadastro ao
+vivo nunca sondadas com corpo válido (proibido para não derrubar a semente dos outros
+agentes), `deposito.ts` quase inteiro sem sonda própria, escala de 90 dias no disco, vazão
+sob carga, o cliente WebSocket real e as duas páginas só por teste manual, ngrok, nomes
+hostis na tela (override bidi), acessibilidade por teclado. E o ambiente: o `wrangler dev`
+4.128.0 morre com HTTP malformado ou com uma leva de conexões fechadas de forma abrupta —
+um vigia em segundo plano o subiu de novo a cada queda.
+
 ## Verificado e descartado
 
 - **Escape não fecha o `<dialog>`** no navegador embutido: reproduzido num `<dialog>` puro

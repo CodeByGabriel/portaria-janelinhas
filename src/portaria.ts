@@ -10,6 +10,7 @@ import {
   analisarDelegacaoExterna,
   comoLogAuditoria,
   idDeDelegacao,
+  idExternoValido,
 } from './ecossistema.ts'
 import type { Comando, EventoAuditoria, Delegacao } from './protocolo.ts'
 import {
@@ -48,6 +49,8 @@ interface Conexao {
 */
 const TETO_MENSAGENS = 120
 const JANELA_MENSAGENS = 10_000
+/** Um comando tem tres campos curtos. Quatro KB e dez vezes isso. */
+const LIMITE_COMANDO = 4096
 
 /** Corpo maximo aceito numa importacao. 292 alunos cabem em ~15 KB. */
 const LIMITE_CORPO = 1_000_000
@@ -171,7 +174,7 @@ export class Portaria {
 
   private async agendarPoda(): Promise<void> {
     if ((await this.estado.storage.getAlarm()) === null) {
-      await this.estado.storage.setAlarm(Date.now() + UM_DIA)
+      await this.estado.storage.setAlarm(proximaMadrugada(Date.now()))
     }
   }
 
@@ -179,18 +182,26 @@ export class Portaria {
    * Poda diaria da trilha. Alarms tem execucao at-least-once e podem repetir,
    * entao o handler precisa ser idempotente — apagar o que ja passou do prazo
    * duas vezes da no mesmo.
+   *
+   * Reagenda no `finally`: se a poda lancar e a plataforma esgotar as
+   * retentativas, o alarme seria descartado e a poda pararia ate o proximo
+   * reinicio, em silencio. O handler e idempotente, entao reagendar apos falha
+   * e seguro. E o horario e a madrugada — antes, era "a hora do primeiro boot".
    */
   async alarm(): Promise<void> {
-    const corte = Date.now() - DIAS_DE_RETENCAO * UM_DIA
-    this.deposito.podar(corte)
-    // ...e da memoria, pelo mesmo corte: /registro nao pode servir o que o
-    // disco ja nao tem.
-    this.livro.podarTrilha(corte)
-    // Delegacao vencida ja nao contava na leitura; aqui ela sai do disco.
-    this.deposito.podarDelegacoes(Date.now())
-    this.livro.substituirDelegacoes(this.deposito.listarDelegacoes())
-    this.expirarEsquecidas()
-    await this.estado.storage.setAlarm(Date.now() + UM_DIA)
+    try {
+      const corte = Date.now() - DIAS_DE_RETENCAO * UM_DIA
+      this.deposito.podar(corte)
+      // ...e da memoria, pelo mesmo corte: /registro nao pode servir o que o
+      // disco ja nao tem.
+      this.livro.podarTrilha(corte)
+      // Delegacao vencida ja nao contava na leitura; aqui ela sai do disco.
+      this.deposito.podarDelegacoes(Date.now())
+      this.livro.substituirDelegacoes(this.deposito.listarDelegacoes())
+      this.expirarEsquecidas()
+    } finally {
+      await this.estado.storage.setAlarm(proximaMadrugada(Date.now()))
+    }
   }
 
   /*
@@ -329,7 +340,11 @@ export class Portaria {
       let turma: string | undefined
       let apelido = ''
       try {
-        const corpo = lerJson(await pedido.arrayBuffer()) as Record<string, unknown>
+        const bytes = await pedido.arrayBuffer()
+        if (bytes.byteLength > LIMITE_CORPO_PEQUENO) {
+          return new Response('corpo grande demais', { status: 413 })
+        }
+        const corpo = lerJson(bytes) as Record<string, unknown>
         papel = String(corpo.papel ?? '')
         apelido = String(corpo.apelido ?? '').replace(/[<>]/g, '').slice(0, 60)
         if (corpo.turma !== undefined && corpo.turma !== null) turma = String(corpo.turma)
@@ -381,13 +396,21 @@ export class Portaria {
 
     if (pedido.method === 'DELETE') {
       const referencia = new URL(pedido.url).searchParams.get('referencia') ?? ''
-      if (!/^[0-9a-f]{8}$/.test(referencia)) {
+      if (!/^[0-9a-f]{8,64}$/.test(referencia)) {
         return new Response('referencia invalida', { status: 400 })
       }
-      const alvo = this.deposito
+      // Prefixo de 8 hex entre poucos aparelhos nao colide na pratica; se
+      // colidir, e recusa, nao "o primeiro que aparecer".
+      const candidatos = this.deposito
         .listarDispositivos()
-        .find((d) => d.impressao.startsWith(referencia))
-      if (!alvo) return new Response('aparelho desconhecido', { status: 404 })
+        .filter((d) => d.impressao.startsWith(referencia))
+      if (candidatos.length === 0) return new Response('aparelho desconhecido', { status: 404 })
+      if (candidatos.length > 1) {
+        return new Response('referencia ambigua entre aparelhos; use mais caracteres', {
+          status: 409,
+        })
+      }
+      const alvo = candidatos[0]
 
       const revogou = this.deposito.revogarDispositivo(alvo.impressao, Date.now())
       // Revogar vale AGORA, inclusive para a tela que ja estava aberta.
@@ -599,8 +622,9 @@ export class Portaria {
     }
 
     if (pedido.method === 'DELETE') {
-      const id = new URL(pedido.url).searchParams.get('id') ?? ''
-      if (id.length === 0 || id.length > 64) return new Response('id invalido', { status: 400 })
+      // A mesma validacao da criacao: o id que nao entraria nao e procurado.
+      const id = idExternoValido(new URL(pedido.url).searchParams.get('id'))
+      if (id === null) return new Response('id invalido', { status: 400 })
       this.livro.removerDelegacao(id)
       this.deposito.removerDelegacao(id)
       return new Response(null, { status: 204 })
@@ -682,7 +706,14 @@ export class Portaria {
       Um lugar so, para nenhuma rota nova precisar lembrar disto.
     */
     if (pedido.body && !pedido.bodyUsed) await descartar(pedido)
-    return resposta
+    /*
+      Nada daqui pode ser guardado por proxy ou navegador: e cadastro, trilha,
+      restricao, responsavel. Um lugar so, para nenhuma rota esquecer.
+    */
+    if (resposta.status === 101) return resposta
+    const semCache = new Response(resposta.body, resposta)
+    semCache.headers.set('Cache-Control', 'no-store')
+    return semCache
   }
 
   private async responder(pedido: Request): Promise<Response> {
@@ -730,7 +761,7 @@ export class Portaria {
       previsiveis que nao diz isso e uma armadilha.
     */
     if (url.pathname === '/modo') {
-      return Response.json({ demonstracao: this.env.MODO_DEMO === 'sim' })
+      return soLeitura(pedido) ?? Response.json({ demonstracao: this.env.MODO_DEMO === 'sim' })
     }
 
     const quem = await this.autorizacaoDe(pedido)
@@ -743,6 +774,8 @@ export class Portaria {
       tentativa de entrar.
     */
     if (url.pathname === '/eu') {
+      const soGet = soLeitura(pedido)
+      if (soGet) return soGet
       if (!quem) return new Response('aparelho nao autorizado', { status: 401 })
       return Response.json({
         papel: quem.papel,
@@ -770,6 +803,8 @@ export class Portaria {
       retrato.
     */
     if (url.pathname === '/alunos') {
+      const soGet = soLeitura(pedido)
+      if (soGet) return soGet
       if (papel !== 'portaria') return new Response('so a portaria busca alunos', { status: 403 })
       return Response.json(this.livro.alunos())
     }
@@ -788,6 +823,8 @@ export class Portaria {
       anotacao de guarda de um aluno do 9º ano varrendo ids.
     */
     if (url.pathname === '/alerta') {
+      const soGet = soLeitura(pedido)
+      if (soGet) return soGet
       const alunoId = url.searchParams.get('alunoId') ?? ''
       if (alunoId.length === 0 || alunoId.length > 64) {
         return new Response('alunoId invalido', { status: 400 })
@@ -806,6 +843,8 @@ export class Portaria {
     }
 
     if (url.pathname === '/registro') {
+      const soGet = soLeitura(pedido)
+      if (soGet) return soGet
       if (papel !== 'portaria') return new Response('so a portaria le o registro', { status: 403 })
       return Response.json(this.livro.registro())
     }
@@ -822,6 +861,8 @@ export class Portaria {
       bate na porta — mas so da propria turma, como todo o resto.
     */
     if (url.pathname === '/responsaveis') {
+      const soGet = soLeitura(pedido)
+      if (soGet) return soGet
       const alunoId = url.searchParams.get('alunoId') ?? ''
       if (alunoId.length === 0 || alunoId.length > 64) {
         return new Response('alunoId invalido', { status: 400 })
@@ -854,6 +895,8 @@ export class Portaria {
       familia recomposta; irmao por responsavel acerta por construcao.
     */
     if (url.pathname === '/irmaos') {
+      const soGet = soLeitura(pedido)
+      if (soGet) return soGet
       if (quem.papel !== 'portaria') {
         return new Response('so a portaria chama irmaos', { status: 403 })
       }
@@ -1065,8 +1108,30 @@ export class Portaria {
       return new Response('nao encontrado', { status: 404 })
     }
 
+    if (pedido.method !== 'GET') {
+      return new Response('use GET', { status: 405, headers: { Allow: 'GET' } })
+    }
     if (pedido.headers.get('Upgrade') !== 'websocket') {
       return new Response('esperava upgrade para websocket', { status: 426 })
+    }
+    /*
+      Origin, quando o navegador manda, precisa ser este servidor. O cookie
+      SameSite=Strict ja nao acompanha um handshake iniciado por outro site,
+      mas era a unica camada — e o cookie de desenvolvimento nao leva Secure.
+      So o HOST e comparado: atras do ngrok o Worker ve http e a pagina e https.
+      Sem Origin (ferramentas, testes) continua aceito.
+    */
+    const origemDoNavegador = pedido.headers.get('Origin')
+    if (origemDoNavegador !== null) {
+      let hostDaOrigem = ''
+      try {
+        hostDaOrigem = new URL(origemDoNavegador).host
+      } catch {
+        // origem invalida cai no 403 abaixo
+      }
+      if (hostDaOrigem !== url.host) {
+        return new Response('origem nao permitida', { status: 403 })
+      }
     }
 
     /*
@@ -1080,13 +1145,21 @@ export class Portaria {
     */
     const turma = quem.turma
 
+    // A impressao fica na conexao: e por ela que a revogacao alcanca o socket
+    // que ja estava aberto quando o aparelho foi revogado. Vem ANTES do teto de
+    // sessoes: o await no meio deixava duas conexoes passarem pelo mesmo vao.
+    const impressao = await impressaoDe(cookieDo(pedido, NOME_DO_COOKIE) ?? '')
+
     if (this.sessoes.size >= LIMITE_SESSOES) {
       return new Response('conexoes demais neste momento', { status: 503 })
     }
 
-    // A impressao fica na conexao: e por ela que a revogacao alcanca o socket
-    // que ja estava aberto quando o aparelho foi revogado.
-    const impressao = await impressaoDe(cookieDo(pedido, NOME_DO_COOKIE) ?? '')
+    /*
+      A chamada esquecida de ontem nao pode esperar o alarme: se o objeto ficou
+      residente a noite inteira, a professora que liga o tablet de manha e o
+      primeiro sinal do dia. Idempotente e barato; roda a cada conexao nova.
+    */
+    this.expirarEsquecidas()
 
     const par = new WebSocketPair()
     const cliente = par[0]
@@ -1132,7 +1205,15 @@ export class Portaria {
 
       let alunoId = ''
       try {
-        const cru: unknown = JSON.parse(String(evento.data))
+        // Teto de BYTES por mensagem, antes de qualquer parse: o de mensagens
+        // por segundo nao segura um quadro de 32 MB.
+        const bruto = typeof evento.data === 'string' ? evento.data : ''
+        if (bruto.length > LIMITE_COMANDO) {
+          this.sessoes.delete(sessao)
+          servidor.close(1009, 'mensagem grande demais')
+          return
+        }
+        const cru: unknown = JSON.parse(bruto)
         if (typeof cru !== 'object' || cru === null || Array.isArray(cru)) {
           throw new Error('comando precisa ser um objeto')
         }
@@ -1143,7 +1224,9 @@ export class Portaria {
           esta viva. Nao passa pelo Livro: nao e comando.
         */
         if ((cru as { tipo?: unknown }).tipo === 'ping') {
-          servidor.send('{"tipo":"pong"}')
+          // Com o instante do servidor: e por ele que a tela corrige o
+          // proprio relogio a cada batimento, e nao so a cada retrato.
+          this.enviar(sessao, JSON.stringify({ tipo: 'pong', em: Date.now() }))
           return
         }
         const comando = cru as Partial<Comando>
@@ -1209,7 +1292,7 @@ export class Portaria {
         }
         this.transmitir()
       } catch (erro) {
-        servidor.send(JSON.stringify({ tipo: 'recusa', alunoId, motivo: motivoDe(erro) }))
+        this.enviar(sessao, JSON.stringify({ tipo: 'recusa', alunoId, motivo: motivoDe(erro) }))
       }
     })
 
@@ -1219,7 +1302,7 @@ export class Portaria {
     servidor.addEventListener('close', encerrar)
     servidor.addEventListener('error', encerrar)
 
-    servidor.send(JSON.stringify(this.livro.retratoPara(papel, turma, Date.now())))
+    this.enviar(sessao, JSON.stringify(this.livro.retratoPara(papel, turma, Date.now())))
 
     return new Response(null, { status: 101, webSocket: cliente })
   }
@@ -1240,16 +1323,37 @@ export class Portaria {
     return derrubadas
   }
 
+  /*
+    TODO envio passa por aqui.
+
+    `send()` num socket que o outro lado derrubou sem fechar — wifi que caiu,
+    aba morta — lanca "Network connection lost". O `transmitir` ja tratava; o
+    retrato inicial, o `pong` e a `recusa` nao, e cada um virava excecao nao
+    tratada no log (noventa e cinco numa noite de sondas). Um lugar so: falhou,
+    a sessao sai da lista e o socket e fechado por aqui.
+  */
+  private enviar(sessao: Conexao, texto: string): boolean {
+    try {
+      sessao.ws.send(texto)
+      return true
+    } catch {
+      this.sessoes.delete(sessao)
+      try {
+        sessao.ws.close(1011, 'conexao perdida')
+      } catch {
+        // ja estava fechada
+      }
+      return false
+    }
+  }
+
   private transmitir(): void {
     const agora = Date.now()
-    for (const sessao of this.sessoes) {
-      try {
-        sessao.ws.send(
-          JSON.stringify(this.livro.retratoPara(sessao.papel, sessao.turma, agora)),
-        )
-      } catch {
-        this.sessoes.delete(sessao)
-      }
+    for (const sessao of [...this.sessoes]) {
+      this.enviar(
+        sessao,
+        JSON.stringify(this.livro.retratoPara(sessao.papel, sessao.turma, agora)),
+      )
     }
   }
 }
@@ -1270,7 +1374,21 @@ export class Portaria {
 */
 const UTF8_ESTRITO = new TextDecoder('utf-8', { fatal: true })
 function lerJson(bytes: ArrayBuffer): unknown {
-  return JSON.parse(UTF8_ESTRITO.decode(bytes))
+  // O BOM que alguns editores e bibliotecas poem na frente nao e JSON.
+  return JSON.parse(UTF8_ESTRITO.decode(bytes).replace(/^﻿/, ''))
+}
+
+/** Rotas de leitura so por GET (ou HEAD): um DELETE /alunos nao devolve o cadastro. */
+function soLeitura(pedido: Request): Response | null {
+  if (pedido.method === 'GET' || pedido.method === 'HEAD') return null
+  return new Response('use GET', { status: 405, headers: { Allow: 'GET' } })
+}
+
+/** As proximas 03:00 de Brasilia (06:00 UTC): a hora em que ninguem esta saindo da escola. */
+function proximaMadrugada(agora: number): number {
+  const d = new Date(agora)
+  const hoje = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 6)
+  return hoje > agora + 60_000 ? hoje : hoje + UM_DIA
 }
 
 /**

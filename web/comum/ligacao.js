@@ -37,7 +37,7 @@ function esperaDaTentativa(tentativa) {
   aparelho no aperto de mao do WebSocket, e o servidor decide. Nao ha o que
   passar daqui.
 */
-export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
+export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede, aoInstante }) {
   let ws = null
   let tentativa = 0
   let vivo = true
@@ -62,6 +62,9 @@ export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
       ultimaMensagem = Date.now()
       aoEstadoDaRede?.('ligado')
       pararBatimento()
+      // Um ping logo ao abrir: acerta o relogio da tela na hora, e evita o
+      // ruido que o runtime local faz ao fechar um socket que nunca falou.
+      socket.send('{"tipo":"ping"}')
       batimento = setInterval(() => {
         if (socket.readyState !== WebSocket.OPEN) return
         if (Date.now() - ultimaMensagem > SILENCIO_MAXIMO_MS) {
@@ -81,15 +84,29 @@ export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
       } catch {
         return
       }
+      // Toda mensagem com o instante do servidor acerta o relogio da tela —
+      // inclusive o pong, a cada meio minuto. Um tablet cujo relogio pulou
+      // (acerto de hora) nao fica com "ha 47 min" errado ate o proximo retrato.
+      if (typeof dado.em === 'number' && dado.em > 0) aoInstante?.(dado.em)
       if (dado.tipo === 'retrato') aoRetrato(dado)
       else if (dado.tipo === 'recusa') aoRecusa?.(dado)
-      // 'pong' so serve para o batimento, que ja contou a chegada acima.
     }
 
-    socket.onclose = () => {
+    socket.onclose = (evento) => {
       pararBatimento()
       aoEstadoDaRede?.('desligado')
       if (!vivo) return
+      /*
+        1008 e o servidor dizendo "este aparelho nao pode mais": revogado, ou
+        mandando mensagens demais. Reconectar em laco so faria barulho — e um
+        tablet revogado ficaria com a tela velha na frente. Recarregar leva a
+        pagina de volta a porta, que e onde ele deve ficar.
+      */
+      if (evento?.code === 1008 && /revogado/.test(evento.reason ?? '')) {
+        vivo = false
+        location.reload()
+        return
+      }
       agendado = setTimeout(abrir, esperaDaTentativa(tentativa++))
     }
 

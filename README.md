@@ -53,7 +53,7 @@ uma tarja vermelha permanente dizendo isso:
 | Tela | Código para colar |
 |---|---|
 | Portaria | `demonstracao-portaria-0000` |
-| Sala do 3º ano | `demonstracao-sala-3o-ano` |
+| Sala do 3º ano | `demonstracao-sala-3-ano` |
 | Sala do Pré 1 | `demonstracao-sala-pre-1` |
 
 O padrão é `demonstracao-sala-` + a turma sem acento, em minúsculas, com hífen no lugar do

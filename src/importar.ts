@@ -117,49 +117,99 @@ export function separadorDo(cabecalho: string): string {
   return melhor
 }
 
-/** Quebra o CSV inteiro em linhas de campos, respeitando aspas. */
+/**
+ * Quebra o CSV inteiro em linhas de campos, respeitando aspas.
+ *
+ * Quebra de linha: \r\n, \n e \r sozinho — o "CSV (Macintosh)" que aparece na
+ * lista do Excel logo abaixo do CSV comum. Antes o \r sozinho virava um
+ * registro unico e a planilha inteira era recusada com "precisa das colunas
+ * Nome e Turma".
+ *
+ * Aspa sem par: um nome digitado como `Ana "Nina` abria um campo que so
+ * fechava na proxima aspa — no fim do arquivo. Metade da escola virava UM campo
+ * de uma linha, recusada por "nome longo demais", e as linhas seguintes sumiam
+ * sem erro nenhum. Agora uma aspa que nao fecha ate o fim e tratada como o que
+ * ela era: um caractere do texto. Repete a leitura ignorando aquela aspa; cada
+ * volta neutraliza uma, entao termina.
+ */
 export function analisarCsv(texto: string, separador: string): string[][] {
-  const linhas: string[][] = []
-  let campos: string[] = []
-  let campo = ''
-  let dentro = false
+  texto = texto.replace(/\r\n?/g, '\n')
+  const aspasLiterais = new Set<number>()
 
-  for (let i = 0; i < texto.length; i++) {
-    const c = texto[i]
+  for (;;) {
+    const linhas: string[][] = []
+    let campos: string[] = []
+    let campo = ''
+    let dentro = false
+    let abriuEm = -1
 
-    if (dentro) {
-      if (c === '"') {
-        if (texto[i + 1] === '"') {
-          campo += '"'
-          i++
+    for (let i = 0; i < texto.length; i++) {
+      const c = texto[i]
+
+      if (dentro) {
+        if (c === '"') {
+          if (texto[i + 1] === '"') {
+            campo += '"'
+            i++
+          } else {
+            dentro = false
+          }
         } else {
-          dentro = false
+          campo += c
         }
+        continue
+      }
+
+      if (c === '"' && !aspasLiterais.has(i)) {
+        dentro = true
+        abriuEm = i
+      } else if (c === separador) {
+        campos.push(campo.trim())
+        campo = ''
+      } else if (c === '\n') {
+        campos.push(campo.trim())
+        linhas.push(campos)
+        campos = []
+        campo = ''
       } else {
         campo += c
       }
+    }
+
+    if (dentro) {
+      aspasLiterais.add(abriuEm)
       continue
     }
 
-    if (c === '"') {
-      dentro = true
-    } else if (c === separador) {
-      campos.push(campo.trim())
-      campo = ''
-    } else if (c === '\n') {
-      campos.push(campo.trim())
-      linhas.push(campos)
-      campos = []
-      campo = ''
-    } else if (c !== '\r') {
-      campo += c
-    }
+    campos.push(campo.trim())
+    linhas.push(campos)
+    return linhas
   }
-
-  campos.push(campo.trim())
-  linhas.push(campos)
-  return linhas
 }
+
+/*
+  Turma como a secretaria digita.
+
+  "1° ano" com sinal de grau (o que o teclado e a autocorrecao produzem), "1o
+  ano", "Pré1" sem espaco, "1.º ano" com ponto — todas sao a mesma turma, e a
+  recusa "turma desconhecida: 1° ano" mostrava um texto visualmente identico
+  ao aceito, sem nenhuma pista do que corrigir.
+*/
+export function chaveDeTurma(texto: string): string {
+  return normalizar(texto)
+    .replace(/[°ºᵒ]/g, 'o')
+    .replace(/[\s.]+/g, '')
+}
+
+export function turmaDe(bruta: string): Turma | undefined {
+  const chave = chaveDeTurma(bruta)
+  return TURMAS.find((t) => chaveDeTurma(t) === chave)
+}
+
+/** Caracteres de FORMATO invisiveis (largura zero, hifen suave, marca de direcao, BOM). */
+export const INVISIVEIS = /[\u00ad\u200b-\u200f\u2060\ufeff]/g
+/** Controles C0 e C1: nunca fazem parte de um nome. */
+export const CONTROLES = /[\u0000-\u001f\u007f-\u009f]/
 
 /*
   ---------------------------------------------------------------------------
@@ -213,9 +263,18 @@ export function analisar(csv: string): Resultado {
   const vistos = new Map<string, { chave: string; linha: number }>()
   let duplicados = 0
 
-  const primeiraLinha = csv.split(/\r?\n/, 1)[0] ?? ''
+  /*
+    Linhas vazias antes do cabecalho sao puladas — a linha 1 do Excel em branco
+    fazia o cabecalho ser lido como [''] e a planilha inteira ser recusada. A
+    numeracao dos erros continua sendo a da linha FISICA, que e a que a
+    secretaria ve.
+  */
+  const cruas = csv.replace(/\r\n?/g, '\n').split('\n')
+  let inicio = 0
+  while (inicio < cruas.length && cruas[inicio].trim() === '') inicio++
+  const primeiraLinha = cruas[inicio] ?? ''
   const separador = separadorDo(primeiraLinha)
-  const linhas = analisarCsv(csv, separador)
+  const linhas = analisarCsv(cruas.slice(inicio).join('\n'), separador)
 
   const cabecalho = (linhas[0] ?? []).map((c) => normalizar(c))
   const iNome = cabecalho.indexOf('nome')
@@ -239,7 +298,7 @@ export function analisar(csv: string): Resultado {
       alunos,
       alertas,
       duplicados,
-      erros: [{ linha: 1, motivo: 'a planilha precisa das colunas Nome e Turma' }],
+      erros: [{ linha: inicio + 1, motivo: 'a planilha precisa das colunas Nome e Turma' }],
       errosTotal: 1,
     }
   }
@@ -248,31 +307,35 @@ export function analisar(csv: string): Resultado {
     const campos = linhas[i]
     if (campos.every((c) => c === '')) continue
 
-    const nome = campos[iNome] ?? ''
+    const nome = (campos[iNome] ?? '').replace(INVISIVEIS, '').trim()
+    if (CONTROLES.test(nome)) {
+      erros.push({ linha: i + 1 + inicio, motivo: 'nome com caractere de controle' })
+      continue
+    }
     const turmaBruta = campos[iTurma] ?? ''
     const alerta = iAlerta === -1 ? '' : (campos[iAlerta] ?? '').trim()
 
     if (nome === '') {
-      erros.push({ linha: i + 1, motivo: 'nome vazio' })
+      erros.push({ linha: i + 1 + inicio, motivo: 'nome vazio' })
       continue
     }
 
     if (MARCACAO.test(nome)) {
-      erros.push({ linha: i + 1, motivo: 'nome com caractere invalido (< ou >)' })
+      erros.push({ linha: i + 1 + inicio, motivo: 'nome com caractere invalido (< ou >)' })
       continue
     }
 
     if (nome.length > LIMITE_NOME) {
-      erros.push({ linha: i + 1, motivo: `nome longo demais (${nome.length} caracteres)` })
+      erros.push({ linha: i + 1 + inicio, motivo: `nome longo demais (${nome.length} caracteres)` })
       continue
     }
 
-    const turma = TURMAS.find((t) => normalizar(t) === normalizar(turmaBruta))
+    const turma = turmaDe(turmaBruta)
     if (!turma) {
       // O valor recusado volta na mensagem, entao passa pelo mesmo filtro do
       // nome e pelo mesmo teto: entrada do cliente nao volta crua nem sem limite.
       const mostrado = turmaBruta.replace(MARCACAO_TODAS, '').slice(0, 40)
-      erros.push({ linha: i + 1, motivo: `turma desconhecida: "${mostrado}"` })
+      erros.push({ linha: i + 1 + inicio, motivo: `turma desconhecida: "${mostrado}"` })
       continue
     }
 
@@ -295,18 +358,18 @@ export function analisar(csv: string): Resultado {
       if (anterior.chave === chave) {
         duplicados++
         erros.push({
-          linha: i + 1,
+          linha: i + 1 + inicio,
           motivo: `repete a linha ${anterior.linha} (mesmo nome, mesma turma); se sao duas criancas, acrescente um sobrenome`,
         })
       } else {
         erros.push({
-          linha: i + 1,
+          linha: i + 1 + inicio,
           motivo: `colisao de identificador com a linha ${anterior.linha}; renomeie uma das duas (acrescente um sobrenome)`,
         })
       }
       continue
     }
-    vistos.set(id, { chave, linha: i + 1 })
+    vistos.set(id, { chave, linha: i + 1 + inicio })
 
     /*
       A restricao passa pelo mesmo filtro e pelo mesmo teto do nome.

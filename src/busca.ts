@@ -7,7 +7,7 @@ import type { Aluno } from './semente.ts'
   Unicode do fonte pode grudar no caractere anterior. O range mudaria em
   silencio e "Thais" deixaria de achar "Thaís" — sem erro, so resultado vazio.
 */
-const ACENTOS = /[̀-ͯ]/g
+const ACENTOS = /[\u0300-\u036f]/g
 
 /*
   Apostrofo (em todas as formas), hifen e ponto viram espaco, nao somem.
@@ -33,11 +33,17 @@ const ACENTOS = /[̀-ͯ]/g
     U+2E   .   ponto
 */
 const SEPARADORES = /[\u0027\u2018\u2019\u02bc\u002d\u2013\u2014\u002e]/g
+const INVISIVEIS = /[\u00ad\u200b-\u200f\u2060\ufeff]/g
 
 export function normalizar(texto: string): string {
   return texto
-    .normalize('NFD')
+    // NFKD, e nao NFD: a ligadura "fi" vira "fi" e o ordinal º vira o.
+    .normalize('NFKD')
     .replace(ACENTOS, '')
+    // Caracteres de FORMATO invisiveis (largura zero, hifen suave, marcas de
+    // direcao, BOM) vem de copy-paste de WhatsApp e Word e faziam "Ana<ZWSP>Souza"
+    // ser outra crianca que a busca por sobrenome nao achava.
+    .replace(INVISIVEIS, '')
     .replace(SEPARADORES, ' ')
     .toLowerCase()
     .trim()

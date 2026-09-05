@@ -157,6 +157,9 @@
         versaoCadastro = retrato.cadastro
       },
       aoRecusa: (recusa) => mostrarAviso(`Recusado: ${recusa.motivo}`),
+      aoInstante: (em) => {
+        deslocamentoDoRelogio = em - Date.now()
+      },
     })
 
     /*
@@ -183,14 +186,14 @@
 
     let apagarAviso = null
     function mostrarAviso(texto) {
-      aviso.innerHTML = ''
+      aviso.replaceChildren()
       const p = document.createElement('p')
       p.className = 'aviso'
       p.textContent = texto
       aviso.append(p)
       // O timer do aviso anterior apagava o novo cedo demais.
       if (apagarAviso) clearTimeout(apagarAviso)
-      apagarAviso = setTimeout(() => { aviso.innerHTML = '' }, 5000)
+      apagarAviso = setTimeout(() => { aviso.replaceChildren() }, 5000)
     }
 
     /* Envia, e diz quando não deu: comando com a conexão fechada não some calado. */

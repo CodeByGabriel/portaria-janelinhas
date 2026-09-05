@@ -1,4 +1,5 @@
 import { normalizar } from './busca.ts'
+import { turmaDe, INVISIVEIS, CONTROLES } from './importar.ts'
 import { TURMAS, type Turma } from './semente.ts'
 
 /*
@@ -46,7 +47,14 @@ export const LIMITE_NOME_RESPONSAVEL = 120
 export const LIMITE_VINCULO = 40
 export const LIMITE_TELEFONE = 24
 
-const MARCACAO = /[<>]/g
+/*
+  Duas regex, como em importar.ts: a global (/g) guarda `lastIndex` entre
+  chamadas, e usada com .test() deixava passar um nome com "<" logo depois de
+  uma linha recusada — o teste seguinte comecava do meio. Sem /g para testar;
+  com /g so para .replace().
+*/
+const MARCACAO = /[<>]/
+const MARCACAO_TODAS = /[<>]/g
 
 /*
   O id vem do CONTEUDO, como o do aluno.
@@ -119,9 +127,23 @@ function indiceDe(cabecalho: string[], aceitos: string[]): number {
   return -1
 }
 
-/** "sim", "s", "x", "1", "verdadeiro" contam como sim. Qualquer outra coisa, nao. */
-function ehSim(valor: string): boolean {
-  return ['sim', 's', 'x', '1', 'true', 'verdadeiro'].includes(normalizar(valor))
+/*
+  A coluna Impedido decide pelo lado SEGURO, ou nao decide.
+
+  "sim", "s", "x", "1", "verdadeiro" impedem; vazio, "nao", "n", "0", "falso"
+  autorizam; qualquer outra coisa — "Sim (ordem judicial)", "impedido",
+  "bloqueado", "nao pode buscar" — e recusada com o numero da linha. Antes,
+  tudo que nao fosse exatamente "sim" virava AUTORIZADO em silencio, e o campo
+  de seguranca do sistema falhava aberto justamente na linha em que a
+  secretaria mais escreveu.
+*/
+const SIM = ['sim', 's', 'x', '1', 'true', 'verdadeiro']
+const NAO = ['', 'nao', 'n', '0', 'false', 'falso']
+function impedidoDe(valor: string): boolean | null {
+  const v = normalizar(valor)
+  if (SIM.includes(v)) return true
+  if (NAO.includes(v)) return false
+  return null
 }
 
 /**
@@ -168,9 +190,13 @@ export function analisarResponsaveis(
     const campos = linhas[i]
     if (campos.every((c) => c === '')) continue
 
-    const nomeAluno = (campos[iAluno] ?? '').trim()
+    const nomeAluno = (campos[iAluno] ?? '').replace(INVISIVEIS, '').trim()
     const turmaBruta = (campos[iTurma] ?? '').trim()
-    const nomeResp = (campos[iResp] ?? '').trim()
+    const nomeResp = (campos[iResp] ?? '').replace(INVISIVEIS, '').trim()
+    if (CONTROLES.test(nomeResp) || CONTROLES.test(nomeAluno)) {
+      erros.push({ linha: i + 1, motivo: 'nome com caractere de controle' })
+      continue
+    }
 
     if (nomeAluno === '' || nomeResp === '') {
       erros.push({ linha: i + 1, motivo: 'aluno ou responsável vazio' })
@@ -185,19 +211,29 @@ export function analisarResponsaveis(
       continue
     }
 
-    const turma = TURMAS.find((t) => normalizar(t) === normalizar(turmaBruta))
+    const turma = turmaDe(turmaBruta)
     if (!turma) {
-      const mostrado = turmaBruta.replace(MARCACAO, '').slice(0, 40)
+      const mostrado = turmaBruta.replace(MARCACAO_TODAS, '').slice(0, 40)
       erros.push({ linha: i + 1, motivo: `turma desconhecida: "${mostrado}"` })
       continue
     }
 
     const alunoId = porNomeETurma.get(`${normalizar(nomeAluno)}|${turma}`)
     if (!alunoId) {
-      const mostrado = nomeAluno.replace(MARCACAO, '').slice(0, 60)
+      const mostrado = nomeAluno.replace(MARCACAO_TODAS, '').slice(0, 60)
       erros.push({
         linha: i + 1,
         motivo: `aluno nao encontrado no cadastro: "${mostrado}" (${turma})`,
+      })
+      continue
+    }
+
+    const impedido = iImpedido === -1 ? false : impedidoDe(campos[iImpedido] ?? '')
+    if (impedido === null) {
+      const mostrado = (campos[iImpedido] ?? '').replace(MARCACAO_TODAS, '').slice(0, 40)
+      erros.push({
+        linha: i + 1,
+        motivo: `valor de Impedido nao reconhecido: "${mostrado}" — escreva "sim" ou deixe vazio`,
       })
       continue
     }
@@ -231,18 +267,17 @@ export function analisarResponsaveis(
         id,
         nome: nomeResp,
         vinculo: (campos[iVinculo] ?? '')
-          .replace(MARCACAO, '')
+          .replace(MARCACAO_TODAS, '')
           .trim()
           .slice(0, LIMITE_VINCULO),
         telefone: (campos[iTelefone] ?? '')
-          .replace(MARCACAO, '')
+          .replace(MARCACAO_TODAS, '')
           .trim()
           .slice(0, LIMITE_TELEFONE),
       })
     }
 
     const chave = `${alunoId}|${id}`
-    const impedido = iImpedido === -1 ? false : ehSim(campos[iImpedido] ?? '')
     /*
       Impedimento GANHA de autorizacao quando a mesma dupla aparece duas vezes.
 

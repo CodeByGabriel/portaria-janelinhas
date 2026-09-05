@@ -812,13 +812,15 @@ describe('a coluna nova da trilha, e o banco que nao a tem', () => {
       if (m.tipo === 'recusa') recusas.push(m)
     })
 
-    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01', razao: 'x'.repeat(5000) }))
+    // Mil caracteres: acima do teto da razao (64) e abaixo do teto do quadro
+    // (4 KB), que fecha a conexao em vez de recusar — coberto em outro teste.
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01', razao: 'x'.repeat(1000) }))
     await new Promise((r) => setTimeout(r, 300))
 
     expect(recusas.length).toBe(1)
     expect(recusas[0].motivo).toMatch(/longa demais/)
-    // E o valor recebido NAO volta na mensagem: 5 mil caracteres entram, 5 mil
-    // nao saem.
+    // E o valor recebido NAO volta na mensagem: mil caracteres entram, mil nao
+    // saem.
     expect(recusas[0].motivo.length).toBeLessThan(200)
     ws.close()
   })
@@ -2171,7 +2173,7 @@ describe('pente fino — revogacao, /sair, oraculo, batimento, teto de mensagens
     })
     sala.send(JSON.stringify({ tipo: 'liberar', alunoId: doTerceiro.id }))
     const m = await recusa
-    expect(m.motivo).toMatch(/outra turma/)
+    expect(m.motivo).toMatch(/desconhecido/)
     expect(m.motivo).not.toContain('3º ano')
     portariaWs.close()
     sala.close()
@@ -2238,5 +2240,149 @@ describe('pente fino — revogacao, /sair, oraculo, batimento, teto de mensagens
       expect(deposito.contarDelegacoes()).toBe(0)
     })
     expect((await (await pedir('/registro')).json<{ em: number }[]>()).some((e) => e.em === antigo)).toBe(false)
+  })
+})
+
+/* ---------- segunda passada: metodo, origem, tamanho, cache ---------- */
+
+describe('segunda passada — leitura so por GET, Origin, quadro grande, sem cache', () => {
+  const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+  beforeEach(async () => {
+    await reset()
+  })
+
+  it('rotas de leitura recusam qualquer metodo que nao seja GET', async () => {
+    for (const rota of ['/alunos', '/registro', '/eu', '/modo', '/alerta?alunoId=a01', '/responsaveis?alunoId=a01', '/irmaos?responsavelId=x']) {
+      for (const method of ['DELETE', 'PUT', 'PATCH', 'POST']) {
+        const r = await pedir(rota, { method })
+        expect(`${method} ${rota} -> ${r.status}`).toBe(`${method} ${rota} -> 405`)
+        expect(r.headers.get('Allow')).toBe('GET')
+      }
+    }
+    // E GET continua GET.
+    expect((await pedir('/alunos')).status).toBe(200)
+  })
+
+  it('/ws so da propria origem quando o navegador manda Origin', async () => {
+    // O runtime entrega todo upgrade de WebSocket como GET, entao o 405 por
+    // metodo nao e observavel aqui; fica a guarda no codigo e o teste da origem.
+
+    const deFora = await portaria().fetch(
+      new Request('http://do/ws', {
+        headers: {
+          Upgrade: 'websocket',
+          Origin: 'https://malicioso.example',
+          Cookie: `janelinhas_dispositivo=${TOKEN.portaria}`,
+        },
+      }),
+    )
+    expect(deFora.status).toBe(403)
+
+    const daCasa = await portaria().fetch(
+      new Request('http://do/ws', {
+        headers: {
+          Upgrade: 'websocket',
+          Origin: 'http://do',
+          Cookie: `janelinhas_dispositivo=${TOKEN.portaria}`,
+        },
+      }),
+    )
+    expect(daCasa.status).toBe(101)
+    daCasa.webSocket?.accept()
+    daCasa.webSocket?.close()
+  })
+
+  it('um quadro maior que o teto derruba a conexao com 1009', async () => {
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    const fim = new Promise<{ code: number; reason: string } | null>((resolve) => {
+      const parar = setTimeout(() => resolve(null), 4000)
+      ws.addEventListener('close', (e: CloseEvent) => {
+        clearTimeout(parar)
+        resolve({ code: e.code, reason: e.reason })
+      })
+    })
+    ws.send(JSON.stringify({ tipo: 'chamar', alunoId: 'a01', lastro: 'x'.repeat(100_000) }))
+    const fechamento = await fim
+    expect(fechamento?.code).toBe(1009)
+    expect((await (await pedir('/registro')).json<unknown[]>()).length).toBe(0)
+  })
+
+  it('o pong traz o instante do servidor', async () => {
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    const pong = new Promise<{ tipo: string; em?: number }>((resolve) => {
+      ws.addEventListener('message', (e: MessageEvent) => {
+        const m = JSON.parse(String(e.data))
+        if (m.tipo === 'pong') resolve(m)
+      })
+    })
+    const antes = Date.now()
+    ws.send(JSON.stringify({ tipo: 'ping' }))
+    const m = await pong
+    expect(typeof m.em).toBe('number')
+    expect(m.em!).toBeGreaterThanOrEqual(antes)
+    ws.close()
+  })
+
+  it('nenhuma resposta e cacheavel', async () => {
+    for (const rota of ['/alunos', '/registro', '/eu', '/modo', '/responsaveis?alunoId=a01']) {
+      const r = await pedir(rota)
+      expect(`${rota}: ${r.headers.get('Cache-Control')}`).toBe(`${rota}: no-store`)
+    }
+    const semCookie = await pedir('/alunos', { token: null })
+    expect(semCookie.headers.get('Cache-Control')).toBe('no-store')
+  })
+
+  it('DELETE /delegacoes com id que a criacao recusaria e 400; POST /dispositivos tem teto', async () => {
+    const r = await pedir('/delegacoes?id=%20d1%20', {
+      method: 'DELETE',
+      token: null,
+      headers: { Authorization: `Bearer ${CHAVE}` },
+    })
+    expect(r.status).toBe(400)
+
+    const grande = await pedir('/dispositivos', {
+      method: 'POST',
+      token: null,
+      headers: { 'X-Chave-Admin': CHAVE, 'content-type': 'application/json' },
+      body: JSON.stringify({ papel: 'sala', turma: 'Pré 1', apelido: 'x'.repeat(70_000) }),
+    })
+    expect(grande.status).toBe(413)
+  })
+
+  it('a chamada esquecida expira ao abrir uma conexao, sem esperar o alarme', async () => {
+    const UM_DIA = 24 * 60 * 60 * 1000
+    await runInDurableObject(portaria(), async (instancia) => {
+      const interno = instancia as unknown as {
+        deposito: { salvarChamada(c: Record<string, unknown>): void }
+        livro: unknown
+      }
+      const ontem = Date.now() - UM_DIA
+      interno.deposito.salvarChamada({
+        alunoId: 'a01', nome: 'Esquecida', turma: 'Pré 1', estado: 'chamado', desde: ontem, em: ontem,
+      })
+    })
+    // Reinicia para o quadro em memoria hidratar com a chamada de ontem —
+    // e a hidratacao ja expira. Entao insere DE NOVO com o objeto residente.
+    await derrubarInstancia()
+    await runInDurableObject(portaria(), async (instancia) => {
+      const interno = instancia as unknown as {
+        deposito: { salvarChamada(c: Record<string, unknown>): void }
+        livro: { aplicar: unknown }
+      }
+      const ontem = Date.now() - UM_DIA
+      interno.deposito.salvarChamada({
+        alunoId: 'a02', nome: 'Esquecida2', turma: 'Pré 1', estado: 'chamado', desde: ontem, em: ontem,
+      })
+      // Coloca tambem no Livro residente, simulando o quadro vivo com uma chamada velha.
+      const livro = interno.livro as { chamadas?: Map<string, unknown> }
+      const mapa = (livro as unknown as { chamadas: Map<string, Record<string, unknown>> }).chamadas
+      mapa.set('a02', { alunoId: 'a02', nome: 'Esquecida2', turma: 'Pré 1', estado: 'chamado', desde: ontem, em: ontem })
+    })
+    const ws = await ligar(TOKEN.portaria)
+    const retrato = await retratoInicial(ws)
+    expect(retrato.chamadas.some((c) => c.alunoId === 'a02')).toBe(false)
+    ws.close()
   })
 })

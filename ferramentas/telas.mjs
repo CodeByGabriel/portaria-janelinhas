@@ -94,7 +94,7 @@ function abrirWs(token) {
 /*
   Com retentativa, de proposito.
 
-  O proxy do `wrangler dev` ainda reage a desconexao abrupta de WebSocket com
+  O proxy do `wrangler dev` ainda reage ao fechamento LIMPO de um WebSocket que nunca mandou mensagem (isolado em 05/09/2026: fechamento abrupto nao dispara) com
   "Network connection lost" e, as vezes, encerra o processo — mesmo no
   4.128.0, que ja corrigiu a maior parte dos casos. O Chrome headless abrindo
   e fechando conexoes torna isso mais provavel. Uma falha de ligacao aqui
@@ -176,7 +176,7 @@ async function esvaziarQuadro(ws) {
 
     Agora, se a conexao entregue nao estiver aberta, esta funcao abre a dela e
     fecha ao sair. Um connect por chamada, e nao um por volta: o wrangler ainda
-    cai com desconexao abrupta de WebSocket.
+    cai com o fechamento limpo de um WebSocket que nunca mandou mensagem.
   */
   let proprio = null
   if (!ws || ws.readyState !== WebSocket.OPEN) {

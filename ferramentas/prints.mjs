@@ -249,7 +249,7 @@ class Cdp {
   Semeia o estado com UMA conexao, mantida aberta durante toda a captura.
 
   Fechar WebSocket e sair na sequencia derruba o `wrangler dev`: o proxy dele
-  reage a desconexao abrupta com "Uncaught Error: Network connection lost" e
+  reage ao fechamento limpo de um WebSocket que nunca mandou mensagem com "Uncaught Error: Network connection lost" e
   encerra o processo. Por isso: uma conexao so, fechamento explicito no fim,
   e uma pausa antes de sair.
 */

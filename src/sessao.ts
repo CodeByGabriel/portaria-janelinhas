@@ -42,8 +42,9 @@ export type Sessao = { papel: Papel; turma?: Turma; apelido: string }
   era aceito pelo servidor e recusado na rede.
 
   Acentos saem por NFD, que separa a letra da marca, e a marca e removida.
-  "Pré 1" vira "pre-1"; "3º ano" vira "3o-ano" pelo mesmo caminho, porque o
-  ordinal masculino decompoe.
+  "Pré 1" vira "pre-1". O ordinal masculino NAO decompoe por NFD (so por
+  NFKD), entao sobra e vira hifen: "3º ano" vira "3-ano", e e isso que o
+  servidor semeia e que a documentacao manda colar.
 */
 export function tokenDemoDe(turma: string): string {
   const semAcento = turma
