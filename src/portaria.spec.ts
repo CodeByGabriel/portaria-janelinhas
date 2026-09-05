@@ -2485,3 +2485,91 @@ describe('migracao: o banco anterior a 2.1 sobe, e nada do que ele guardava se p
     expect(Array.isArray(trilha)).toBe(true)
   })
 })
+
+/* ---------- buscar pelo nome de quem chegou no portão ---------- */
+
+describe('busca por responsavel: so a portaria, e com o impedido a vista', () => {
+  beforeEach(async () => {
+    await reset()
+  })
+
+  it('a portaria acha o adulto e recebe os filhos com impedido e restricao', async () => {
+    const r = await pedir('/responsaveis?q=marta')
+    expect(r.status).toBe(200)
+    expect(r.headers.get('cache-control')).toBe('no-store')
+    const { achados, total } = await r.json<{
+      achados: { nome: string; vinculo: string; telefone: string; filhos: { nome: string; turma: string; impedido: boolean; temAlerta: boolean }[] }[]
+      total: number
+    }>()
+    expect(achados.map((a) => a.nome)).toEqual(['Marta Fernandes'])
+    expect(total).toBe(1)
+    expect(achados[0].filhos.map((f) => f.nome)).toEqual([
+      'Alice Fernandes',
+      'Maria Eduarda Nogueira',
+      'Maria Eduarda Nogueira',
+    ])
+
+    const ricardo = await (
+      await pedir('/responsaveis?q=ricardo')
+    ).json<{ achados: { filhos: { nome: string; impedido: boolean }[] }[] }>()
+    const alice = ricardo.achados[0].filhos.find((f) => f.nome === 'Alice Fernandes')
+    expect(alice?.impedido).toBe(true)
+
+    const zuleide = await (
+      await pedir('/responsaveis?q=zuleide')
+    ).json<{ achados: { filhos: { nome: string; temAlerta: boolean }[] }[] }>()
+    expect(zuleide.achados[0].filhos[0]).toMatchObject({ nome: 'Ravi Bacelar', temAlerta: true })
+  })
+
+  it('a SALA nao busca por responsavel — nem a propria turma', async () => {
+    for (const turma of ['Pré 1', '3º ano']) {
+      const r = await pedir('/responsaveis?q=marta', { token: TOKEN.sala(turma) })
+      expect(r.status).toBe(403)
+      expect(await r.text()).not.toContain('Marta')
+    }
+    // Sem aparelho nenhum, 401 como todo o resto.
+    expect((await pedir('/responsaveis?q=marta', { token: null })).status).toBe(401)
+  })
+
+  it('a busca por alunoId continua funcionando ao lado da busca por nome', async () => {
+    const alunos = await (await pedir('/alunos')).json<{ id: string; nome: string }[]>()
+    const alice = alunos.find((a) => a.nome === 'Alice Fernandes')!
+    const porCrianca = await (
+      await pedir(`/responsaveis?alunoId=${alice.id}`)
+    ).json<{ nome: string }[]>()
+    expect(Array.isArray(porCrianca)).toBe(true)
+    expect(porCrianca.map((r) => r.nome).sort()).toEqual(['Marta Fernandes', 'Ricardo Fernandes'])
+  })
+
+  it('consulta vazia devolve nada, e consulta gigante e recusada', async () => {
+    const vazia = await (await pedir('/responsaveis?q=')).json<{ achados: unknown[] }>()
+    expect(vazia.achados).toEqual([])
+    expect((await pedir(`/responsaveis?q=${'x'.repeat(200)}`)).status).toBe(400)
+  })
+
+  it('chamar os filhos do adulto grava uma chamada por crianca, com a origem da portaria', async () => {
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+
+    const { achados } = await (
+      await pedir('/responsaveis?q=marta')
+    ).json<{ achados: { filhos: { id: string; impedido: boolean }[] }[] }>()
+    const paraChamar = achados[0].filhos.filter((f) => !f.impedido)
+    expect(paraChamar.length).toBeGreaterThan(1)
+
+    for (const filho of paraChamar) ws.send(JSON.stringify({ tipo: 'chamar', alunoId: filho.id }))
+    expect(
+      await ateQue(ws, (r) => paraChamar.every((f) => r.chamadas.some((c) => c.alunoId === f.id))),
+    ).toBe(true)
+
+    const trilha = await (
+      await pedir('/registro')
+    ).json<{ alunoId: string; acao: string; papel: string; origem: string }[]>()
+    for (const filho of paraChamar) {
+      const evento = trilha.find((e) => e.alunoId === filho.id && e.acao === 'chamar')
+      expect(evento?.papel).toBe('portaria')
+      expect(evento?.origem).toBe('portaria')
+    }
+    ws.close()
+  })
+})

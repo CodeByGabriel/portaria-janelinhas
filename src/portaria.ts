@@ -863,6 +863,28 @@ export class Portaria {
     if (url.pathname === '/responsaveis') {
       const soGet = soLeitura(pedido)
       if (soGet) return soGet
+
+      /*
+        Buscar pelo nome de QUEM CHEGOU no portao.
+
+        "Sou o pai da Alice" e o que se ouve de verdade — e o adulto que busca
+        dois filhos em turmas diferentes teria de ser procurado duas vezes,
+        pelo nome de cada crianca, com a porteira lembrando de cor quem e irmao
+        de quem. Aqui ela digita o nome dele uma vez.
+
+        SO A PORTARIA. A resposta cruza o nome de um adulto com a lista de
+        criancas que ele busca, e nenhuma sala tem por que ter isso: a sala
+        pergunta por crianca, uma de cada vez, e so da propria turma.
+      */
+      const consulta = url.searchParams.get('q')
+      if (consulta !== null) {
+        if (papel !== 'portaria') {
+          return new Response('so a portaria busca por responsavel', { status: 403 })
+        }
+        if (consulta.length > 80) return new Response('consulta longa demais', { status: 400 })
+        return Response.json(this.livro.quemBusca(consulta))
+      }
+
       const alunoId = url.searchParams.get('alunoId') ?? ''
       if (alunoId.length === 0 || alunoId.length > 64) {
         return new Response('alunoId invalido', { status: 400 })

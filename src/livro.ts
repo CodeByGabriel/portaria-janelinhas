@@ -8,7 +8,7 @@ import {
   type Acao,
 } from './estados.ts'
 import { semear, type Aluno, type Turma } from './semente.ts'
-import { normalizar } from './busca.ts'
+import { normalizar, buscar, type Achado } from './busca.ts'
 import { idDeDelegacao } from './ecossistema.ts'
 import type { Responsavel, Vinculo } from './responsaveis.ts'
 import type {
@@ -26,6 +26,21 @@ import type {
  * `temporario` so existe na autorizacao vinda do portal (fase 3): a tela
  * precisa dizer "hoje", e por quem, e a trilha vai guardar isso.
  */
+/** Uma crianca ligada a um adulto, como a portaria a ve na busca por responsavel. */
+export interface FilhoDoResponsavel {
+  id: string
+  nome: string
+  turma: Turma
+  temAlerta: boolean
+  /** Este adulto NAO pode levar esta crianca. Aparece marcado, nunca sumido. */
+  impedido: boolean
+}
+
+/** O adulto achado pelo nome, com quem ele busca. */
+export interface QuemBusca extends Responsavel {
+  filhos: FilhoDoResponsavel[]
+}
+
 export type QuemPodeLevar = Responsavel & {
   impedido: boolean
   temporario?: true
@@ -322,6 +337,47 @@ export class Livro {
             }))
 
     return [...fixos, ...temporarios].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }
+
+  /**
+   * Quem chegou no portao, e quem ele pode levar.
+   *
+   * A porteira busca pelo nome do ADULTO — "sou o pai da Alice" — e recebe os
+   * filhos dele para chamar de uma vez. E a mesma busca da crianca: mesma
+   * normalizacao, mesmo corte, mesmo aviso de homonimo. "Marta Silva" repete
+   * tanto quanto "Maria Eduarda", e escolher o adulto errado significa chamar
+   * a crianca errada.
+   *
+   * O filho IMPEDIDO vem na lista, marcado. Some-lo faria a porteira concluir
+   * que aquela crianca nao e filha daquele adulto — quando o que existe e uma
+   * decisao de que ele nao pode leva-la. E a mesma diferenca entre "nao
+   * consta" e "nao pode" que o dialogo de entrega ja faz.
+   */
+  quemBusca(consulta: string, limite = 8): Achado<QuemBusca> {
+    const encontrados = buscar([...this.responsaveis.values()], consulta, limite)
+    return {
+      ...encontrados,
+      achados: encontrados.achados.map((r) => ({ ...r, filhos: this.filhosDe(r.id) })),
+    }
+  }
+
+  /** Toda crianca ligada a este adulto, impedida ou nao, em ordem de nome. */
+  private filhosDe(responsavelId: string): FilhoDoResponsavel[] {
+    const filhos: FilhoDoResponsavel[] = []
+    for (const [alunoId, lista] of this.vinculos) {
+      const vinculo = lista.find((v) => v.responsavelId === responsavelId)
+      if (!vinculo) continue
+      const aluno = this.cadastro.get(alunoId)
+      if (!aluno) continue
+      filhos.push({
+        id: aluno.id,
+        nome: aluno.nome,
+        turma: aluno.turma,
+        temAlerta: aluno.temAlerta === true,
+        impedido: vinculo.impedido,
+      })
+    }
+    return filhos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   }
 
   /**

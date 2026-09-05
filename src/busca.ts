@@ -50,8 +50,21 @@ export function normalizar(texto: string): string {
     .replace(/\s+/g, ' ')
 }
 
-export interface Achado {
-  achados: Aluno[]
+/**
+ * O que a busca precisa saber de quem ela procura: um id e um nome.
+ *
+ * Comecou servindo so a crianca. Serve tambem ao ADULTO desde que a portaria
+ * passou a poder buscar pelo nome de quem chegou no portao — e e a MESMA
+ * busca, com a mesma normalizacao de nome brasileiro e o mesmo aviso de
+ * homonimo, porque "Marta Silva" repete tanto quanto "Maria Eduarda".
+ */
+export interface Buscavel {
+  id: string
+  nome: string
+}
+
+export interface Achado<T extends Buscavel = Aluno> {
+  achados: T[]
   /** Quantos casaram no total, antes do corte. Nunca truncar em silencio. */
   total: number
   /**
@@ -100,7 +113,7 @@ function proximidade(partes: string[], termos: string[]): number {
  * da planilha, e a crianca obvia podia cair fora das oito primeiras por acaso
  * de posicao no arquivo.
  */
-export function buscar(alunos: Aluno[], consulta: string, limite = 8): Achado {
+export function buscar<T extends Buscavel>(alunos: T[], consulta: string, limite = 8): Achado<T> {
   const termos = normalizar(consulta).split(' ').filter(Boolean)
   if (termos.length === 0) return { achados: [], total: 0, homonimos: [] }
 

@@ -43,6 +43,28 @@
       padding: var(--e-2) var(--e-4); background: var(--papel);
       border-top: 1px solid var(--linha);
     }
+    /* Escolha do que se digita no campo: nome da criança ou do adulto. */
+    .tipo-busca { display: flex; align-items: center; gap: var(--e-2); margin-bottom: var(--e-2); }
+    .tipo-busca label { font-size: var(--t-detalhe); color: var(--tinta-2); }
+    .tipo-busca select { flex: 1; }
+
+    /* Cada adulto achado, com as crianças que ele busca. */
+    .adulto {
+      background: var(--cartao); border: 1px solid var(--linha);
+      border-radius: var(--canto-g); padding: var(--e-4);
+      display: flex; flex-direction: column; gap: var(--e-3);
+      margin-bottom: var(--e-3);
+    }
+    .adulto .quem { display: flex; flex-direction: column; gap: 2px; }
+    .adulto .quem .nome { font-weight: 600; font-size: var(--t-nome); }
+    .adulto .quem .detalhe { font-size: var(--t-detalhe); color: var(--tinta-2); }
+    .adulto .filho-marca { margin-left: auto; font-size: var(--t-etiqueta); font-weight: 700;
+      text-transform: uppercase; letter-spacing: var(--tracking-etiqueta); color: var(--tinta-2); }
+    /* "Não pode levar" tem a mesma voz do impedido no diálogo de entrega. */
+    .adulto .irmao.impedido { border-style: dashed; border-color: var(--alerta); color: var(--alerta); }
+    .adulto .irmao.impedido .filho-marca { color: var(--alerta); }
+    .adulto .sem-filhos { font-size: var(--t-detalhe); color: var(--tinta-2); margin: 0; }
+
     /* Ícone de busca dentro do campo. */
     .busca { position: relative; }
     .busca svg { position: absolute; left: var(--e-4); top: 50%; width: 20px; height: 20px; transform: translateY(-50%); fill: none; stroke: var(--tinta-2); stroke-width: 2.2; stroke-linecap: round; pointer-events: none; }
@@ -60,13 +82,27 @@
   </header>
 
   <main class="conteudo">
-    <p class="secao">Chamar aluno</p>
+    <p class="secao">Chamar</p>
+    <!--
+      Quem chega no portão diz o nome de quem? Às vezes o da criança ("vim
+      buscar o Arthur"), às vezes o próprio ("sou a mãe da Alice") — e o adulto
+      com dois filhos em turmas diferentes teria de ser procurado duas vezes,
+      com a porteira lembrando de cor quem é irmão de quem.
+    -->
+    <div class="tipo-busca">
+      <label for="tipoBusca">Buscar por</label>
+      <select id="tipoBusca">
+        <option value="aluno" selected>Nome do aluno</option>
+        <option value="responsavel">Nome do responsável</option>
+      </select>
+    </div>
     <div class="busca">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
       <input id="consulta" placeholder="Nome do aluno" autocomplete="off" autocapitalize="off" aria-label="Nome do aluno">
     </div>
     <div id="aviso"></div>
     <ul id="resultados"></ul>
+    <div id="resultadosResponsavel" hidden></div>
     <p class="corte" id="corteBusca" hidden></p>
     <p class="vazio" id="semResultado" hidden>Nenhum aluno com esse nome.</p>
 
@@ -315,7 +351,208 @@
       }
     }
 
+    /* ---------------- busca por responsável ---------------- */
+
+    const tipoBusca = document.getElementById('tipoBusca')
+    const painelAdultos = document.getElementById('resultadosResponsavel')
+
+    /*
+      Uma busca por vez, e cada uma com seu pedido.
+
+      A busca por criança roda no navegador (o cadastro já está aqui); a por
+      adulto vai ao servidor, porque nome e telefone de responsável nunca são
+      despejados na tela — saem um punhado por vez, para quem digitou.
+
+      `pedido` guarda a última consulta enviada: resposta que chega fora de
+      ordem é descartada, senão a lista pisca com o resultado de uma tecla
+      anterior enquanto a porteira já está lendo outra coisa.
+    */
+    let pedidoDeAdulto = 0
+
+    async function buscarAdultos(consulta) {
+      const meu = ++pedidoDeAdulto
+      if (consulta.trim() === '') {
+        painelAdultos.replaceChildren()
+        return { vazio: false }
+      }
+      try {
+        const r = await fetch(`/responsaveis?q=${encodeURIComponent(consulta)}`)
+        if (!r.ok) throw new Error(`servidor respondeu ${r.status}`)
+        const { achados, total } = await r.json()
+        if (meu !== pedidoDeAdulto) return null
+        desenharAdultos(achados)
+        return { vazio: achados.length === 0, total, mostrados: achados.length }
+      } catch (erro) {
+        if (meu !== pedidoDeAdulto) return null
+        painelAdultos.replaceChildren()
+        mostrarAviso(`Não consegui buscar o responsável (${erro.message}).`)
+        return { vazio: false }
+      }
+    }
+
+    function desenharAdultos(achados) {
+      painelAdultos.replaceChildren()
+      const emSaida = new Set(ativas.map((c) => c.alunoId))
+
+      for (const adulto of achados) {
+        const cartao = document.createElement('div')
+        cartao.className = 'adulto'
+
+        const quem = document.createElement('div')
+        quem.className = 'quem'
+        const nome = document.createElement('span')
+        nome.className = 'nome'
+        nome.textContent = adulto.nome
+        const detalhe = document.createElement('span')
+        detalhe.className = 'detalhe'
+        detalhe.textContent = [adulto.vinculo, adulto.telefone].filter(Boolean).join(' · ')
+        quem.append(nome, detalhe)
+        cartao.append(quem)
+
+        if (adulto.filhos.length === 0) {
+          const nenhum = document.createElement('p')
+          nenhum.className = 'sem-filhos'
+          nenhum.textContent = 'Sem criança vinculada a este responsável.'
+          cartao.append(nenhum)
+          painelAdultos.append(cartao)
+          continue
+        }
+
+        const lista = document.createElement('div')
+        lista.className = 'irmaos'
+        const caixas = []
+
+        for (const filho of adulto.filhos) {
+          const jaSaindo = emSaida.has(filho.id)
+          const item = document.createElement('label')
+          item.className = filho.impedido ? 'irmao impedido' : 'irmao'
+
+          const marca = document.createElement('input')
+          marca.type = 'checkbox'
+          /*
+            Marcado por padrão, menos quem não pode sair: o impedido nunca, e
+            quem já está em saída também não — chamar de novo só geraria uma
+            recusa e um aviso à toa na sala.
+          */
+          marca.checked = !filho.impedido && !jaSaindo
+          marca.disabled = filho.impedido || jaSaindo
+
+          const texto = document.createElement('span')
+          texto.textContent = `${filho.nome} — ${filho.turma}`
+
+          item.append(marca, texto)
+
+          if (filho.impedido || jaSaindo || filho.temAlerta) {
+            const etiqueta = document.createElement('span')
+            etiqueta.className = 'filho-marca'
+            etiqueta.textContent = filho.impedido
+              ? 'não pode levar'
+              : jaSaindo
+                ? 'já em saída'
+                : 'restrição'
+            item.append(etiqueta)
+          }
+
+          lista.append(item)
+          if (!marca.disabled) caixas.push({ filho, marca })
+        }
+        cartao.append(lista)
+
+        const chamar = document.createElement('button')
+        chamar.className = 'principal larga'
+        const atualizarRotulo = () => {
+          const quantos = caixas.filter((c) => c.marca.checked).length
+          chamar.disabled = quantos === 0
+          chamar.textContent =
+            quantos === 0
+              ? 'Nenhuma criança para chamar'
+              : quantos === 1
+                ? 'Chamar 1 criança'
+                : `Chamar ${quantos} crianças`
+        }
+        for (const c of caixas) c.marca.onchange = atualizarRotulo
+        atualizarRotulo()
+
+        chamar.onclick = async () => {
+          chamar.disabled = true
+          /*
+            Quem entrou em saída DEPOIS desta busca fica de fora, em silêncio.
+
+            A lista de adultos é desenhada no momento da busca e não se
+            redesenha sozinha — redesenhar trocaria as caixas sob o dedo de
+            quem está marcando. Então a conferência é aqui, no toque: chamar
+            quem já está chamado só geraria uma recusa e um susto.
+          */
+          const emSaidaAgora = new Set(ativas.map((c) => c.alunoId))
+          const escolhidos = caixas
+            .filter((c) => c.marca.checked && !emSaidaAgora.has(c.filho.id))
+            .map((c) => c.filho)
+          const versaoAoTocar = versaoCadastro
+
+          for (const filho of escolhidos) {
+            /*
+              A restrição interrompe UMA POR UMA, com o nome na caixa: chamar
+              em lote não pode ser o atalho que pula o alerta de guarda.
+            */
+            if (filho.temAlerta) {
+              const seguir = await podeSeguir({
+                alunoId: filho.id,
+                nome: filho.nome,
+                papel: 'portaria',
+                acao: 'chamar para a saída',
+              })
+              if (!seguir) continue
+            }
+            if (versaoCadastro !== versaoAoTocar) {
+              mostrarAviso('A lista mudou enquanto você lia. Busque de novo.')
+              recarregarCadastro()
+              return
+            }
+            if (!mandar({ tipo: 'chamar', alunoId: filho.id })) break
+          }
+
+          campo.value = ''
+          campo.oninput()
+        }
+        cartao.append(chamar)
+        painelAdultos.append(cartao)
+      }
+    }
+
+    tipoBusca.onchange = () => {
+      const porAdulto = tipoBusca.value === 'responsavel'
+      campo.placeholder = porAdulto ? 'Nome do responsável' : 'Nome do aluno'
+      campo.setAttribute('aria-label', campo.placeholder)
+      campo.value = ''
+      campo.oninput()
+      campo.focus()
+    }
+
     campo.oninput = () => {
+      if (tipoBusca.value === 'responsavel') {
+        document.getElementById('resultados').hidden = true
+        painelAdultos.hidden = false
+        document.getElementById('corteBusca').hidden = true
+        const consulta = campo.value
+        buscarAdultos(consulta).then((r) => {
+          if (!r) return
+          const vazio = document.getElementById('semResultado')
+          vazio.textContent = 'Nenhum responsável com esse nome.'
+          vazio.hidden = !(consulta.trim() !== '' && r.vazio)
+          const corte = document.getElementById('corteBusca')
+          if (r.total > r.mostrados) {
+            corte.textContent = `Mostrando ${r.mostrados} de ${r.total}. Digite o sobrenome para afinar.`
+            corte.hidden = false
+          }
+        })
+        return
+      }
+
+      document.getElementById('resultados').hidden = false
+      painelAdultos.hidden = true
+      painelAdultos.replaceChildren()
+      document.getElementById('semResultado').textContent = 'Nenhum aluno com esse nome.'
+
       const ul = document.getElementById('resultados')
       const { achados, total, homonimos } = buscar(alunos, campo.value)
       const presentes = new Set(achados.map((a) => a.id))

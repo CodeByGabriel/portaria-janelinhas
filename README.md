@@ -232,6 +232,16 @@ Nada disto é bug — é escopo deliberadamente adiado, e cada item precisa da v
   roda no cliente — minimização ao contrário. `docs/lgpd.md` §6.
 - **Exportação da trilha antes da poda**, se a escola precisar guardar mais de 90 dias.
 
+**Buscar por quem chegou.** A porteira alterna o campo entre o nome da criança e o nome do
+responsável. Digitando o nome do adulto, ela vê as crianças que ele busca — em turmas
+diferentes, sem precisar lembrar quem é irmão de quem — com todas marcadas e um toque para
+chamar as escolhidas. A criança que aquele adulto **não pode levar** aparece na lista,
+tracejada em vinho e intocável: some-la faria concluir que ela não é filha dele, quando o que
+existe é uma decisão de que ele não pode levá-la. Quem já está em saída aparece marcada como
+tal, e a restrição de guarda continua interrompendo uma criança por vez — chamar em lote não
+é atalho que pula alerta. Só a portaria busca por responsável; a sala continua sem alcançar
+nome de adulto.
+
 **Fechado desde então:** persistência (a trilha e o cadastro sobrevivem ao reinício, e o
 cadastro importado não volta mais para a semente); tetos de 1 MB, 200 conexões e 90 dias de
 retenção; **autenticação por aparelho**, com revogação imediata (inclusive da conexão já aberta) e teto de trinta falhas em quinze minutos por origem no `/entrar`; **responsáveis

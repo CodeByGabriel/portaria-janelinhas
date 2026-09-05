@@ -1690,6 +1690,146 @@ async function principal() {
 
   await autorizarNavegador(cdp, TOKEN.portaria)
 
+  console.log('\n== buscar pelo nome de quem chegou no portao ==')
+
+  /*
+    "Sou o pai da Alice" e o que se ouve no portao. Ate aqui a porteira so
+    podia procurar pelo nome da CRIANCA — e um adulto com dois filhos em
+    turmas diferentes exigia duas buscas, com ela lembrando de cor quem e
+    irmao de quem.
+
+    O que este bloco cobra na tela de verdade: o adulto achado pelo nome, os
+    filhos dele marcados, o IMPEDIDO visivel e intocavel, e a restricao
+    interrompendo antes de chamar.
+  */
+  conferir('o quadro comeca vazio para a busca por responsavel', await esvaziarQuadro(outra))
+  await esperar(400)
+
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2200)
+
+  const buscarPorAdulto = (nome) => `
+    (() => {
+      const sel = document.getElementById('tipoBusca')
+      sel.value = 'responsavel'
+      sel.onchange()
+      const campo = document.getElementById('consulta')
+      campo.value = 'NOME_AQUI'
+      campo.oninput()
+      return true
+    })()
+  `.replace('NOME_AQUI', nome)
+
+  await cdp.avaliar(buscarPorAdulto('ricardo'))
+  await esperar(1200)
+
+  const doRicardo = await cdp.avaliar(`
+    (() => {
+      const cartao = document.querySelector('#resultadosResponsavel .adulto')
+      if (!cartao) return { achou: false }
+      const filhos = [...cartao.querySelectorAll('.irmao')].map((l) => ({
+        texto: l.textContent.trim(),
+        marcado: l.querySelector('input').checked,
+        travado: l.querySelector('input').disabled,
+        impedido: l.className.includes('impedido'),
+      }))
+      return {
+        achou: true,
+        nome: cartao.querySelector('.nome')?.textContent ?? '',
+        filhos,
+        botao: cartao.querySelector('button')?.textContent ?? '',
+        listaDeAlunosEscondida: document.getElementById('resultados').hidden === true,
+      }
+    })()
+  `)
+
+  conferir('a busca por responsavel acha o adulto pelo nome',
+    doRicardo.achou === true && doRicardo.nome === 'Ricardo Fernandes',
+    JSON.stringify(doRicardo).slice(0, 160))
+  conferir('a lista de criancas da outra busca sai da tela',
+    doRicardo.listaDeAlunosEscondida === true)
+
+  const impedida = doRicardo.filhos?.find((f) => f.impedido)
+  conferir('a crianca IMPEDIDA aparece na lista, e nao sumida',
+    !!impedida && /Alice/.test(impedida.texto),
+    JSON.stringify(doRicardo.filhos))
+  conferir('e ela nao pode ser marcada nem chamada',
+    impedida?.travado === true && impedida?.marcado === false &&
+      /n[aã]o pode levar/i.test(impedida?.texto ?? ''),
+    JSON.stringify(impedida))
+  conferir('as outras criancas do mesmo adulto vem marcadas',
+    doRicardo.filhos?.filter((f) => f.marcado).length === 2 &&
+      /Chamar 2 crian/.test(doRicardo.botao),
+    JSON.stringify(doRicardo.botao))
+
+  // Chamar as duas de uma vez: uma acao, duas salas avisadas.
+  await cdp.avaliar(`
+    document.querySelector('#resultadosResponsavel .adulto button').click()
+  `)
+  await esperar(1500)
+
+  const depoisDeChamar = await cdp.avaliar(`
+    (() => ({
+      emSaida: [...document.querySelectorAll('#ativas .linha')].map(
+        (li) => li.querySelector('.nome')?.textContent ?? '',
+      ),
+      campoLimpo: document.getElementById('consulta').value === '',
+    }))()
+  `)
+  conferir('as duas criancas entram em saida com um toque so',
+    depoisDeChamar.emSaida.length === 2 &&
+      depoisDeChamar.emSaida.every((n) => /Maria Eduarda/.test(n)),
+    JSON.stringify(depoisDeChamar.emSaida))
+  conferir('e a crianca impedida NAO foi chamada',
+    !depoisDeChamar.emSaida.some((n) => /Alice/.test(n)),
+    JSON.stringify(depoisDeChamar.emSaida))
+
+  /*
+    A restricao de guarda continua interrompendo — chamar em lote nao pode ser
+    o atalho que pula o alerta.
+  */
+  conferir('o quadro esvazia antes da restricao', await esvaziarQuadro(outra))
+  await esperar(400)
+  await cdp.chamar('Page.navigate', { url: BASE + '/portaria/' })
+  await esperar(2000)
+  await cdp.avaliar(buscarPorAdulto('zuleide'))
+  await esperar(1200)
+  await cdp.avaliar(`
+    document.querySelector('#resultadosResponsavel .adulto button').click()
+  `)
+  await esperar(1200)
+
+  const caixaDaGuarda = await cdp.avaliar(`
+    (() => {
+      const d = document.querySelector('dialog[open].restricao')
+      return {
+        interrompeu: !!d,
+        quem: d?.querySelector('.quem')?.textContent ?? '',
+        emSaida: document.querySelectorAll('#ativas .linha').length,
+      }
+    })()
+  `)
+  conferir('a restricao interrompe o chamar em lote, antes de qualquer chamada',
+    caixaDaGuarda.interrompeu === true && /Ravi/.test(caixaDaGuarda.quem) &&
+      caixaDaGuarda.emSaida === 0,
+    JSON.stringify(caixaDaGuarda))
+
+  await cdp.avaliar(`
+    (() => {
+      const d = document.querySelector('dialog[open].restricao')
+      const b = [...d.querySelectorAll('button')].find((x) => /Li e vou continuar/.test(x.textContent))
+      b.click()
+      return true
+    })()
+  `)
+  await esperar(1200)
+  const depoisDaGuarda = await cdp.avaliar(`
+    document.querySelectorAll('#ativas .linha').length
+  `)
+  conferir('e depois de reconhecer, a crianca e chamada', depoisDaGuarda === 1, String(depoisDaGuarda))
+
+  conferir('o quadro fica limpo ao fim', await esvaziarQuadro(outra))
+
   wsCdp.close()
   chrome.kill()
   await esperar(900)
