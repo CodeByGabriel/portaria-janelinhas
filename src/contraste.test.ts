@@ -270,7 +270,27 @@ test('o alvo de toque declarado atende o nivel AAA', () => {
   const v = T.get('--toque-min')
   assert.ok(v, '--toque-min nao existe')
   assert.ok(Number.parseInt(v!, 10) >= 44, `--toque-min e ${v}, abaixo de 44px`)
-  assert.match(CSS, /button\s*\{[^}]*min-height:\s*var\(--toque-min\)/, 'button nao aplica min-height: var(--toque-min)')
+  /*
+    O seletor pode ser um GRUPO — `button, a.principal, ...` — porque o link
+    que age como botao (a escolha da raiz, o "ir para a tela deste aparelho")
+    precisa do mesmo alvo. O que se cobra e a propriedade, nao a forma do
+    seletor: um bloco que comece em `button` e declare o alvo minimo.
+  */
+  // Sem comentarios: a palavra "button" aparece na prosa que explica o CSS.
+  const blocoDoBotao = semComentarios(CSS).match(/(?:^|\})\s*button[^{}]*\{[^}]*\}/)
+  assert.ok(blocoDoBotao, 'nao achei o bloco do button no tokens.css')
+  assert.match(
+    blocoDoBotao![0],
+    /min-height:\s*var\(--toque-min\)/,
+    'button nao aplica min-height: var(--toque-min)',
+  )
+  // E o link com cara de botao entra no mesmo alvo: 24px de altura era o que
+  // ele tinha antes de o seletor incluir a ancora.
+  assert.match(
+    blocoDoBotao![0],
+    /a\.principal/,
+    'o link que age como botao ficou fora do bloco do alvo minimo',
+  )
   const bloco = CSS.slice(CSS.indexOf('select,'))
   assert.match(
     bloco.slice(0, bloco.indexOf('}')),

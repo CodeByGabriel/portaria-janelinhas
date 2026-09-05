@@ -222,9 +222,9 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='workerd.exe'" |
 
 Nada disto é bug — é escopo deliberadamente adiado, e cada item precisa da visita à escola.
 
-- **Base legal e contrato de operador.** Quem é controladora, quem é operador, e sob qual
-  artigo o tratamento se sustenta. `docs/lgpd.md` §1 e §4, os dois com `TODO(juridico)`.
-  **São os dois únicos bloqueios que restam para dado real, e nenhum é código.**
+- **Base legal e contrato de operador**, no dia em que a escola for usar isto com nome de
+  criança de verdade. Fica em `docs/lgpd.md` §1 e §4, escrito e esperando — não é tarefa de
+  código, e não bloqueia nada enquanto o app roda com a semente fictícia.
 - **Foto da criança**, se a escola quiser: o espaço já está reservado no cartão e na linha.
 - **Nomes exatos das turmas.** A faixa Pré 1–9º ano veio da escola; os rótulos ainda não.
   Todo `conteudo/institucional/` do repo é `TODO(visita)`.

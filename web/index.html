@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Janelinhas do Saber</title>
+  <link rel="stylesheet" href="comum/tokens.css">
+  <style>
+    /*
+      A raiz existia como 404.
+
+      Quem digitava so o endereco — a diretora no notebook, alguem abrindo o
+      link que a secretaria mandou — via "nao encontrado" em texto cru e
+      concluia que o app estava fora do ar. As telas sempre estiveram em
+      /portaria/ e /sala/, mas ninguem tem obrigacao de saber disso.
+
+      Uma pagina, dois caminhos, nenhum dado: nao ha nome de crianca aqui, e
+      cada tela continua exigindo o aparelho autorizado logo depois.
+    */
+    .escolha { display: flex; flex-direction: column; gap: var(--e-3); margin-top: var(--e-6); }
+    .escolha a { text-align: center; }
+    .rodape-simples {
+      margin-top: var(--e-8);
+      color: var(--tinta-2);
+      font-size: var(--t-detalhe);
+    }
+  </style>
+</head>
+<body>
+  <header class="cabecalho">
+    <span class="marca-glifo" aria-hidden="true"></span>
+    <span>
+      <span class="titulo">Janelinhas do Saber</span>
+      <p class="subtitulo">Saída dos alunos</p>
+    </span>
+  </header>
+
+  <main class="conteudo">
+    <h2>Qual é esta tela?</h2>
+    <p>Escolha uma vez. O aparelho guarda a escolha e abre direto na próxima.</p>
+
+    <nav class="escolha">
+      <a class="principal larga" href="/portaria/">Tela da portaria</a>
+      <a class="contorno larga" href="/sala/">Tela da sala</a>
+    </nav>
+
+    <p class="rodape-simples">
+      Cada tela pede o código do aparelho, que a escola gera. Um aparelho de sala
+      não abre a tela da portaria, e vice-versa.
+    </p>
+  </main>
+</body>
+</html>

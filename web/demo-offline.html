@@ -754,7 +754,19 @@ summary {
   preenche. `.contorno` é a ação secundária que ainda é da mesma família da
   ação ("Chamar de novo"): borda verde, fundo vazado.
 */
-button {
+/*
+  O LINK que age como botão entra aqui junto.
+
+  Estes seletores diziam `button`, e só. Mas navegar é trabalho de âncora, não
+  de botão — e o app já usava `<a class="principal larga">` em dois lugares: o
+  "Ir para a tela deste aparelho", na tela que barra o aparelho de outro papel,
+  e a escolha da raiz. Sem o seletor, esses dois viravam link azul sublinhado
+  de 24px: fora da família visual e abaixo do alvo mínimo de toque.
+*/
+button,
+a.principal,
+a.contorno,
+a.larga {
   font: inherit;
   font-size: var(--t-corpo);
   font-weight: 600;
@@ -768,19 +780,33 @@ button {
   transition: background var(--dur-base) var(--curva), border-color var(--dur-base) var(--curva), transform var(--dur-toque) var(--curva);
 }
 
+/* A âncora precisa disto para caber no mesmo desenho do botão. */
+a.principal,
+a.contorno,
+a.larga {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 button:hover:not(:disabled) { background: var(--destaque); }
 button:active:not(:disabled) { transform: translateY(1px); }
+a.principal:active, a.contorno:active, a.larga:active { transform: translateY(1px); }
 
-button.principal {
+button.principal,
+a.principal {
   background: var(--acao);
   border-color: var(--acao);
   color: var(--tinta-clara);
 }
 button.principal:hover:not(:disabled) { background: var(--acao-pressionada); border-color: var(--acao-pressionada); }
+a.principal:hover { background: var(--acao-pressionada); border-color: var(--acao-pressionada); }
 
-button.contorno { border-color: var(--acao); color: var(--acao); }
+button.contorno, a.contorno { border-color: var(--acao); color: var(--acao); }
+a.contorno:hover { background: var(--destaque); }
 
-button.larga { width: 100%; }
+button.larga, a.larga { width: 100%; }
 
 button.fantasma { border-color: transparent; color: var(--tinta-2); }
 button.fantasma:hover:not(:disabled) { background: var(--destaque); color: var(--tinta); }
