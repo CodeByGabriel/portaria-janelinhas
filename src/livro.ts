@@ -454,8 +454,35 @@ export class Livro {
    * O impedido nao entra: nao faz sentido oferecer chamar o irmao para quem
    * nao pode levar nenhum dos dois.
    */
-  irmaosPara(responsavelId: string, exceto: string): Aluno[] {
+  irmaosPara(responsavelId: string, exceto: string, agora?: number): Aluno[] {
     const achados: Aluno[] = []
+
+    /*
+      A avo de hoje nao esta em `vinculos` — ela esta em `temporarias`, e a
+      identidade dela entre duas criancas e o NOME, nao um id de cadastro.
+      Sem este ramo, a porteira via os dois netos ao chamar pelo nome dela e
+      entregava o primeiro; na hora do segundo, o convite de irmaos vinha
+      vazio, como se a autorizacao valesse so para um.
+    */
+    const delegado =
+      agora === undefined
+        ? undefined
+        : [...this.temporarias.values()].find((d) => idDeDelegacao(d.id) === responsavelId)
+    if (delegado) {
+      const nome = normalizar(delegado.nome)
+      for (const d of this.temporarias.values()) {
+        if (d.alunoId === exceto) continue
+        if (normalizar(d.nome) !== nome) continue
+        const valendo = this.responsaveisDe(d.alunoId, agora).find(
+          (r) => r.id === idDeDelegacao(d.id),
+        )
+        if (!valendo || valendo.impedido) continue
+        const aluno = this.cadastro.get(d.alunoId)
+        if (aluno && !achados.some((a) => a.id === aluno.id)) achados.push(aluno)
+      }
+      return achados.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    }
+
     for (const [alunoId, lista] of this.vinculos) {
       if (alunoId === exceto) continue
       const v = lista.find((x) => x.responsavelId === responsavelId)

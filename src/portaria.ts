@@ -929,7 +929,9 @@ export class Portaria {
       if (responsavelId.length === 0 || responsavelId.length > 64) {
         return new Response('responsavelId invalido', { status: 400 })
       }
-      return Response.json(this.livro.irmaosPara(responsavelId, exceto))
+      // Com o relogio, pelo mesmo motivo de `/responsaveis`: a avo de hoje
+      // busca dois netos, e o segundo nao pode sumir depois do primeiro.
+      return Response.json(this.livro.irmaosPara(responsavelId, exceto, Date.now()))
     }
 
     /*

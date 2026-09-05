@@ -212,3 +212,55 @@ test('trocar o cadastro sem a crianca leva a delegacao dela junto', () => {
   livro.substituirCadastro(semear().filter((a) => a.id !== alice().id))
   assert.equal(livro.listarDelegacoes().length, 0)
 })
+
+/* ---------- o segundo neto, na hora da entrega ---------- */
+
+/*
+  A avo de hoje busca dois netos. A porteira acha os dois pelo nome dela e
+  entrega o primeiro; na hora do segundo, o convite de irmaos vinha vazio —
+  `irmaosPara` so olhava `vinculos`, e a delegacao mora em `temporarias`.
+  Nao entregava a crianca errada: apenas fazia a porteira comecar de novo,
+  como se a autorizacao valesse so para um dos dois.
+*/
+
+test('a avo de hoje leva os DOIS netos: o convite de irmaos enxerga a delegacao', () => {
+  const livro = livroComFamilias()
+  const ravi = semear().find((a) => a.nome === 'Ravi Bacelar')!
+  livro.adicionarDelegacao(avo(), AGORA)
+  livro.adicionarDelegacao(
+    avo({ id: 'd2', alunoId: ravi.id, autorizadoPor: idDeResponsavel('Zuleide Bacelar') }),
+    AGORA,
+  )
+
+  const irmaos = livro.irmaosPara(idDeDelegacao('d1'), alice().id, AGORA)
+  assert.deepEqual(irmaos.map((a) => a.nome), ['Ravi Bacelar'])
+
+  // Sem relogio segue sem delegacao, como em `responsaveisDe`.
+  assert.deepEqual(livro.irmaosPara(idDeDelegacao('d1'), alice().id), [])
+  // E a janela vale aqui tambem.
+  assert.deepEqual(livro.irmaosPara(idDeDelegacao('d1'), alice().id, AGORA + 5 * HORA), [])
+})
+
+test('o convite de irmaos nao mistura duas avos de nomes diferentes', () => {
+  const livro = livroComFamilias()
+  const ravi = semear().find((a) => a.nome === 'Ravi Bacelar')!
+  livro.adicionarDelegacao(avo(), AGORA)
+  livro.adicionarDelegacao(
+    avo({
+      id: 'd2',
+      alunoId: ravi.id,
+      nome: 'Outra Pessoa',
+      autorizadoPor: idDeResponsavel('Zuleide Bacelar'),
+    }),
+    AGORA,
+  )
+  assert.deepEqual(livro.irmaosPara(idDeDelegacao('d1'), alice().id, AGORA), [])
+})
+
+test('o responsavel FIXO continua achando os irmaos como antes', () => {
+  const livro = livroComFamilias()
+  livro.adicionarDelegacao(avo(), AGORA)
+  const irmaos = livro.irmaosPara(MARTA, alice().id, AGORA)
+  assert.ok(irmaos.length > 0, 'a delegacao no meio nao pode apagar o caminho dos fixos')
+  assert.equal(irmaos.some((a) => a.id === alice().id), false)
+})
