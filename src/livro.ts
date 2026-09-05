@@ -359,12 +359,28 @@ export class Livro {
    * consta" e "nao pode" que o dialogo de entrega ja faz.
    */
   quemBusca(consulta: string, limite = 8, agora?: number): Achado<QuemBusca> {
-    const fixos: QuemBusca[] = [...this.responsaveis.values()].map((r) => ({
-      ...r,
-      filhos: this.filhosDe(r.id),
-    }))
-    const todos = [...fixos, ...this.delegadosAgora(agora)]
-    return buscar(todos, consulta, limite)
+    /*
+      Os filhos entram DEPOIS do corte, e nao antes.
+
+      `filhosDe` percorre os vinculos da escola inteira. Montar isso para os
+      420 adultos antes de buscar custava 3,95ms por TECLA numa escola de 300
+      criancas — trabalho jogado fora para 412 deles. Buscar primeiro e
+      montar so os 8 que ficam da o mesmo resultado.
+
+      A delegacao e a excecao e pode vir montada: sao as autorizacoes de HOJE,
+      uma duzia, e a lista de filhos ja sai do agrupamento por nome.
+    */
+    const populacao: (Responsavel | QuemBusca)[] = [
+      ...this.responsaveis.values(),
+      ...this.delegadosAgora(agora),
+    ]
+    const encontrados = buscar(populacao, consulta, limite)
+    return {
+      ...encontrados,
+      achados: encontrados.achados.map((r) =>
+        'filhos' in r ? r : { ...r, filhos: this.filhosDe(r.id) },
+      ),
+    }
   }
 
   /**
