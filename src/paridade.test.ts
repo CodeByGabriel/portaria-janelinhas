@@ -148,6 +148,70 @@ test('a copia do navegador normaliza exatamente igual', async () => {
   }
 })
 
+/*
+  Fuzz das duas copias, com semente fixa.
+
+  As listas fixas acima cobrem o que alguem lembrou de escrever. Este cobre o
+  que ninguem lembrou: milhares de nomes e consultas montados com acento,
+  apostrofo, hifen, caixa trocada, espaco duplo, caractere invisivel e controle
+  de direcao. As duas copias tem que responder EXATAMENTE a mesma coisa — a
+  divergencia anterior (U+02BC) nao lancava erro em lugar nenhum e sumia com a
+  crianca da busca num aparelho so.
+*/
+test('fuzz: as duas copias respondem igual em milhares de nomes e consultas', async () => {
+  const daCopia = await import('../web/comum/busca.js')
+
+  let semente = 20260906
+  const proximo = () => {
+    semente = (Math.imul(semente, 1664525) + 1013904223) >>> 0
+    return semente
+  }
+  const pedacos = [
+    'ana', 'joão', 'thaís', "sant'ana", "d'ávila", 'maria-clara', 'gonçalves', 'JOSÉ',
+    'maª', '3º', 'raﬁnha', 'so­fia', 'ana​souza', 'bia‮ailima',
+    'MARÇAL', '  ', 'de', 'do', 'ç', 'ü', 'â',
+  ]
+  const monte = () => {
+    const partes = 1 + (proximo() % 4)
+    let texto = ''
+    for (let i = 0; i < partes; i++) {
+      texto += pedacos[proximo() % pedacos.length] + (proximo() % 3 === 0 ? '' : ' ')
+    }
+    return texto
+  }
+
+  for (let i = 0; i < 4000; i++) {
+    const nome = monte()
+    assert.equal(
+      daCopia.normalizar(nome),
+      normalizar(nome),
+      `normalizacao diverge em ${JSON.stringify(nome)}`,
+    )
+  }
+
+  const cadastro = Array.from({ length: 40 }, (_, i) => ({
+    id: `f${i}`,
+    nome: monte().trim() || `Aluno ${i}`,
+    turma: 'Pré 1' as const,
+  }))
+  for (let i = 0; i < 1500; i++) {
+    const consulta = monte()
+    const doServidor = buscar([...cadastro] as never, consulta)
+    const doNavegador = daCopia.buscar([...cadastro], consulta)
+    assert.deepEqual(
+      doNavegador.achados.map((a: { id: string }) => a.id),
+      doServidor.achados.map((a) => a.id),
+      `achados divergem em ${JSON.stringify(consulta)}`,
+    )
+    assert.equal(doNavegador.total, doServidor.total, `total diverge em ${JSON.stringify(consulta)}`)
+    assert.deepEqual(
+      doNavegador.homonimos,
+      doServidor.homonimos,
+      `homonimos divergem em ${JSON.stringify(consulta)}`,
+    )
+  }
+})
+
 test('cada separador de nome vira espaco nos DOIS lados', async () => {
   /*
     Apostrofos sao visualmente identicos entre si, e as duas copias divergiam
