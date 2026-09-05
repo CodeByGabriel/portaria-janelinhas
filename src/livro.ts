@@ -82,7 +82,10 @@ export class Livro {
 
     for (const aluno of dados.alunos) this.cadastro.set(aluno.id, aluno)
     for (const chamada of dados.chamadas) this.chamadas.set(chamada.alunoId, chamada)
-    this.trilha.push(...dados.trilha)
+    // Um a um, e nao `push(...trilha)`: espalhar cem mil eventos como argumentos
+    // estoura a pilha do V8, e isto roda dentro do blockConcurrencyWhile — o
+    // objeto nao subiria nunca mais.
+    for (const evento of dados.trilha) this.trilha.push(evento)
     for (const r of dados.responsaveis ?? []) this.responsaveis.set(r.id, r)
     for (const v of dados.vinculos ?? []) {
       const lista = this.vinculos.get(v.alunoId) ?? []
@@ -126,9 +129,9 @@ export class Livro {
     */
     if (papel === 'sala') {
       if (!turma) throw new Error('a sala precisa declarar a turma para agir')
-      if (aluno.turma !== turma) {
-        throw new Error(`aluno de outra turma: ${aluno.turma}`)
-      }
+      // Sem dizer QUAL turma: a recusa volta para a sala que perguntou, e a
+      // turma de uma crianca alheia e informacao que ela nao tem por que ter.
+      if (aluno.turma !== turma) throw new Error('aluno de outra turma')
     }
 
     const anterior = this.chamadas.get(comando.alunoId)
@@ -293,11 +296,21 @@ export class Livro {
       cadastro — continua vencendo: a delegacao vira "nao pode" na lista, com o
       mesmo tratamento do fixo, em vez de sumir ou de valer.
     */
+    /*
+      E o titular que autorizou precisa CONTINUAR podendo levar. Se ele saiu do
+      cadastro ou virou impedido depois — a proxima planilha, o proximo envio
+      do backend —, a delegacao dele cai junto: ninguem delega o que perdeu.
+    */
+    const titularAindaPode = (d: Delegacao) => {
+      const titular = fixos.find((r) => r.id === d.autorizadoPor)
+      return titular !== undefined && !titular.impedido
+    }
     const temporarios: QuemPodeLevar[] =
       agora === undefined
         ? []
         : [...this.temporarias.values()]
             .filter((d) => d.alunoId === alunoId && d.validoDe <= agora && agora <= d.validoAte)
+            .filter(titularAindaPode)
             .map((d) => ({
               id: idDeDelegacao(d.id),
               nome: d.nome,
@@ -370,6 +383,12 @@ export class Livro {
     if (!this.cadastro.has(d.alunoId)) throw new Error(`aluno desconhecido: ${d.alunoId}`)
     if (d.validoAte <= agora) throw new Error('delegacao ja vencida')
     if (d.validoAte <= d.validoDe) throw new Error('janela invertida')
+    // Reenviar a MESMA delegacao substitui (idempotente). Reusar o id para
+    // outra crianca apagaria a primeira em silencio — isso e recusa.
+    const existente = this.temporarias.get(d.id)
+    if (existente && existente.alunoId !== d.alunoId) {
+      throw new Error('id de delegacao ja usado para outra crianca')
+    }
 
     const fixos = this.responsaveisDe(d.alunoId)
     const titular = fixos.find((r) => r.id === d.autorizadoPor)
@@ -405,6 +424,40 @@ export class Livro {
 
   registro(): EventoAuditoria[] {
     return [...this.trilha]
+  }
+
+  /**
+   * A retencao vale tambem em memoria.
+   *
+   * A poda diaria apagava do disco e a copia em RAM seguia inteira ate o
+   * proximo reinicio: `/registro` servia o que a trilha ja nao tinha, e memoria
+   * e disco divergiam por semanas num objeto que fica acordado. Mesmo corte,
+   * pelo mesmo `em`, nos dois lugares.
+   */
+  podarTrilha(antesDe: number): number {
+    const antes = this.trilha.length
+    let escreve = 0
+    for (let le = 0; le < this.trilha.length; le++) {
+      const evento = this.trilha[le]
+      if (evento.em >= antesDe) this.trilha[escreve++] = evento
+    }
+    this.trilha.length = escreve
+    return antes - escreve
+  }
+
+  /**
+   * A crianca que este papel pode enxergar, ou nada.
+   *
+   * A regra "a sala so alcanca a propria turma" mora aqui, e nao repetida em
+   * cada rota (invariante 8). E para a sala a resposta e UMA so — "nao
+   * conheco" — tanto para a crianca que nao existe quanto para a de outra
+   * turma: responder diferente seria um oraculo de matricula por id.
+   */
+  alunoVisivelPara(papel: Papel, turma: Turma | undefined, alunoId: string): Aluno | null {
+    const aluno = this.cadastro.get(alunoId)
+    if (!aluno) return null
+    if (papel === 'sala' && (!turma || aluno.turma !== turma)) return null
+    return aluno
   }
 
   /**

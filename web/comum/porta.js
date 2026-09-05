@@ -32,11 +32,32 @@ export async function quemSou() {
   return null
 }
 
+/*
+  Devolve quem o aparelho e; `null` quando o codigo nao foi reconhecido; e
+  `{ falhou }` com a frase certa quando o problema NAO e o codigo.
+
+  Dois casos ficavam invisiveis. Rede fora: o fetch lancava, o `await` do
+  chamador subia, e o botao ficava em "Verificando…" para sempre. Teto de
+  tentativas (429): a tela dizia "codigo nao reconhecido" para um codigo
+  certo, e a secretaria trocava o codigo de um aparelho que so precisava
+  esperar quinze minutos.
+*/
 async function tentarToken(token) {
-  const r = await fetch('/entrar', {
-    method: 'POST',
-    body: JSON.stringify({ token }),
-  })
+  let r
+  try {
+    r = await fetch('/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    })
+  } catch {
+    return { falhou: 'Não consegui falar com o servidor. Confira a rede e tente de novo.' }
+  }
+  if (r.status === 429) {
+    const segundos = Number(r.headers.get('Retry-After')) || 900
+    return {
+      falhou: `Tentativas demais neste aparelho. Aguarde ${Math.ceil(segundos / 60)} min e tente de novo.`,
+    }
+  }
   if (!r.ok) return null
   return r.json()
 }
@@ -59,8 +80,22 @@ async function marcarModo() {
       'MODO DEMONSTRAÇÃO — os aparelhos deste servidor usam tokens conhecidos. ' +
       'Não use com dados reais de aluno.'
     document.body.prepend(tarja)
+    afastarDaTarja()
   } catch {
     /* sem resposta: nao inventa tarja */
+  }
+}
+
+/*
+  A tarja fica em cima de tudo, inclusive da porta — que e fixa e ocupa a tela
+  inteira. Sem isto o titulo da porta ficava escondido atras da tarja, e o
+  print versionado documentava uma tela com titulo ilegivel. A porta desce o
+  tanto que a tarja mede, e so quando ha tarja.
+*/
+function afastarDaTarja() {
+  const tarja = document.querySelector('.tarja-demo')
+  for (const porta of document.querySelectorAll('.porta')) {
+    porta.style.paddingTop = tarja ? `calc(var(--e-12) + ${tarja.offsetHeight}px)` : ''
   }
 }
 
@@ -119,8 +154,8 @@ function desenharPorta(aoEntrar) {
     botao.disabled = false
     botao.textContent = 'Autorizar'
 
-    if (!quem) {
-      erro.textContent = 'Código não reconhecido. Confira com a secretaria.'
+    if (!quem || quem.falhou) {
+      erro.textContent = quem ? quem.falhou : 'Código não reconhecido. Confira com a secretaria.'
       erro.hidden = false
       campo.select()
       return
@@ -136,6 +171,7 @@ function desenharPorta(aoEntrar) {
 
   caixa.append(titulo, explicacao, rotulo, campo, erro, botao)
   document.body.prepend(caixa)
+  afastarDaTarja()
   campo.focus()
 }
 
@@ -180,6 +216,7 @@ function desenharPapelErrado(quem, esperado) {
 
   caixa.append(titulo, explicacao, onde, link)
   document.body.prepend(caixa)
+  afastarDaTarja()
 }
 
 /**

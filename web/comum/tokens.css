@@ -620,7 +620,16 @@ summary {
   gap: var(--e-3);
 }
 .razoes .pergunta { margin: 0; font-size: var(--t-nome); font-weight: 600; }
-.razoes .opcoes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e-2); }
+/*
+  minmax(0, 1fr), e não 1fr: `1fr` sozinho é minmax(auto, 1fr), e o "auto"
+  deixa "Não saiu com o responsável" ditar a largura mínima da coluna — em
+  320px a grade media 302px num cartão de 218 e empurrava a página inteira
+  para 356px. Em celular a grade vira uma coluna só: quatro alvos empilhados.
+*/
+.razoes .opcoes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--e-2); }
+@media (max-width: 480px) {
+  .razoes .opcoes { grid-template-columns: minmax(0, 1fr); }
+}
 .razoes .opcao {
   display: flex; align-items: center; gap: var(--e-2);
   min-height: 56px; padding: var(--e-2) var(--e-3);

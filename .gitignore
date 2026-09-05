@@ -6,3 +6,5 @@ worker-configuration.d.ts
 /.telas-perfil/
 /.baseline-perfil/
 medicao.json
+/.responsivo-perfil/
+.perfil/

@@ -908,7 +908,7 @@ describe('restricao: o texto nunca sai em lote', () => {
     expect((await propria.json<{ texto: string }>()).texto).toMatch(/Guarda/)
 
     const alheia = await pedir(`/alerta?alunoId=${doNono.id}`, { token: TOKEN.sala('Pré 1') })
-    expect(alheia.status).toBe(403)
+    expect(alheia.status).toBe(404)
 
     // E sala sem turma declarada nao le nada, como nao ve nada.
     // A turma vem do APARELHO: nao ha mais 'sala sem turma' para testar aqui.
@@ -1177,7 +1177,7 @@ describe('autenticacao por aparelho — o papel deixa de vir da URL', () => {
   })
 
   it('sair apaga o cookie', async () => {
-    const r = await comCookie(PORTARIA, '/sair')
+    const r = await comCookie(PORTARIA, '/sair', { method: 'POST' })
     expect(r.headers.get('Set-Cookie')).toContain('Max-Age=0')
   })
 
@@ -1371,7 +1371,7 @@ describe('responsaveis — a trilha passa a dizer A QUEM', () => {
     const alheia = await pedir(`/responsaveis?alunoId=${ravi.id}`, {
       token: TOKEN.sala(alice.turma),
     })
-    expect(alheia.status).toBe(403)
+    expect(alheia.status).toBe(404)
   })
 
   it('so a portaria pergunta por irmaos', async () => {
@@ -1935,16 +1935,17 @@ describe('tentativas de entrar tem teto', () => {
       headers: { 'content-type': 'application/json', 'CF-Connecting-IP': ip },
     })
 
-  it('dez falhas da mesma origem e a decima primeira espera; outra origem nao', async () => {
-    for (let i = 0; i < 10; i++) {
+  it('trinta falhas da mesma origem e a proxima espera; outra origem nao; o token certo passa', async () => {
+    for (let i = 0; i < 30; i++) {
       expect((await tentar(`token-inventado-numero-${i}-xxxxxxxx`, '10.0.0.1')).status).toBe(401)
     }
-    const bloqueada = await tentar('token-inventado-numero-10-xxxxxxxx', '10.0.0.1')
+    const bloqueada = await tentar('token-inventado-numero-30-xxxxxxxx', '10.0.0.1')
     expect(bloqueada.status).toBe(429)
     expect(Number(bloqueada.headers.get('Retry-After'))).toBeGreaterThan(0)
 
-    // Nem o token certo passa enquanto a origem esta bloqueada.
-    expect((await tentar(TOKEN.portaria, '10.0.0.1')).status).toBe(429)
+    // O token CERTO passa mesmo com a origem bloqueada: a escola inteira atras
+    // de um NAT nao pode ficar trancada porque alguem errou trinta vezes.
+    expect((await tentar(TOKEN.portaria, '10.0.0.1')).status).toBe(200)
 
     // Outra origem segue normal, inclusive acertando.
     expect((await tentar('token-inventado-numero-0-xxxxxxxx', '10.0.0.2')).status).toBe(401)
@@ -1959,7 +1960,283 @@ describe('tentativas de entrar tem teto', () => {
     for (let i = 0; i < 9; i++) {
       expect((await tentar(`token-inventado-numero-${i}-xxxxxxxx`, '10.0.0.3')).status).toBe(401)
     }
-    // 9 + 9 falhas com um acerto no meio: ainda nao bloqueou.
+    // 9 + 9 falhas, com um acerto no meio: longe do teto de trinta.
     expect((await tentar(TOKEN.portaria, '10.0.0.3')).status).toBe(200)
+  })
+})
+
+describe('JSON so em UTF-8 valido — byte invalido e 400, nunca U+FFFD guardado', () => {
+  const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+  beforeEach(async () => {
+    await reset()
+  })
+
+  /*
+    "avó" em Latin-1 (0xF3) dentro de um corpo que se diz UTF-8. O decodificador
+    padrao trocava por U+FFFD em silencio e o cadastro guardava "av�" — sem erro
+    para o backend, sem sinal para ninguem, por 90 dias na trilha.
+  */
+  const latin1 = (texto: string) => {
+    const bytes: number[] = []
+    for (const ch of texto) bytes.push(ch.codePointAt(0)! & 0xff)
+    return new Uint8Array(bytes)
+  }
+
+  it('/delegacoes recusa o corpo com 400 e nao grava nada', async () => {
+    const corpo = latin1(
+      JSON.stringify({
+        id: 'd-latin1',
+        alunoId: 'a01',
+        quemBusca: { nome: 'Helena', vinculo: 'avó' },
+        validoAte: new Date(Date.now() + 3600_000).toISOString(),
+        autorizadoPor: 'r1',
+      }),
+    )
+    const r = await pedir('/delegacoes', {
+      method: 'POST',
+      body: corpo,
+      token: null,
+      headers: { Authorization: `Bearer ${CHAVE}` },
+    })
+    expect(r.status).toBe(400)
+    const alunos = await (await pedir('/alunos')).json<{ id: string }[]>()
+    for (const a of alunos.slice(0, 3)) {
+      const podem = await (await pedir(`/responsaveis?alunoId=${a.id}`)).json<{ id: string }[]>()
+      expect(podem.some((p) => p.id.startsWith('delegacao:'))).toBe(false)
+    }
+  })
+
+  it('/cadastro e /entrar tambem recusam', async () => {
+    const cadastro = latin1(
+      JSON.stringify({ versao: 1, alunos: [{ id: 'x1', nome: 'José', turma: 'Pré 1' }] }),
+    )
+    const r = await pedir('/cadastro', {
+      method: 'PUT',
+      body: cadastro,
+      token: null,
+      headers: { Authorization: `Bearer ${CHAVE}` },
+    })
+    expect(r.status).toBe(400)
+    expect((await (await pedir('/alunos')).json<unknown[]>()).length).toBe(44)
+
+    const entrar = await pedir('/entrar', {
+      method: 'POST',
+      body: latin1(JSON.stringify({ token: 'demonstração-portaria-0000' })),
+      token: null,
+    })
+    expect(entrar.status).toBe(400)
+  })
+
+  it('UTF-8 de verdade continua passando, com acento e tudo', async () => {
+    const corpo = new TextEncoder().encode(
+      JSON.stringify({
+        versao: 1,
+        alunos: [{ id: 'x1', nome: 'José Antônio Araújo', turma: 'Pré 1' }],
+        responsaveis: [{ id: 'r1', nome: 'Conceição', vinculo: 'avó' }],
+        vinculos: [{ alunoId: 'x1', responsavelId: 'r1' }],
+      }),
+    )
+    const r = await pedir('/cadastro', {
+      method: 'PUT',
+      body: corpo,
+      token: null,
+      headers: { Authorization: `Bearer ${CHAVE}` },
+    })
+    expect(r.status).toBe(200)
+    const podem = await (await pedir('/responsaveis?alunoId=x1')).json<{ nome: string; vinculo: string }[]>()
+    expect(podem[0]).toMatchObject({ nome: 'Conceição', vinculo: 'avó' })
+  })
+})
+
+/* ---------- pente fino: rede e identidade ---------- */
+
+describe('pente fino — revogacao, /sair, oraculo, batimento, teto de mensagens, alarme', () => {
+  const CHAVE = 'chave-de-desenvolvimento-nao-use-em-producao'
+  beforeEach(async () => {
+    await reset()
+  })
+
+  async function impressaoHex(token: string): Promise<string> {
+    const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
+    return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  function fechou(ws: WebSocket, msLimite = 4000): Promise<{ code: number; reason: string } | null> {
+    return new Promise((resolve) => {
+      const parar = setTimeout(() => resolve(null), msLimite)
+      ws.addEventListener('close', (e: CloseEvent) => {
+        clearTimeout(parar)
+        resolve({ code: e.code, reason: e.reason })
+      })
+    })
+  }
+
+  it('revogar um aparelho derruba o WebSocket que JA estava aberto', async () => {
+    const emitido = await pedir('/dispositivos', {
+      method: 'POST',
+      token: null,
+      headers: { 'X-Chave-Admin': CHAVE, 'content-type': 'application/json' },
+      body: JSON.stringify({ papel: 'sala', turma: '8º ano', apelido: 'tablet perdido' }),
+    })
+    expect(emitido.status).toBe(200)
+    const { token } = await emitido.json<{ token: string }>()
+
+    const ws = await ligar(token)
+    await retratoInicial(ws)
+    const fim = fechou(ws)
+
+    const referencia = (await impressaoHex(token)).slice(0, 8)
+    const revogado = await pedir(`/dispositivos?referencia=${referencia}`, { method: 'DELETE' })
+    expect(revogado.status).toBe(200)
+    expect(await revogado.json()).toEqual({ revogado: true, conexoesDerrubadas: 1 })
+
+    const fechamento = await fim
+    expect(fechamento).not.toBeNull()
+    expect(fechamento!.code).toBe(1008)
+    expect(fechamento!.reason).toMatch(/revogado/)
+
+    // E nem reconectar: o handshake tambem recusa.
+    const deNovo = await portaria().fetch(
+      new Request('http://do/ws', {
+        headers: { Upgrade: 'websocket', Cookie: `janelinhas_dispositivo=${token}` },
+      }),
+    )
+    expect(deNovo.status).toBe(401)
+  })
+
+  it('a conexao aberta tambem cai na proxima mensagem se a revogacao vier por outro caminho', async () => {
+    const emitido = await pedir('/dispositivos', {
+      method: 'POST',
+      token: null,
+      headers: { 'X-Chave-Admin': CHAVE, 'content-type': 'application/json' },
+      body: JSON.stringify({ papel: 'sala', turma: '8º ano', apelido: 'outro' }),
+    })
+    const { token } = await emitido.json<{ token: string }>()
+    const ws = await ligar(token)
+    await retratoInicial(ws)
+
+    // Revoga direto no deposito, sem passar pela rota (que fecharia o socket).
+    await runInDurableObject(portaria(), async (instancia) => {
+      const deposito = (instancia as unknown as { deposito: { revogarDispositivo(i: string, em: number): boolean } }).deposito
+      deposito.revogarDispositivo(await impressaoHex(token), Date.now())
+    })
+
+    const fim = fechou(ws)
+    ws.send(JSON.stringify({ tipo: 'ping' }))
+    const fechamento = await fim
+    expect(fechamento?.code).toBe(1008)
+  })
+
+  it('/sair so por POST e so com cookie: um link de fora nao apaga o aparelho', async () => {
+    expect((await pedir('/sair', { method: 'GET', token: null })).status).toBe(405)
+    expect((await pedir('/sair', { method: 'GET' })).status).toBe(405)
+    const semCookie = await pedir('/sair', { method: 'POST', token: null })
+    expect(semCookie.status).toBe(401)
+    expect(semCookie.headers.get('Set-Cookie')).toBeNull()
+    const comCookie = await pedir('/sair', { method: 'POST' })
+    expect(comCookie.status).toBe(204)
+    expect(comCookie.headers.get('Set-Cookie')).toMatch(/janelinhas_dispositivo=/)
+  })
+
+  it('para a sala, crianca de outra turma e crianca inexistente recebem a MESMA resposta', async () => {
+    const alunos = await (await pedir('/alunos')).json<{ id: string; turma: string }[]>()
+    const doTerceiro = alunos.find((a) => a.turma === '3º ano')!
+    const sala = { token: TOKEN.sala('Pré 1') }
+    for (const rota of ['/alerta', '/responsaveis']) {
+      const outraTurma = await pedir(`${rota}?alunoId=${doTerceiro.id}`, sala)
+      const inexistente = await pedir(`${rota}?alunoId=nao-existe`, sala)
+      expect(outraTurma.status).toBe(404)
+      expect(inexistente.status).toBe(404)
+      expect(await outraTurma.text()).toBe(await inexistente.text())
+      // A portaria continua vendo a diferenca: ela pode.
+      expect((await pedir(`${rota}?alunoId=${doTerceiro.id}`)).status).toBe(200)
+    }
+  })
+
+  it('a recusa por outra turma nao entrega a turma da crianca alheia', async () => {
+    const alunos = await (await pedir('/alunos')).json<{ id: string; turma: string }[]>()
+    const doTerceiro = alunos.find((a) => a.turma === '3º ano')!
+    const portariaWs = await ligar(TOKEN.portaria)
+    const sala = await ligar(TOKEN.sala('Pré 1'))
+    await retratoInicial(portariaWs)
+    await retratoInicial(sala)
+    portariaWs.send(JSON.stringify({ tipo: 'chamar', alunoId: doTerceiro.id }))
+    await ateQue(portariaWs, (r) => r.chamadas.some((c) => c.alunoId === doTerceiro.id))
+
+    const recusa = new Promise<{ motivo: string }>((resolve) => {
+      sala.addEventListener('message', (e: MessageEvent) => {
+        const m = JSON.parse(String(e.data))
+        if (m.tipo === 'recusa') resolve(m)
+      })
+    })
+    sala.send(JSON.stringify({ tipo: 'liberar', alunoId: doTerceiro.id }))
+    const m = await recusa
+    expect(m.motivo).toMatch(/outra turma/)
+    expect(m.motivo).not.toContain('3º ano')
+    portariaWs.close()
+    sala.close()
+  })
+
+  it('ping recebe pong, e nao passa pelo Livro', async () => {
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    const pong = new Promise<string>((resolve) => {
+      ws.addEventListener('message', (e: MessageEvent) => {
+        const m = JSON.parse(String(e.data))
+        if (m.tipo === 'pong' || m.tipo === 'recusa') resolve(m.tipo)
+      })
+    })
+    ws.send(JSON.stringify({ tipo: 'ping' }))
+    expect(await pong).toBe('pong')
+    expect((await (await pedir('/registro')).json<unknown[]>()).length).toBe(0)
+    ws.close()
+  })
+
+  it('uma rajada acima do teto derruba a conexao', async () => {
+    const ws = await ligar(TOKEN.portaria)
+    await retratoInicial(ws)
+    const fim = fechou(ws)
+    for (let i = 0; i < 150; i++) ws.send(JSON.stringify({ tipo: 'ping' }))
+    const fechamento = await fim
+    expect(fechamento?.code).toBe(1008)
+    expect(fechamento?.reason).toMatch(/mensagens demais/)
+  })
+
+  it('alarm(): poda a trilha no disco E na memoria, e apaga a delegacao vencida', async () => {
+    const UM_DIA = 24 * 60 * 60 * 1000
+    const antigo = Date.now() - 100 * UM_DIA
+    type Interno = {
+      deposito: {
+        registrar(e: Record<string, unknown>): void
+        salvarDelegacao(d: Record<string, unknown>, em: number): void
+        contarTrilha(): number
+        contarDelegacoes(): number
+      }
+    }
+    await runInDurableObject(portaria(), async (instancia) => {
+      const { deposito } = instancia as unknown as Interno
+      deposito.registrar({
+        alunoId: 'a01', nome: 'Antiga', turma: 'Pré 1', acao: 'chamar', papel: 'portaria',
+        origem: 'portaria', de: 'aguardando', para: 'chamado', em: antigo, razao: '',
+        responsavelId: '', responsavelNome: '',
+      })
+      deposito.salvarDelegacao({
+        id: 'vencida', alunoId: 'a01', nome: 'Alguem', vinculo: '', telefone: '',
+        validoDe: antigo, validoAte: antigo + UM_DIA, autorizadoPor: 'r', autorizadoPorNome: 'R',
+      }, antigo)
+      expect(deposito.contarTrilha()).toBe(1)
+      expect(deposito.contarDelegacoes()).toBe(1)
+    })
+    // Reinicia para a memoria hidratar com o evento antigo.
+    await derrubarInstancia()
+    expect((await (await pedir('/registro')).json<{ em: number }[]>()).some((e) => e.em === antigo)).toBe(true)
+
+    await runInDurableObject(portaria(), async (instancia) => {
+      await (instancia as unknown as { alarm(): Promise<void> }).alarm()
+      const { deposito } = instancia as unknown as Interno
+      expect(deposito.contarTrilha()).toBe(0)
+      expect(deposito.contarDelegacoes()).toBe(0)
+    })
+    expect((await (await pedir('/registro')).json<{ em: number }[]>()).some((e) => e.em === antigo)).toBe(false)
   })
 })

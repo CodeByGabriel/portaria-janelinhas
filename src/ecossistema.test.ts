@@ -122,7 +122,7 @@ test('ids repetidos e vinculos para quem nao esta na lista sao erro', () => {
 
 test('o prefixo da delegacao e reservado: nenhum id do backend pode usa-lo', () => {
   const corpo = cadastroBom()
-  corpo.responsaveis.push({ id: idDeDelegacao('x'), nome: 'Impostor' })
+  corpo.responsaveis.push({ id: idDeDelegacao('x'), nome: 'Impostor', vinculo: 'tio', telefone: '' })
   const r = analisarCadastroExterno(corpo)
   assert.equal(r.ok, false)
   if (!r.ok) assert.match(r.erros[0].motivo, /id do responsavel invalido/)

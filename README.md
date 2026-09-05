@@ -226,9 +226,6 @@ Nada disto é bug — é escopo deliberadamente adiado, e cada item precisa da v
   artigo o tratamento se sustenta. `docs/lgpd.md` §1 e §4, os dois com `TODO(juridico)`.
   **São os dois únicos bloqueios que restam para dado real, e nenhum é código.**
 - **Foto da criança**, se a escola quiser: o espaço já está reservado no cartão e na linha.
-- **Limitador de tentativas no `/entrar`.** Com 32 bytes de entropia por token, força bruta é
-  inviável — mas o Durable Object é de fila única, então marteladas atrasam o resto. Risco de
-  disponibilidade, não de acesso.
 - **Nomes exatos das turmas.** A faixa Pré 1–9º ano veio da escola; os rótulos ainda não.
   Todo `conteudo/institucional/` do repo é `TODO(visita)`.
 - **Busca no servidor.** Hoje `/alunos` entrega o cadastro inteiro ao navegador e a busca
@@ -237,7 +234,7 @@ Nada disto é bug — é escopo deliberadamente adiado, e cada item precisa da v
 
 **Fechado desde então:** persistência (a trilha e o cadastro sobrevivem ao reinício, e o
 cadastro importado não volta mais para a semente); tetos de 1 MB, 200 conexões e 90 dias de
-retenção; **autenticação por aparelho**, com revogação imediata; **responsáveis
+retenção; **autenticação por aparelho**, com revogação imediata (inclusive da conexão já aberta) e teto de trinta falhas em quinze minutos por origem no `/entrar`; **responsáveis
 autorizados**, com a entrega registrando a quem; e a restrição de guarda, que virou barreira
 em vez de alerta.
 

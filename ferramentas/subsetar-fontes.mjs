@@ -78,7 +78,21 @@ const r = spawnSync(
     '-m',
     'fontTools.subset',
     alvo,
-    `--text=${DO_CABECALHO}`,
+    /*
+      Por INTERVALO, e nao mais pela amostra do cabecalho: o Fraunces passou a
+      desenhar tambem o titulo da porta e os titulos das caixas ("Quem esta
+      levando?", "Atencao: ha uma restricao registrada"), e a amostra nao
+      tinha 'z', 'Q', 'v' nem '?'. Latim basico + suplemento (acentos do
+      portugues) + a pontuacao tipografica que as telas usam.
+    */
+    '--unicodes=' +
+      [
+        'U+0020-007E', // latim basico: letras, numeros, pontuacao, '?'
+        'U+00AA,U+00BA', // ª e º (turmas: 1º ano...)
+        'U+00C0-00C3,U+00C7,U+00C9,U+00CA,U+00CD,U+00D3-00D5,U+00DA,U+00DC', // maiusculas acentuadas do portugues
+        'U+00E0-00E3,U+00E7,U+00E9,U+00EA,U+00ED,U+00F3-00F5,U+00FA,U+00FC', // minusculas acentuadas do portugues
+        'U+2013,U+2014,U+2018,U+2019,U+201C,U+201D,U+2026', // travessoes, aspas tipograficas, reticencias
+      ].join(','),
     '--flavor=woff2',
     `--output-file=${saida}`,
     // Sem layout de tabelas que o cabecalho nao usa: kern e ligadura padrao
@@ -97,8 +111,7 @@ if (r.status !== 0) {
 }
 
 const depois = statSync(saida).size
-const caracteres = new Set(DO_CABECALHO).size
 console.log(
   `fraunces: ${(antes / 1024).toFixed(1)} KB -> ${(depois / 1024).toFixed(1)} KB` +
-    ` (${caracteres} caracteres distintos, ${Math.round((1 - depois / antes) * 100)}% menor)`,
+    ` (latim basico + acentos do portugues, ${Math.round((1 - depois / antes) * 100)}% menor)`,
 )

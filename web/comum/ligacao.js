@@ -11,6 +11,19 @@
 
 const TETO_MS = 10000
 
+/*
+  Batimento.
+
+  Uma conexao meio-aberta — o wifi caiu sem ninguem fechar o socket — ficava
+  "conectado" na tela, com o quadro parado, por minutos: nem o navegador nem o
+  servidor percebem sozinhos. A tela pergunta a cada meio minuto; se em 75 s
+  nao chegar NADA (retrato, recusa ou a resposta do ping), a conexao e fechada
+  daqui e a reconexao normal assume. Setenta e cinco segundos e o pior caso de
+  quadro parado; antes, era ate o roteador desistir.
+*/
+const PING_MS = 30000
+const SILENCIO_MAXIMO_MS = 75000
+
 function esperaDaTentativa(tentativa) {
   if (tentativa < 0) return 500
   return Math.min(500 * 2 ** tentativa, TETO_MS)
@@ -29,19 +42,39 @@ export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
   let tentativa = 0
   let vivo = true
   let agendado = null
+  let batimento = null
+  let ultimaMensagem = 0
+
+  function pararBatimento() {
+    if (batimento) clearInterval(batimento)
+    batimento = null
+  }
 
   function abrir() {
     if (!vivo) return
 
     const protocolo = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${protocolo}://${location.host}/ws`)
+    const socket = new WebSocket(`${protocolo}://${location.host}/ws`)
+    ws = socket
 
-    ws.onopen = () => {
+    socket.onopen = () => {
       tentativa = 0
+      ultimaMensagem = Date.now()
       aoEstadoDaRede?.('ligado')
+      pararBatimento()
+      batimento = setInterval(() => {
+        if (socket.readyState !== WebSocket.OPEN) return
+        if (Date.now() - ultimaMensagem > SILENCIO_MAXIMO_MS) {
+          // Meio-aberta: fecha daqui, e o onclose reconecta.
+          socket.close()
+          return
+        }
+        socket.send('{"tipo":"ping"}')
+      }, PING_MS)
     }
 
-    ws.onmessage = (evento) => {
+    socket.onmessage = (evento) => {
+      ultimaMensagem = Date.now()
       let dado
       try {
         dado = JSON.parse(evento.data)
@@ -50,16 +83,18 @@ export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
       }
       if (dado.tipo === 'retrato') aoRetrato(dado)
       else if (dado.tipo === 'recusa') aoRecusa?.(dado)
+      // 'pong' so serve para o batimento, que ja contou a chegada acima.
     }
 
-    ws.onclose = () => {
+    socket.onclose = () => {
+      pararBatimento()
       aoEstadoDaRede?.('desligado')
       if (!vivo) return
       agendado = setTimeout(abrir, esperaDaTentativa(tentativa++))
     }
 
-    ws.onerror = () => {
-      if (ws && ws.readyState !== WebSocket.CLOSED) ws.close()
+    socket.onerror = () => {
+      if (socket.readyState !== WebSocket.CLOSED) socket.close()
     }
   }
 
@@ -76,6 +111,7 @@ export function ligar({ aoRetrato, aoRecusa, aoEstadoDaRede }) {
     fechar() {
       vivo = false
       if (agendado) clearTimeout(agendado)
+      pararBatimento()
       ws?.close()
     },
   }

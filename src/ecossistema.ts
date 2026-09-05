@@ -49,6 +49,12 @@ const UM_DIA = 24 * 60 * 60 * 1000
  */
 export const PREFIXO_DELEGACAO = 'delegacao:'
 export const idDeDelegacao = (id: string): string => PREFIXO_DELEGACAO + id
+/**
+ * O id da delegacao viaja como `responsavelId` no comando `entregar`, que tem
+ * teto de LIMITE_ID. Com o prefixo na frente, sobra isto — um id maior seria
+ * aceito na criacao e recusado na entrega, e a avo ficaria no portao.
+ */
+export const LIMITE_ID_DELEGACAO = LIMITE_ID - PREFIXO_DELEGACAO.length
 
 const MARCACAO = /[<>]/g
 
@@ -214,10 +220,10 @@ export function analisarCadastroExterno(corpo: unknown): CadastroAnalisado | Ana
     if (!ehObjeto(cru)) return c.anotar(linha, 'aluno precisa ser um objeto')
     const id = idValido(cru.id)
     const nome = texto(cru.nome, LIMITE_NOME_ALUNO)
-    const turma =
-      typeof cru.turma === 'string' && (TURMAS as readonly string[]).includes(cru.turma)
-        ? (cru.turma as Turma)
-        : null
+    // NFC antes de comparar: "Pré 1" com o acento decomposto (NFD) e a mesma
+    // turma, e um backend que normaliza diferente nao pode ser recusado por isso.
+    const turmaCrua = typeof cru.turma === 'string' ? cru.turma.normalize('NFC') : ''
+    const turma = (TURMAS as readonly string[]).includes(turmaCrua) ? (turmaCrua as Turma) : null
     const alerta = textoOpcional(cru.alerta, LIMITE_ALERTA)
     if (id === null) return c.anotar(linha, 'id do aluno invalido')
     if (nome === null) return c.anotar(linha, 'nome do aluno invalido')
@@ -381,8 +387,17 @@ export interface DelegacaoAnalisada {
   delegacao: Omit<Delegacao, 'autorizadoPorNome'>
 }
 
+/*
+  Data ISO 8601 COM fuso, obrigatoriamente.
+
+  `Date.parse('2026-09-05T18:00')` sem fuso e interpretado como hora local, e a
+  hora local do Worker e UTC: "valido ate as 18h" venceria as 15h de Brasilia,
+  com a avo no portao. Um `Z` ou um `-03:00` no fim tira a ambiguidade; sem
+  isso, a data e recusada e o backend descobre na hora, nao no portao.
+*/
+const COM_FUSO = /(?:Z|[+-]\d{2}:?\d{2})$/
 function instante(valor: unknown): number | null {
-  if (typeof valor !== 'string' || valor.length > 40) return null
+  if (typeof valor !== 'string' || valor.length > 40 || !COM_FUSO.test(valor)) return null
   const ms = Date.parse(valor)
   return Number.isFinite(ms) ? ms : null
 }
@@ -398,7 +413,8 @@ export function analisarDelegacaoExterna(
     return c.recusa()
   }
 
-  const id = idValido(corpo.id)
+  const idCru = idValido(corpo.id)
+  const id = idCru !== null && idCru.length <= LIMITE_ID_DELEGACAO ? idCru : null
   const alunoId = idValido(corpo.alunoId)
   const autorizadoPor = idValido(corpo.autorizadoPor)
   const quem = ehObjeto(corpo.quemBusca) ? corpo.quemBusca : null
@@ -408,15 +424,15 @@ export function analisarDelegacaoExterna(
   const validoDe = corpo.validoDe === undefined ? agora : instante(corpo.validoDe)
   const validoAte = instante(corpo.validoAte)
 
-  if (id === null) c.anotar(0, 'id invalido')
+  if (id === null) c.anotar(0, `id invalido (ate ${LIMITE_ID_DELEGACAO} caracteres)`)
   if (alunoId === null) c.anotar(0, 'alunoId invalido')
   if (autorizadoPor === null) c.anotar(0, 'autorizadoPor invalido')
   if (quem === null) c.anotar(0, 'quemBusca precisa ser um objeto')
   else if (nome === null) c.anotar(0, 'quemBusca.nome invalido')
   if (vinculo === null) c.anotar(0, 'quemBusca.vinculo longo demais')
   if (telefone === null) c.anotar(0, 'quemBusca.telefone longo demais')
-  if (validoDe === null) c.anotar(0, 'validoDe precisa ser data ISO 8601')
-  if (validoAte === null) c.anotar(0, 'validoAte precisa ser data ISO 8601')
+  if (validoDe === null) c.anotar(0, 'validoDe precisa ser data ISO 8601 com fuso (Z ou -03:00)')
+  if (validoAte === null) c.anotar(0, 'validoAte precisa ser data ISO 8601 com fuso (Z ou -03:00)')
   if (validoDe !== null && validoAte !== null) {
     if (validoAte <= agora) c.anotar(0, 'validoAte ja passou')
     if (validoAte <= validoDe) c.anotar(0, 'janela invertida: validoAte antes de validoDe')

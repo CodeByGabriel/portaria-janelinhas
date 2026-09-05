@@ -652,6 +652,11 @@ Object é de fila única, então marteladas no endpoint atrasam todo o resto. É
 disponibilidade, não de acesso, e o conserto certo é um limitador de verdade, não um
 contador improvisado.
 
+> ✅ **Fechado em 05/09/2026, junto com a Fase 3:** teto de trinta falhas em quinze minutos
+> por origem no `/entrar` (429 com `Retry-After`), só para o token errado — o certo passa
+> sempre, para uma escola inteira atrás de um NAT não ficar trancada. Ver
+> `docs/fase-3-interfaces.md` e `docs/pente-fino-2026-09-05.md`.
+
 ### Definição de pronto da Fase 2 — conferida
 
 | Critério | Estado |

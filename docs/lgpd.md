@@ -38,7 +38,7 @@ avaliação de aluno ou de funcionário a partir da trilha.
 
 ## 3. O que é coletado, exatamente
 
-Levantado de `src/deposito.ts:33-68`. Não há outro lugar onde o sistema grave dados.
+Levantado de `src/deposito.ts` (o esquema em `ESQUEMA`). Não há outro lugar onde o sistema grave dados. Atualizado em 05/09/2026 para a fase 2 (responsáveis, aparelhos) e a fase 3 (delegações, exportação da trilha).
 
 ### `cadastro` — quem pode ser chamado
 | Campo | Conteúdo | Origem |
@@ -122,7 +122,12 @@ guardar dado pessoal sem finalidade.
 `alunoId`, `nome`, `turma`, `estado`, `desde`, `em`. Some quando o ciclo fecha.
 
 ### `trilha` — o registro do que aconteceu
-`alunoId`, `nome`, `turma`, `acao`, `papel`, `origem`, `de`, `para`, `em`, `razao`.
+`seq`, `alunoId`, `nome`, `turma`, `acao`, `papel`, `origem`, `de`, `para`, `em`, `razao`,
+`responsavelId`, `responsavelNome`.
+
+`responsavelId`/`responsavelNome` só existem em `entregar`: **a quem** a criança foi entregue.
+Em entrega por autorização temporária, o id vem como `delegacao:<id>`. `seq` é o cursor da
+exportação (§6).
 
 **`razao` é a única coluna que descreve uma situação, e não uma transição** — por isso
 ela recebeu tratamento próprio. Ela só é preenchida na ação `retornar` (a criança foi
@@ -162,17 +167,30 @@ evento novo. A única remoção prevista é a poda por prazo (§5).
 é uma limitação real e precisa ser dita à escola: a trilha responde "a sala do 3º ano
 liberou", não "a professora Fulana liberou".
 
+### `delegacoes` — "hoje a avó busca" (fase 3)
+`id`, `alunoId`, `nome`, `vinculo`, `telefone`, `validoDe`, `validoAte`, `autorizadoPor`,
+`autorizadoPorNome`, `criadoEm`. É **dado pessoal de adulto** que não está no cadastro fixo,
+criado no portal de pais por um responsável titular e empurrado pelo backend
+(`POST /delegacoes`). Vale no máximo 7 dias; vencida, some da leitura na hora e do disco na
+poda diária; sai junto se a criança sair do cadastro ou se o titular perder o direito de
+levar. A sala vê nome e vínculo (nunca o telefone), a portaria vê tudo, e a trilha grava a
+entrega como `delegacao:<id>` + nome.
+
+### `dispositivos` — os aparelhos autorizados (2.2)
+`impressao` (SHA-256 do token; o token nunca é guardado), `papel`, `turma`, `apelido`,
+`criadoEm`, `revogadoEm`. Não identifica pessoa: identifica o tablet. Revogar escreve a data e
+não apaga a linha, para a escola saber que aquele aparelho existiu.
+
 ### O que o sistema NÃO coleta
-Nenhum dado do responsável que busca (nome, documento, foto, parentesco) — isso é
-Fase 2 e depende de decisão de base legal. Nenhuma geolocalização. Nenhuma imagem de
-câmera. Nenhum áudio. Nenhum dado de dispositivo além do necessário para a conexão.
-Não há `console.log` de nome de aluno em nenhum ponto do servidor (verificado em `src/`).
+Documento, foto ou endereço de responsável. Geolocalização. Imagem de câmera. Áudio.
+Endereço IP de aparelho — o único uso do IP é o teto de tentativas do `/entrar`, em memória
+do objeto, sem gravação. Não há `console.log` de nome de aluno em nenhum ponto do servidor
+(verificado em `src/`).
 
 ### Retratos
-Os rostos na tela são **ilustrações planas geradas do nome** (`web/comum/avatar.js`),
-determinísticas e não fotorrealistas. Nenhuma foto de aluno é armazenada, transmitida ou
-exibida. Se a escola quiser usar as fotos da matrícula, isso é **decisão nova, com base
-legal própria** — não uma configuração.
+O cartão reserva o espaço da foto e o deixa **vazio** (contorno tracejado). Nenhuma foto de
+aluno é armazenada, transmitida ou exibida. Se a escola quiser usar as fotos da matrícula,
+isso é **decisão nova, com base legal própria** — não uma configuração.
 
 ---
 
@@ -206,7 +224,9 @@ Enquanto não houver decisão: **semente fictícia declarada**, nunca dado real.
 
 ## 5. Retenção
 
-**Trilha: 90 dias**, podada diariamente por `alarm()` (`src/portaria.ts:21,81-82`).
+**Trilha: 90 dias**, podada diariamente por `alarm()` em `src/portaria.ts` — no disco **e** na
+memória do objeto, pelo mesmo corte. **Delegações:** somem da leitura ao vencer e do disco na
+mesma poda diária.
 
 Noventa dias cobrem um bimestre inteiro com folga — tempo de uma família contestar uma
 entrega e a escola conseguir responder — sem virar um arquivo permanente de quem buscou
@@ -224,9 +244,11 @@ planilha nova sem aquele aluno (`trocarCadastro` substitui o cadastro inteiro).
 
 **Chamadas:** minutos. Somem quando o ciclo fecha.
 
-> ⚠️ **Pendência:** a poda apaga sem exportar. Se a escola precisar guardar mais de 90
-> dias por alguma exigência própria, isso tem que ser exportação **antes** da poda, e não
-> existe ainda. `TODO(fase1)`
+> ✅ **Exportação antes da poda existe desde a fase 3.** `GET /trilha?apos=<seq>` entrega a
+> trilha por cursor ao backend, no formato `LogAuditoria` (`docs/fase-3-interfaces.md` §3.2).
+> Quem quiser guardar mais de 90 dias puxa antes da poda; o cursor torna qualquer atraso
+> recuperável enquanto os 90 dias não vencem. O que continua sendo decisão da escola é
+> **onde** isso fica guardado depois — e por quanto tempo.
 
 ---
 
@@ -246,8 +268,9 @@ planilha nova sem aquele aluno (`trocarCadastro` substitui o cadastro inteiro).
 
 | Quem | Alcance |
 |---|---|
-| Portaria | O cadastro **inteiro** e a trilha inteira, `razao` incluída |
-| Sala | Só as chamadas da **própria turma**, filtrado no servidor, na leitura e na escrita |
+| Portaria | O cadastro **inteiro** e a trilha inteira, `razao` incluída; os responsáveis e delegações de uma criança por vez, com telefone |
+| Sala | Só as chamadas da **própria turma**, filtrado no servidor, na leitura e na escrita; a restrição e os responsáveis (sem telefone) de uma criança da própria turma por vez — e para criança de outra turma a resposta é a mesma de criança inexistente |
+| Backend (chave de administração) | Substitui o cadastro (`PUT /cadastro`), cria e revoga delegações, e **lê a trilha inteira** por cursor (`GET /trilha`). É o operador do outro lado do contrato do §1 |
 | Qualquer um com o link | **Nada.** Sem aparelho autorizado, toda rota responde 401 |
 
 > ✅ **Fechado na 2.2.** O papel vinha da *query string* (`?papel=portaria`), o que nunca foi
@@ -255,7 +278,8 @@ planilha nova sem aquele aluno (`trocarCadastro` substitui o cadastro inteiro).
 > endereço via o cadastro inteiro. Agora a escola emite um **token por aparelho**, ele é
 > colado uma vez e vira um cookie `HttpOnly` + `SameSite=Strict` que o JavaScript da
 > página não alcança. Revogar tem efeito imediato — aparelho perdido às 15h não chama
-> criança às 15h05.
+> criança às 15h05 — **inclusive para a tela que já estava aberta**: a conexão é derrubada
+> na revogação e conferida de novo a cada comando.
 >
 > Emitir aparelho exige uma **chave de administração** que é segredo do Worker e não
 > existe em tela nenhuma: um tablet roubado da portaria não fabrica mais aparelhos. Ele
@@ -335,7 +359,7 @@ razoável. Isso precisa estar no contrato de operador, não só aqui. `TODO(juri
 4. Encarregado nomeado e contato publicado (§7)
 5. Aviso de privacidade específico, entregue às famílias
 6. Decisão sobre região do armazenamento (§6)
-7. Exportação antes da poda, se a escola precisar de mais de 90 dias (§5)
+7. ~~Exportação antes da poda~~ — **feito na fase 3** (`GET /trilha`); falta decidir onde o backend guarda (§5)
 8. Revisão jurídica das quatro razões de retorno (§3) — o domínio inteiro cabe numa
    tabela e pode ser lido antes de existir uma linha, que é exatamente o ponto
 

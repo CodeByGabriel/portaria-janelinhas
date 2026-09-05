@@ -159,24 +159,45 @@
       aoRecusa: (recusa) => mostrarAviso(`Recusado: ${recusa.motivo}`),
     })
 
+    /*
+      Duas recargas em paralelo — dois retratos seguidos com versões novas —
+      podiam terminar fora de ordem, e a lista ficar com a resposta mais
+      antiga. Só a última recarga pedida escreve.
+    */
+    let recargas = 0
     async function recarregarCadastro(mensagem) {
+      const minha = ++recargas
       try {
-        alunos = await fetch('/alunos').then((r) => r.json())
+        const lista = await fetch('/alunos').then((r) => r.json())
+        if (minha !== recargas) return
+        alunos = lista
         campo.value = ''
         campo.oninput()
         if (mensagem) mostrarAviso(mensagem)
       } catch {
-        mostrarAviso('A lista mudou e eu não consegui recarregar. Atualize a página.')
+        if (minha === recargas) {
+          mostrarAviso('A lista mudou e eu não consegui recarregar. Atualize a página.')
+        }
       }
     }
 
+    let apagarAviso = null
     function mostrarAviso(texto) {
       aviso.innerHTML = ''
       const p = document.createElement('p')
       p.className = 'aviso'
       p.textContent = texto
       aviso.append(p)
-      setTimeout(() => { aviso.innerHTML = '' }, 5000)
+      // O timer do aviso anterior apagava o novo cedo demais.
+      if (apagarAviso) clearTimeout(apagarAviso)
+      apagarAviso = setTimeout(() => { aviso.innerHTML = '' }, 5000)
+    }
+
+    /* Envia, e diz quando não deu: comando com a conexão fechada não some calado. */
+    function mandar(comando) {
+      const ok = conexao.enviar(comando)
+      if (!ok) mostrarAviso('Sem conexão com o servidor agora. Tente de novo em instantes.')
+      return ok
     }
 
     fetch('/alunos')
@@ -184,11 +205,12 @@
       .then((lista) => { alunos = lista })
       .catch(() => mostrarAviso('Não consegui carregar a lista de alunos.'))
 
+    /* O botão vai junto para quem trata o toque: é ele que se desabilita. */
     function botao(texto, classe, aoTocar) {
       const b = document.createElement('button')
       b.textContent = texto
       if (classe) b.className = classe
-      b.onclick = aoTocar
+      b.onclick = () => aoTocar(b)
       return b
     }
 
@@ -202,23 +224,45 @@
     function acaoPara(acao, c) {
       if (acao === 'cancelar') {
         return botao('Cancelar', '', () =>
-          conexao.enviar({ tipo: 'cancelar', alunoId: c.alunoId }))
+          mandar({ tipo: 'cancelar', alunoId: c.alunoId }))
       }
       if (acao === 'entregar') {
-        return botao('Entregar', 'principal', async () => {
+        return botao('Entregar', 'principal', async (b) => {
+          // Desabilitado enquanto pergunta: o toque duplo abria duas caixas.
+          b.disabled = true
           const escolha = await escolherResponsavel({ alunoId: c.alunoId, nome: c.nome })
-          if (!escolha) return
-          if (escolha.erro) {
-            mostrarAviso(escolha.erro)
+          if (!escolha || escolha.erro) {
+            if (escolha?.erro) mostrarAviso(escolha.erro)
+            b.disabled = false
             return
           }
-          conexao.enviar({
+          const mandou = mandar({
             tipo: 'entregar',
             alunoId: c.alunoId,
             responsavelId: escolha.responsavelId ?? undefined,
           })
+          if (!mandou) {
+            b.disabled = false
+            return
+          }
+          /*
+            Os irmãos chamados junto passam pela MESMA porta que o "Chamar" da
+            busca: se um deles tem restrição registrada, a caixa interrompe
+            antes de chamar. Chamar por atalho não pode ser o atalho que pula
+            o alerta.
+          */
           for (const irmaoId of escolha.tambem ?? []) {
-            conexao.enviar({ tipo: 'chamar', alunoId: irmaoId })
+            const irmao = alunos.find((a) => a.id === irmaoId)
+            if (irmao?.temAlerta) {
+              const seguir = await podeSeguir({
+                alunoId: irmaoId,
+                nome: irmao.nome,
+                papel: 'portaria',
+                acao: 'chamar para a saída',
+              })
+              if (!seguir) continue
+            }
+            mandar({ tipo: 'chamar', alunoId: irmaoId })
           }
         })
       }
@@ -227,9 +271,9 @@
         par.className = 'duasAcoes'
         par.append(
           botao('Encerrar', '', () =>
-            conexao.enviar({ tipo: 'encerrar', alunoId: c.alunoId })),
+            mandar({ tipo: 'encerrar', alunoId: c.alunoId })),
           botao('Chamar de novo', 'contorno', () =>
-            conexao.enviar({ tipo: 'chamar', alunoId: c.alunoId })),
+            mandar({ tipo: 'chamar', alunoId: c.alunoId })),
         )
         return par
       }
@@ -331,7 +375,9 @@
           li,
           jaSaindo
             ? etiquetaDe('já em saída')
-            : botao('Chamar', 'principal', async () => {
+            : botao('Chamar', 'principal', async (b) => {
+                // Desabilitado enquanto pergunta: o toque duplo abria duas caixas.
+                b.disabled = true
                 const aluno = alunos.find((a) => a.id === id)
                 const versaoAoTocar = versaoCadastro
                 const seguir = await podeSeguir({
@@ -340,13 +386,19 @@
                   papel: 'portaria',
                   acao: 'chamar para a saída',
                 })
-                if (!seguir) return
+                if (!seguir) {
+                  b.disabled = false
+                  return
+                }
                 if (versaoCadastro !== versaoAoTocar) {
                   mostrarAviso('A lista mudou enquanto você lia. Busque de novo.')
                   recarregarCadastro()
                   return
                 }
-                conexao.enviar({ tipo: 'chamar', alunoId: id })
+                if (!mandar({ tipo: 'chamar', alunoId: id })) {
+                  b.disabled = false
+                  return
+                }
                 campo.value = ''
                 campo.oninput()
               }),

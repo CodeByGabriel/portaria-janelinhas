@@ -96,8 +96,25 @@ function contarFora(linha: string, alvo: string): number {
   return n
 }
 
+/*
+  Virgula, ponto e virgula ou TAB — o que mais aparecer no cabecalho.
+
+  O TAB entrou porque e o que o Excel poe na area de transferencia quando a
+  secretaria seleciona as colunas e cola no campo da portaria, sem salvar CSV
+  nenhum. Recusar isso com "precisa das colunas Nome e Turma" era mentir sobre
+  o motivo.
+*/
 export function separadorDo(cabecalho: string): string {
-  return contarFora(cabecalho, ';') > contarFora(cabecalho, ',') ? ';' : ','
+  let melhor = ','
+  let maior = -1
+  for (const s of [';', ',', '\t']) {
+    const n = contarFora(cabecalho, s)
+    if (n > maior) {
+      maior = n
+      melhor = s
+    }
+  }
+  return melhor
 }
 
 /** Quebra o CSV inteiro em linhas de campos, respeitando aspas. */
@@ -192,7 +209,8 @@ export function analisar(csv: string): Resultado {
   const alunos: Aluno[] = []
   const alertas: { id: string; texto: string }[] = []
   const erros: Erro[] = []
-  const vistos = new Set<string>()
+  /* Por id: a chave (nome normalizado + turma) e a linha, para explicar a repeticao. */
+  const vistos = new Map<string, { chave: string; linha: number }>()
   let duplicados = 0
 
   const primeiraLinha = csv.split(/\r?\n/, 1)[0] ?? ''
@@ -258,14 +276,37 @@ export function analisar(csv: string): Resultado {
       continue
     }
 
-    // Duplicado e mesmo nome NA MESMA TURMA. Dois homonimos em turmas
-    // diferentes sao duas criancas, e fundi-los seria pior que qualquer erro.
+    /*
+      Duplicado e mesmo nome NA MESMA TURMA. Dois homonimos em turmas
+      diferentes sao duas criancas, e fundi-los seria pior que qualquer erro.
+
+      A linha repetida VOLTA como erro, com o numero: antes ela so virava um
+      "+1 duplicado" sem dizer qual, e duas criancas diferentes com o mesmo nome
+      na mesma turma sumiam uma dentro da outra sem ninguem saber onde olhar.
+
+      E o id e um hash de 32 bits: dois nomes DIFERENTES podem cair no mesmo.
+      Improvavel numa escola; grave demais — uma crianca engolida pela outra —
+      para ficar sem conferencia. Colisao vira erro nomeado.
+    */
     const id = idDe(nome, turma)
-    if (vistos.has(id)) {
-      duplicados++
+    const chave = `${normalizar(nome)}|${turma}`
+    const anterior = vistos.get(id)
+    if (anterior !== undefined) {
+      if (anterior.chave === chave) {
+        duplicados++
+        erros.push({
+          linha: i + 1,
+          motivo: `repete a linha ${anterior.linha} (mesmo nome, mesma turma); se sao duas criancas, acrescente um sobrenome`,
+        })
+      } else {
+        erros.push({
+          linha: i + 1,
+          motivo: `colisao de identificador com a linha ${anterior.linha}; renomeie uma das duas (acrescente um sobrenome)`,
+        })
+      }
       continue
     }
-    vistos.add(id)
+    vistos.set(id, { chave, linha: i + 1 })
 
     /*
       A restricao passa pelo mesmo filtro e pelo mesmo teto do nome.

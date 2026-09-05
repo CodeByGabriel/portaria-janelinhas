@@ -132,6 +132,17 @@
     const botaoMudo = document.getElementById('mudo')
     const rede = document.getElementById('rede')
     const grade = document.getElementById('grade')
+
+    /*
+      Envia, e diz na tela quando não deu. Antes, um toque com o WebSocket
+      fechado era descartado em silêncio: a professora tocava em "Liberar",
+      nada acontecia, e ela concluía que o sistema tinha ignorado.
+    */
+    function mandar(comando) {
+      const ok = conexao.enviar(comando)
+      if (!ok) rede.textContent = 'sem conexão agora — tente de novo'
+      return ok
+    }
     const faixa = document.getElementById('faixa')
     const vazio = document.getElementById('vazio')
     const contagem = document.getElementById('contagem')
@@ -237,14 +248,22 @@
       opcoes.setAttribute('role', 'radiogroup')
       opcoes.setAttribute('aria-labelledby', pergunta.id)
 
-      for (const [i, [codigo, rotulo]] of ROTULO_RAZAO.entries()) {
+      for (const [codigo, rotulo] of ROTULO_RAZAO) {
         const opcao = document.createElement('label')
         opcao.className = 'opcao'
         const marca = document.createElement('input')
         marca.type = 'radio'
         marca.name = grupo
         marca.value = codigo
-        marca.checked = i === 0
+        /*
+          Nenhuma vem marcada. A razão entra na trilha para sempre, e uma razão
+          "padrão" seria o sistema respondendo por quem não escolheu — o
+          registro diria "esqueceu material" para toda professora que só tocou
+          em confirmar. Sem escolha, o confirmar fica desabilitado.
+        */
+        marca.onchange = () => {
+          confirmar.disabled = false
+        }
         opcao.append(marca, document.createTextNode(rotulo))
         opcoes.append(opcao)
       }
@@ -255,9 +274,11 @@
       const confirmar = document.createElement('button')
       confirmar.className = 'principal'
       confirmar.textContent = 'Confirmar: voltou para a sala'
+      confirmar.disabled = true
       confirmar.onclick = () => {
         const marcada = opcoes.querySelector('input:checked')
-        aoConfirmar(marcada ? marcada.value : ROTULO_RAZAO[0][0])
+        if (!marcada) return
+        aoConfirmar(marcada.value)
         volta.hidden = true
         abrir.hidden = false
       }
@@ -285,6 +306,11 @@
       abrir.onclick = () => {
         abrir.hidden = true
         volta.hidden = false
+        // Toda abertura começa sem escolha. E o foco vai para a pergunta, não
+        // para o corpo da página: o botão que acabou de ser tocado sumiu.
+        for (const marca of opcoes.querySelectorAll('input')) marca.checked = false
+        confirmar.disabled = true
+        opcoes.querySelector('input')?.focus()
       }
 
       return { volta, abrir }
@@ -322,6 +348,13 @@
           botao.className = 'principal'
           botao.textContent = 'Liberar saída'
           botao.onclick = async () => {
+            /*
+              Desabilita ENQUANTO pergunta. Um toque duplo — comum num tablet
+              — abria duas caixas de restrição e mandava dois "liberar"; o
+              segundo voltava como recusa na tela da professora. O próximo
+              retrato reabilita conforme o estado.
+            */
+            botao.disabled = true
             const seguir = await podeSeguir({
               alunoId: chamada.alunoId,
               nome: chamada.nome,
@@ -329,12 +362,13 @@
               turma,
               acao: 'liberar a saída',
             })
-            if (seguir) conexao.enviar({ tipo: 'liberar', alunoId: chamada.alunoId })
+            const mandou = seguir && mandar({ tipo: 'liberar', alunoId: chamada.alunoId })
+            if (!mandou) botao.disabled = false
           }
           cartao.acrescentar(botao)
 
           const { volta, abrir } = montarRazoes((razao) =>
-            conexao.enviar({ tipo: 'retornar', alunoId: chamada.alunoId, razao }),
+            mandar({ tipo: 'retornar', alunoId: chamada.alunoId, razao }),
           )
           cartao.acrescentar(abrir)
           cartao.acrescentar(volta)
@@ -365,6 +399,20 @@
         const podeVoltar = chamada.estado === 'liberado'
         cartao.__abrir.hidden = !podeVoltar || !cartao.__volta.hidden
         if (!podeVoltar) cartao.__volta.hidden = true
+      }
+
+      /*
+        A ordem é por `desde`, e vale sempre — não só na criação. "Chamar de
+        novo" reinicia o `desde`, e a criança que voltou do retorno precisa
+        descer para o fim da fila, como a portaria já faz. Só move quem está
+        fora do lugar: o cartão sob o dedo continua sendo o mesmo nó.
+      */
+      let anterior = null
+      for (const chamada of ativas) {
+        const no = cartoes.get(chamada.alunoId)
+        const esperado = anterior === null ? grade.firstChild : anterior.nextSibling
+        if (no !== esperado) grade.insertBefore(no, esperado)
+        anterior = no
       }
 
       const aguardando = ativas.filter((c) => c.estado === 'chamado').length

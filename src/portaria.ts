@@ -32,7 +32,22 @@ interface Conexao {
   ws: WebSocket
   papel: Papel
   turma?: Turma
+  /** A impressao do aparelho, para a revogacao alcancar a conexao ja aberta. */
+  impressao: string
+  /** Janela corrente do teto de mensagens. */
+  mensagens: { desde: number; n: number }
 }
+
+/*
+  Teto de mensagens por conexao.
+
+  Uma aba em laco, ou um aparelho autorizado mal-intencionado, mandava comandos
+  na velocidade da rede e o Durable Object — que e de fila unica — atrasava a
+  escola inteira. Cento e vinte em dez segundos e dez vezes o que um dedo
+  consegue; acima disso a conexao cai e a tela reconecta sozinha.
+*/
+const TETO_MENSAGENS = 120
+const JANELA_MENSAGENS = 10_000
 
 /** Corpo maximo aceito numa importacao. 292 alunos cabem em ~15 KB. */
 const LIMITE_CORPO = 1_000_000
@@ -51,14 +66,15 @@ const PAGINA_MAXIMA = 1000
   Tentativas de entrar, por origem.
 
   `/entrar` e a unica rota que aceita o token cru, e nao tinha teto: um script
-  varria tokens na velocidade da rede. Dez falhas em quinze minutos e a origem
-  espera. E memoria do objeto — um reinicio zera — e isso basta: o espaco de
-  tokens tem 256 bits, e o que o teto compra e tempo e ruido no log, nao
-  impossibilidade matematica. O que ele NAO pode fazer e trancar a escola: uma
-  origem que acerta volta a zero na hora.
+  varria tokens na velocidade da rede. Trinta falhas em quinze minutos e a
+  origem espera — para o token ERRADO. O token certo passa sempre: o espaco de
+  tokens tem 256 bits, entao quem acerta e quem tem o token, e a escola inteira
+  atras de um NAT (uma origem so) nao pode ficar trancada porque alguem errou
+  trinta vezes. O que o teto compra e tempo e ruido no log, nao impossibilidade
+  matematica. E memoria do objeto — um reinicio zera — e isso basta.
 */
 const JANELA_DE_TENTATIVAS = 15 * 60 * 1000
-const MAXIMO_DE_FALHAS = 10
+const MAXIMO_DE_FALHAS = 30
 const MAXIMO_DE_ORIGENS = 10_000
 
 /** Quantos dias a trilha guarda antes da poda diaria. */
@@ -165,7 +181,11 @@ export class Portaria {
    * duas vezes da no mesmo.
    */
   async alarm(): Promise<void> {
-    this.deposito.podar(Date.now() - DIAS_DE_RETENCAO * UM_DIA)
+    const corte = Date.now() - DIAS_DE_RETENCAO * UM_DIA
+    this.deposito.podar(corte)
+    // ...e da memoria, pelo mesmo corte: /registro nao pode servir o que o
+    // disco ja nao tem.
+    this.livro.podarTrilha(corte)
     // Delegacao vencida ja nao contava na leitura; aqui ela sai do disco.
     this.deposito.podarDelegacoes(Date.now())
     this.livro.substituirDelegacoes(this.deposito.listarDelegacoes())
@@ -234,20 +254,12 @@ export class Portaria {
     }
 
     const origem = origemDe(pedido)
-    const espera = this.esperaDe(origem)
-    if (espera > 0) {
-      await descartar(pedido)
-      return new Response('tentativas demais; aguarde', {
-        status: 429,
-        headers: { 'Retry-After': String(Math.ceil(espera / 1000)) },
-      })
-    }
 
     let token = ''
     try {
       const bytes = await pedido.arrayBuffer()
       if (bytes.byteLength > 4096) return new Response('token longo demais', { status: 413 })
-      const corpo: unknown = JSON.parse(new TextDecoder().decode(bytes))
+      const corpo: unknown = lerJson(bytes)
       if (typeof corpo === 'object' && corpo !== null && 'token' in corpo) {
         const bruto = (corpo as { token: unknown }).token
         if (typeof bruto === 'string') token = bruto.trim()
@@ -256,13 +268,25 @@ export class Portaria {
       return new Response('corpo invalido', { status: 400 })
     }
 
-    if (token.length < 16 || token.length > 128) {
-      this.anotarFalha(origem)
-      return new Response('token nao reconhecido', { status: 401 })
-    }
+    const quem =
+      token.length < 16 || token.length > 128
+        ? null
+        : sessaoDe(this.deposito.dispositivoPor(await impressaoDe(token)))
 
-    const quem = sessaoDe(this.deposito.dispositivoPor(await impressaoDe(token)))
     if (!quem) {
+      /*
+        O teto vale para o token ERRADO, e so para ele: a origem que ja errou
+        demais recebe 429 em vez de 401, e nada mais. O token certo e conferido
+        antes de olhar o balde, entao um tablet legitimo atras do mesmo NAT de
+        quem esta martelando continua entrando.
+      */
+      const espera = this.esperaDe(origem)
+      if (espera > 0) {
+        return new Response('tentativas demais; aguarde', {
+          status: 429,
+          headers: { 'Retry-After': String(Math.ceil(espera / 1000)) },
+        })
+      }
       this.anotarFalha(origem)
       return new Response('token nao reconhecido', { status: 401 })
     }
@@ -305,7 +329,7 @@ export class Portaria {
       let turma: string | undefined
       let apelido = ''
       try {
-        const corpo = (await pedido.json()) as Record<string, unknown>
+        const corpo = lerJson(await pedido.arrayBuffer()) as Record<string, unknown>
         papel = String(corpo.papel ?? '')
         apelido = String(corpo.apelido ?? '').replace(/[<>]/g, '').slice(0, 60)
         if (corpo.turma !== undefined && corpo.turma !== null) turma = String(corpo.turma)
@@ -366,7 +390,9 @@ export class Portaria {
       if (!alvo) return new Response('aparelho desconhecido', { status: 404 })
 
       const revogou = this.deposito.revogarDispositivo(alvo.impressao, Date.now())
-      return Response.json({ revogado: revogou })
+      // Revogar vale AGORA, inclusive para a tela que ja estava aberta.
+      const derrubadas = this.derrubarConexoesDe(alvo.impressao)
+      return Response.json({ revogado: revogou, conexoesDerrubadas: derrubadas })
     }
 
     await descartar(pedido)
@@ -472,7 +498,7 @@ export class Portaria {
           },
         ])
       }
-      corpo = JSON.parse(new TextDecoder().decode(bytes))
+      corpo = lerJson(bytes)
     } catch {
       return recusar(400, [{ linha: 0, motivo: 'corpo nao e JSON valido' }])
     }
@@ -593,7 +619,7 @@ export class Portaria {
           { status: 413 },
         )
       }
-      corpo = JSON.parse(new TextDecoder().decode(bytes))
+      corpo = lerJson(bytes)
     } catch {
       return Response.json(
         { erros: [{ linha: 0, motivo: 'corpo nao e JSON valido' }], errosTotal: 1 },
@@ -644,6 +670,22 @@ export class Portaria {
   }
 
   async fetch(pedido: Request): Promise<Response> {
+    const resposta = await this.responder(pedido)
+    /*
+      Corpo que ninguem leu e lido AQUI, antes de a resposta sair.
+
+      O runtime reclama — "Can't read from request stream after response has
+      been sent", como excecao nao tratada no log — toda vez que uma resposta
+      sai com o corpo do pedido por consumir. Acontecia em todo retorno
+      antecipado com corpo (405, 403, 401, 429) e em toda rota que ignora o
+      corpo (um POST em /alunos). Cancelar o fluxo NAO resolve; so ler resolve.
+      Um lugar so, para nenhuma rota nova precisar lembrar disto.
+    */
+    if (pedido.body && !pedido.bodyUsed) await descartar(pedido)
+    return resposta
+  }
+
+  private async responder(pedido: Request): Promise<Response> {
     const url = new URL(pedido.url)
 
     /*
@@ -652,6 +694,17 @@ export class Portaria {
     */
     if (url.pathname === '/entrar') return this.entrar(pedido)
     if (url.pathname === '/sair') {
+      /*
+        So POST, e so quem tem cookie. Como GET aberto, um link colado num
+        grupo — ou uma imagem <img src="/sair"> em qualquer pagina — apagava o
+        cookie do tablet: a professora abria a tela e encontrava a porta pedindo
+        codigo, no meio da saida. O cookie e SameSite=Strict, entao um POST de
+        outro site chega sem ele e recebe 401 sem Set-Cookie nenhum.
+      */
+      if (pedido.method !== 'POST') return new Response('use POST', { status: 405 })
+      if (!cookieDo(pedido, NOME_DO_COOKIE)) {
+        return new Response('nenhum aparelho para sair', { status: 401 })
+      }
       return new Response(null, {
         status: 204,
         headers: { 'Set-Cookie': cookieApagado(ehSeguro(pedido)) },
@@ -710,14 +763,11 @@ export class Portaria {
     const papel: Papel = quem.papel
 
     /*
-      Estas rotas devolvem dado de crianca. Nao ha autenticacao na vitrine
-      (esta fora de escopo pelo spec), mas o filtro por papel nao esta fora
-      de escopo — o spec o chama de decisao de privacidade central. Exigir o
-      papel nao e seguranca de verdade; e o minimo que impede um link colado
-      num grupo, um crawler ou um preview bot de baixar o cadastro inteiro
-      pela URL publica do ngrok.
-
-      TODO(fase2): autenticacao de verdade antes de qualquer dado real.
+      Estas rotas devolvem dado de crianca, e so a um aparelho autorizado: a
+      identidade veio do cookie e da tabela de dispositivos, conferida acima
+      (2.2). O filtro por papel continua por cima disso — a portaria busca no
+      cadastro inteiro; a sala nunca recebe a lista, so a propria turma pelo
+      retrato.
     */
     if (url.pathname === '/alunos') {
       if (papel !== 'portaria') return new Response('so a portaria busca alunos', { status: 403 })
@@ -743,19 +793,14 @@ export class Portaria {
         return new Response('alunoId invalido', { status: 400 })
       }
 
-      const aluno = this.livro.alunos().find((a) => a.id === alunoId)
-      if (!aluno) return new Response('aluno desconhecido', { status: 404 })
-
       /*
-        A turma vem da SESSAO, nao da URL.
-
-        Enquanto ela vinha do parametro, a propria sala escolhia qual turma
-        dizer que era — e o filtro so impedia quem escrevesse o parametro
-        errado. Agora ela vem do aparelho, que a escola emitiu.
+        A turma vem da SESSAO, nao da URL — e a regra de quem ve o que mora no
+        Livro. Para a sala, "nao existe" e "e de outra turma" recebem a MESMA
+        resposta: responder 403 num caso e 404 no outro era um oraculo de
+        matricula por id.
       */
-      if (quem.papel === 'sala' && aluno.turma !== quem.turma) {
-        return new Response('a sala so le alerta da propria turma', { status: 403 })
-      }
+      const aluno = this.livro.alunoVisivelPara(quem.papel, quem.turma, alunoId)
+      if (!aluno) return new Response('aluno desconhecido', { status: 404 })
 
       return Response.json({ alunoId, texto: this.deposito.alertaDe(alunoId) })
     }
@@ -781,11 +826,9 @@ export class Portaria {
       if (alunoId.length === 0 || alunoId.length > 64) {
         return new Response('alunoId invalido', { status: 400 })
       }
-      const aluno = this.livro.alunos().find((a) => a.id === alunoId)
+      // Mesma regra, mesma resposta unica para a sala: ver /alerta.
+      const aluno = this.livro.alunoVisivelPara(quem.papel, quem.turma, alunoId)
       if (!aluno) return new Response('aluno desconhecido', { status: 404 })
-      if (quem.papel === 'sala' && aluno.turma !== quem.turma) {
-        return new Response('a sala so le a propria turma', { status: 403 })
-      }
       /*
         O TELEFONE so vai para a portaria.
 
@@ -839,7 +882,12 @@ export class Portaria {
         return new Response('so a portaria importa', { status: 403 })
       }
 
-      const bytes = await pedido.arrayBuffer()
+      let bytes: ArrayBuffer
+      try {
+        bytes = await pedido.arrayBuffer()
+      } catch {
+        return new Response('nao consegui ler a planilha enviada', { status: 400 })
+      }
       if (bytes.byteLength > LIMITE_CORPO) {
         return Response.json(
           {
@@ -1036,20 +1084,67 @@ export class Portaria {
       return new Response('conexoes demais neste momento', { status: 503 })
     }
 
+    // A impressao fica na conexao: e por ela que a revogacao alcanca o socket
+    // que ja estava aberto quando o aparelho foi revogado.
+    const impressao = await impressaoDe(cookieDo(pedido, NOME_DO_COOKIE) ?? '')
+
     const par = new WebSocketPair()
     const cliente = par[0]
     const servidor = par[1]
     servidor.accept()
 
-    const sessao: Conexao = { ws: servidor, papel: quem.papel, turma: quem.turma }
+    const sessao: Conexao = {
+      ws: servidor,
+      papel: quem.papel,
+      turma: quem.turma,
+      impressao,
+      mensagens: { desde: Date.now(), n: 0 },
+    }
     this.sessoes.add(sessao)
 
     servidor.addEventListener('message', (evento: MessageEvent) => {
+      /*
+        Revogado nao age — nem se ja estava conectado.
+
+        A identidade era conferida uma vez, no aperto de mao, e congelada na
+        sessao. Um tablet perdido as 15h, revogado as 15h02, continuava com a
+        tela aberta recebendo cada crianca da turma e liberando saida ate a
+        conexao cair sozinha — e a tela da sala fica aberta o turno inteiro,
+        reconectando por conta propria. A revogacao ja fecha a conexao na hora
+        (derrubarConexoesDe); esta conferencia, sincrona e barata, e a segunda
+        tranca, para o caminho que fechar nao alcancou.
+      */
+      if (!sessaoDe(this.deposito.dispositivoPor(sessao.impressao))) {
+        this.sessoes.delete(sessao)
+        servidor.close(1008, 'aparelho revogado')
+        return
+      }
+
+      const agora = Date.now()
+      if (agora - sessao.mensagens.desde > JANELA_MENSAGENS) {
+        sessao.mensagens = { desde: agora, n: 0 }
+      }
+      if (++sessao.mensagens.n > TETO_MENSAGENS) {
+        this.sessoes.delete(sessao)
+        servidor.close(1008, 'mensagens demais')
+        return
+      }
+
       let alunoId = ''
       try {
         const cru: unknown = JSON.parse(String(evento.data))
         if (typeof cru !== 'object' || cru === null || Array.isArray(cru)) {
           throw new Error('comando precisa ser um objeto')
+        }
+        /*
+          Batimento. Uma conexao meio-aberta — wifi que caiu sem fechar o
+          socket — ficava "conectado" na tela com o quadro parado. A tela
+          pergunta de tempos em tempos; a resposta e a prova de que a linha
+          esta viva. Nao passa pelo Livro: nao e comando.
+        */
+        if ((cru as { tipo?: unknown }).tipo === 'ping') {
+          servidor.send('{"tipo":"pong"}')
+          return
         }
         const comando = cru as Partial<Comando>
         if (!ehAcao(comando.tipo)) throw new Error('acao desconhecida')
@@ -1098,7 +1193,20 @@ export class Portaria {
         // Write-through: o Livro decide, o disco registra em seguida. Uma
         // transicao que nao chega ao disco e uma transicao que o proximo
         // reinicio nega ter acontecido.
-        this.persistir(transicao)
+        try {
+          this.persistir(transicao)
+        } catch {
+          /*
+            O Livro ja mudou e o disco nao. Deixar assim faria a recusa mentir
+            (a transicao "recusada" estaria valendo na memoria) e a memoria
+            divergir do disco ate o proximo reinicio. Entao a memoria volta a
+            ser o que o disco diz — o disco e a verdade — e quem mandou ouve
+            que nao gravou e pode tentar de novo.
+          */
+          this.livro = new Livro(this.deposito.carregar())
+          this.transmitir()
+          throw new Error('nao consegui gravar a transicao; tente de novo')
+        }
         this.transmitir()
       } catch (erro) {
         servidor.send(JSON.stringify({ tipo: 'recusa', alunoId, motivo: motivoDe(erro) }))
@@ -1114,6 +1222,22 @@ export class Portaria {
     servidor.send(JSON.stringify(this.livro.retratoPara(papel, turma, Date.now())))
 
     return new Response(null, { status: 101, webSocket: cliente })
+  }
+
+  /** Fecha toda conexao viva daquele aparelho. Revogar precisa valer AGORA. */
+  private derrubarConexoesDe(impressao: string): number {
+    let derrubadas = 0
+    for (const sessao of [...this.sessoes]) {
+      if (sessao.impressao !== impressao) continue
+      this.sessoes.delete(sessao)
+      try {
+        sessao.ws.close(1008, 'aparelho revogado')
+      } catch {
+        // ja fechada: o objetivo esta cumprido
+      }
+      derrubadas++
+    }
+    return derrubadas
   }
 
   private transmitir(): void {
@@ -1135,6 +1259,20 @@ export class Portaria {
  * o cliente ja apareceu como "Cannot read properties of null" na tela da
  * professora — texto que nao ajuda ninguem e conta como o servidor e por dentro.
  */
+/*
+  JSON so em UTF-8 VALIDO.
+
+  O decodificador padrao troca byte invalido por U+FFFD em silencio — e foi
+  assim que um "avó" mandado em Latin-1 virou "av�" dentro de uma delegacao,
+  sem erro para ninguem. Um corpo que nao e UTF-8 nao e o que o backend mandou:
+  melhor 400 agora do que um nome corrompido na trilha por 90 dias. Quem chama
+  ja esta dentro de um try que responde 400 a qualquer excecao daqui.
+*/
+const UTF8_ESTRITO = new TextDecoder('utf-8', { fatal: true })
+function lerJson(bytes: ArrayBuffer): unknown {
+  return JSON.parse(UTF8_ESTRITO.decode(bytes))
+}
+
 /**
  * De onde veio o pedido, para o teto de tentativas. `CF-Connecting-IP` e o que
  * a Cloudflare poe; fora dela (wrangler dev, testes) tudo cai num balde so —
@@ -1152,10 +1290,21 @@ function inteiroDe(bruto: string | null, padrao: number, minimo: number, maximo:
   return n >= minimo && n <= maximo ? n : null
 }
 
-/** Consome e joga fora o corpo, para nao deixar fluxo aberto ao responder cedo. */
+/**
+ * Consome e joga fora o corpo, para nao deixar fluxo aberto ao responder cedo.
+ *
+ * LE ate o fim, pedaco a pedaco, e descarta. A versao anterior chamava
+ * `body.cancel()`, e o runtime continuava reclamando de fluxo nao lido depois
+ * da resposta — cancelar nao conta como consumir. Ler pedaco a pedaco mantem a
+ * memoria constante mesmo num corpo grande.
+ */
 async function descartar(pedido: Request): Promise<void> {
   try {
-    await pedido.body?.cancel()
+    if (!pedido.body || pedido.bodyUsed) return
+    const leitor = pedido.body.getReader()
+    while (!(await leitor.read()).done) {
+      // pedaco lido e descartado
+    }
   } catch {
     // corpo ja consumido ou inexistente: nada a fazer
   }
@@ -1186,6 +1335,9 @@ function motivoDe(erro: unknown): string {
       'vencid',
       'invertida',
       'quem autoriza',
+      'ja usado',
+      // Disco falhou depois de o Livro decidir: a memoria voltou ao disco.
+      'nao consegui gravar',
     ].join('|'),
   )
   if (erro instanceof AcaoNaoPermitida) return erro.message.slice(0, 120)

@@ -1431,7 +1431,13 @@ async function principal() {
   const linhas = ['Nome,Turma,Restrição']
   for (const a of paraDevolver) {
     const restricao = a.nome === CRIANCA_COM_RESTRICAO ? RESTRICAO_DA_SEMENTE : ''
-    linhas.push([a.nome, a.turma, restricao].join(','))
+    // Campo com virgula ou aspas vai entre aspas: a restricao da semente tem
+    // virgula, e sem isto ela chegava truncada no servidor.
+    const campo = (v) =>
+      v.includes(',') || v.includes('"') || v.includes(String.fromCharCode(10))
+        ? '"' + v.replace(/"/g, '""') + '"'
+        : v
+    linhas.push([a.nome, a.turma, restricao].map(campo).join(','))
   }
   const devolvido = await fetch(BASE + '/importar', { ...comoAparelho(TOKEN.portaria),
     method: 'POST',

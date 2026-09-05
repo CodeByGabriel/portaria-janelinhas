@@ -173,6 +173,9 @@ export async function escolherResponsavel({ alunoId, nome }) {
           confirmar.onclick = () =>
             fechar({ responsavelId: r.id, tambem: [...selecionados] })
           irmaos.append(confirmar)
+          // O botao que acabou de ser tocado sumiu com a lista; o foco vai
+          // para a primeira pergunta nova, e nao fica preso num elemento oculto.
+          irmaos.querySelector('input')?.focus()
         }
       }
 

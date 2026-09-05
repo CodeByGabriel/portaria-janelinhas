@@ -160,6 +160,8 @@ export function analisarResponsaveis(
 
   /* Indice por nome normalizado + turma: e assim que a secretaria escreve. */
   const porNomeETurma = new Map<string, string>()
+  /* Para pegar colisao de hash entre nomes diferentes de responsavel. */
+  const nomePorId = new Map<string, string>()
   for (const a of alunos) porNomeETurma.set(`${normalizar(a.nome)}|${a.turma}`, a.id)
 
   for (let i = 1; i < linhas.length; i++) {
@@ -201,6 +203,21 @@ export function analisarResponsaveis(
     }
 
     const id = idDeResponsavel(nomeResp)
+    /*
+      O id e um hash de 32 bits do nome normalizado: dois adultos com nomes
+      DIFERENTES podem cair no mesmo id, e o segundo viraria o primeiro — com o
+      telefone e os vinculos do outro. Improvavel; grave demais para ignorar.
+    */
+    const chaveNome = normalizar(nomeResp)
+    const nomeAnterior = nomePorId.get(id)
+    if (nomeAnterior !== undefined && nomeAnterior !== chaveNome) {
+      erros.push({
+        linha: i + 1,
+        motivo: `colisao de identificador entre "${nomeResp.slice(0, 60)}" e outro responsavel; renomeie um dos dois (acrescente um sobrenome)`,
+      })
+      continue
+    }
+    nomePorId.set(id, chaveNome)
     /*
       O primeiro registro de um responsavel manda no vinculo e no telefone.
 
